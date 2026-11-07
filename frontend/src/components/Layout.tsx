@@ -7,6 +7,7 @@ import { api } from "../api";
 import { HeaderTitleProvider, useHeaderTitleValue } from "./HeaderTitle";
 import { JobsButton, JobsDrawer } from "./Jobs";
 import { PosterMark, Wordmark } from "./Logo";
+import { SectionTabs } from "./SectionTabs";
 import { pageTitle, sections } from "../nav";
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
@@ -148,6 +149,7 @@ function LayoutFrame() {
         </header>
         {auth.data && !auth.data.configured && <SignInNotice />}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          <SectionTabs />
           <Outlet />
         </main>
         <JobsDrawer open={jobsOpen} onClose={() => setJobsOpen(false)} />
