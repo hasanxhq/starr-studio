@@ -83,18 +83,13 @@ export const pages: Page[] = sections.flatMap((section) => section.pages);
 
 const tabSections = new Set(["Activity", "System", "Settings"]);
 
-/** The section whose page best matches the path (longest prefix), if it uses hub tabs. */
+/** The section a path is in (its longest-prefix page), when that section shows its pages as tabs. */
 export function sectionForPath(pathname: string): Section | null {
-  let best: { section: Section; page: Page } | null = null;
-  for (const section of sections) {
-    for (const page of section.pages) {
-      if (page.path !== "/" && pathname.startsWith(page.path) && (!best || page.path.length > best.page.path.length)) {
-        best = { section, page };
-      }
-    }
-  }
-  if (!best || !tabSections.has(best.section.label)) return null;
-  return best.section;
+  const found = sections
+    .flatMap((section) => section.pages.map((page) => ({ section, page })))
+    .filter(({ page }) => page.path !== "/" && pathname.startsWith(page.path))
+    .sort((a, b) => b.page.path.length - a.page.path.length)[0];
+  return found && tabSections.has(found.section.label) ? found.section : null;
 }
 
 // Pages reached from other pages rather than the sidebar; the header shows these titles.
@@ -126,9 +121,6 @@ export function pageTitle(pathname: string): string {
     .filter((page) => page.path !== "/" && pathname.startsWith(page.path))
     .sort((a, b) => b.path.length - a.path.length)[0];
   if (!match) return "Starr Studio";
-  for (const section of sections) {
-    const page = section.pages.find((p) => p.path === match.path);
-    if (page && tabSections.has(section.label)) return `${section.label} · ${page.label}`;
-  }
-  return match.label;
+  const section = sectionForPath(pathname);
+  return section?.pages.some((page) => page === match) ? `${section.label} · ${match.label}` : match.label;
 }
