@@ -375,6 +375,10 @@ Today: `Overlays.tsx` (per-library on/off, schedule, backup, Apply now) and `Ove
 
 ---
 
+## After the last step: audit again
+
+When every step above is merged, audit the whole repo again before starting anything new. Compare the result with `docs/audits/2026-11-07-repo-audit.md`, then fix what's still open from both. The rework moves a lot of code, so line numbers in the old audit will have drifted, and some findings may be gone or changed.
+
 ## Out of scope for this plan
 
 - Collection Undo on Home (needs its own design: what Undo sends to Plex).
