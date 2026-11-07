@@ -26,15 +26,14 @@ from .builder_routes import (
 )
 from .config_write import SaveRefused
 from .kometa_command import RunRequest
-from .plex_library import PlexNotFound, PlexUnavailable
 from .ready_made_routes import (
-    STUDIO_LABEL,
     RefIn,
     _library_type,
-    _plex_title,
     _restore_rows,
     _snapshot_rows,
+    apply_ready_made_removals,
     plan_ready_made_build,
+    plan_run_scope,
 )
 
 log = logging.getLogger(__name__)
@@ -96,8 +95,10 @@ def _response_blocked(ready_blocked: list[dict], builder_blocked: list[dict]) ->
     return out
 
 
-def _response_remove(remove_plan: list[dict]) -> list[dict]:
-    return [{"title": item["title"]} for item in remove_plan]
+def _split_remove_plan(remove_plan: list[dict]) -> tuple[list[dict], list[dict]]:
+    remove = [{"title": item["title"]} for item in remove_plan if item["deletable"]]
+    blocked = [_blocked_item(item["title"], item["reason"] or "") for item in remove_plan if not item["deletable"]]
+    return remove, blocked
 
 
 @router.post("/{library}/build")
@@ -142,11 +143,12 @@ async def library_build(
     )
 
     builder_rows, builder_blocked = await _plan_builder_collections(db, request, context, library, body.collections)
-    blocked = _response_blocked(ready_blocked, builder_blocked)
+    remove_list, remove_blocked = _split_remove_plan(remove_plan)
+    blocked = _response_blocked(ready_blocked, builder_blocked) + remove_blocked
     build_list = _response_build(add_entries, builder_rows)
-    remove_list = _response_remove(remove_plan)
+    run_plan = plan_run_scope(db, library, add_entries, [row["kometa_name"] for row in builder_rows])
 
-    collection_names = sorted({entry.kometa_name for _, entry in add_entries} | {row["kometa_name"] for row in builder_rows})
+    will_build = bool(run_plan["collections"] or run_plan["files"])
     will_remove = any(item["deletable"] for item in remove_plan)
 
     plan = {"build": build_list, "remove": remove_list, "blocked": blocked}
@@ -154,14 +156,15 @@ async def library_build(
     if body.dry_run:
         return plan
 
-    if not collection_names and not will_remove:
+    if not will_build and not will_remove:
         return {**plan, "run_id": None}
 
+    missing_by_row: dict[int, list] = {}
     for row in builder_rows:
         if row["download_missing"]:
             item = _collection_in_from_row(row)
-            missing = await _missing_now(request, settings, context, item, db)
-            _check_requests(request, db, item, missing, already_on=True)
+            missing_by_row[int(row["id"])] = await _missing_now(request, settings, context, item, db)
+            _check_requests(request, db, item, missing_by_row[int(row["id"])], already_on=True)
 
     snapshot = _snapshot_rows(db, library)
     picks = [col.Pick(ref, entry.kometa_name, entry.title) for ref, entry in add_entries]
@@ -187,30 +190,17 @@ async def library_build(
     with db:
         studio_files.record(db, written)
 
-    removed_titles: list[str] = []
-    for item, row in zip(remove_plan, remove_rows, strict=True):
-        if not item["deletable"]:
-            continue
-        title_key = item["title"].casefold()
-        if server is not None and library_key is not None:
-            try:
-                labelled = await server.labelled_collections(library_key, STUDIO_LABEL)
-                match = next((c for c in labelled if c.title.casefold() == title_key), None)
-                if match is not None:
-                    labels = await server.collection_labels(match.rating_key)
-                    if STUDIO_LABEL in labels:
-                        await server.delete_collection(match.rating_key)
-            except (PlexUnavailable, PlexNotFound) as error:
-                log.warning("Couldn't delete %r from Plex: %s", item["title"], error)
-                continue
-        with db:
-            col.delete_rows(db, [int(row["id"])])
-        removed_titles.append(item["title"])
+    await apply_ready_made_removals(db, remove_plan, remove_rows, server, library_key)
 
     run_id = None
-    if collection_names:
+    if will_build:
         run_id = runner.enqueue(
-            RunRequest(mode="collections", libraries=[library], collections=collection_names),
+            RunRequest(
+                mode="collections",
+                libraries=run_plan["libraries"],
+                collections=run_plan["collections"],
+                files=run_plan["files"],
+            ),
             trigger="build",
         )
         row_ids: list[int] = [int(row["id"]) for row in builder_rows]
@@ -227,8 +217,6 @@ async def library_build(
 
         for row in builder_rows:
             if row["download_missing"]:
-                item = _collection_in_from_row(row)
-                missing = await _missing_now(request, settings, context, item, db)
-                await _request_now(request, db, int(row["id"]), missing)
+                await _request_now(request, db, int(row["id"]), missing_by_row[int(row["id"])])
 
     return {**plan, "run_id": run_id}

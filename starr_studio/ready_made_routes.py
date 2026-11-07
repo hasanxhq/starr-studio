@@ -385,21 +385,13 @@ def _snapshot_rows(db: sqlite3.Connection, library: str) -> list[dict]:
 
 def _restore_rows(db: sqlite3.Connection, library: str, snapshot: list[dict]) -> None:
     db.execute("DELETE FROM collections WHERE library = ?", (library,))
+    if not snapshot:
+        return
+    cols = list(snapshot[0].keys())
+    col_list = ", ".join(cols)
+    placeholders = ", ".join(f":{c}" for c in cols)
     for row in snapshot:
-        db.execute(
-            """
-            INSERT INTO collections (
-                id, library, category, block, key, kometa_name, title, origin, desired, run_scope,
-                plex_rating_key, plex_exists, plex_items, plex_thumb, plex_checked_at,
-                last_built_at, last_run_id, last_error, created_at, updated_at, changed_at
-            ) VALUES (
-                :id, :library, :category, :block, :key, :kometa_name, :title, :origin, :desired, :run_scope,
-                :plex_rating_key, :plex_exists, :plex_items, :plex_thumb, :plex_checked_at,
-                :last_built_at, :last_run_id, :last_error, :created_at, :updated_at, :changed_at
-            )
-            """,
-            row,
-        )
+        db.execute(f"INSERT INTO collections ({col_list}) VALUES ({placeholders})", row)
 
 
 async def _remove_plan(
@@ -450,6 +442,66 @@ async def _remove_plan(
         # Nothing in Plex: deletable (the row just goes).
         planned.append({"category": row["category"], "title": title, "deletable": True, "reason": None})
     return planned
+
+
+async def apply_ready_made_removals(
+    db: sqlite3.Connection,
+    remove_plan: list[dict],
+    remove_rows: list[sqlite3.Row],
+    server: PlexServer | None,
+    library_key: str | None,
+) -> tuple[list[str], list[dict]]:
+    """Delete deletable removals from Plex and SQLite. Returns removed titles and rows left because Plex failed."""
+    removed: list[str] = []
+    kept: list[dict] = []
+    for item, row in zip(remove_plan, remove_rows, strict=True):
+        if not item["deletable"]:
+            continue
+        title_key = item["title"].casefold()
+        if server is not None and library_key is not None:
+            try:
+                labelled = await server.labelled_collections(library_key, STUDIO_LABEL)
+                match = next((c for c in labelled if c.title.casefold() == title_key), None)
+                if match is not None:
+                    labels = await server.collection_labels(match.rating_key)
+                    if STUDIO_LABEL in labels:
+                        await server.delete_collection(match.rating_key)
+            except (PlexUnavailable, PlexNotFound) as error:
+                log.warning("Couldn't delete %r from Plex: %s", item["title"], error)
+                kept.append({"title": item["title"], "reason": str(error)})
+                continue
+        with db:
+            col.delete_rows(db, [int(row["id"])])
+        removed.append(item["title"])
+    return removed, kept
+
+
+def plan_run_scope(
+    db: sqlite3.Connection,
+    library: str,
+    add_entries: list[tuple[col.Ref, ready_made.Entry]],
+    builder_kometa_names: list[str],
+) -> dict[str, list[str]]:
+    """Kometa collections vs files for one library. Kometa ANDs --run-files and --run-collections."""
+    rows_by_cat = {name: col.rows(db, library, name) for name in {r.category for r, _ in add_entries}}
+    file_cats: set[str] = set()
+    collection_names: list[str] = []
+    for ref, entry in add_entries:
+        scope = "file" if any(r["run_scope"] == "file" for r in rows_by_cat.get(ref.category, [])) else "collection"
+        if scope == "file":
+            file_cats.add(ref.category)
+        else:
+            collection_names.append(entry.kometa_name)
+    files: list[str] = []
+    if file_cats:
+        files = sorted({ref.category for ref, _ in add_entries})
+        if builder_kometa_names:
+            files = sorted(set(files) | {"built"})
+        collection_names = []
+    else:
+        collection_names.extend(builder_kometa_names)
+        collection_names = sorted(set(collection_names))
+    return {"libraries": [library], "collections": collection_names, "files": files}
 
 
 async def _not_taken(
@@ -633,27 +685,7 @@ async def build(
         body.dry_run,
     )
 
-    # Run plan for adds.
-    rows_by_cat = {name: col.rows(db, body.library, name) for name in {r.category for r, _ in add_entries}}
-    file_cats: set[str] = set()
-    collection_names: list[str] = []
-    for ref, entry in add_entries:
-        scope = "file" if any(r["run_scope"] == "file" for r in rows_by_cat.get(ref.category, [])) else "collection"
-        if scope == "file":
-            file_cats.add(ref.category)
-        else:
-            collection_names.append(entry.kometa_name)
-    # Kometa ANDs --run-files and --run-collections, so one run can't mix them. When any category needs
-    # --run-files, the whole run goes by file: each generated file holds only that category's desired
-    # collections, so running a file builds exactly what Studio wants from it.
-    files: list[str] = []
-    if file_cats:
-        files = sorted({ref.category for ref, _ in add_entries})
-        collection_names = []
-
-    run_plan = None
-    if add_entries:
-        run_plan = {"libraries": [body.library], "collections": collection_names, "files": files}
+    run_plan = plan_run_scope(db, body.library, add_entries, []) if add_entries else None
 
     plan = {
         "build": [{"category": ref.category, "title": entry.title} for ref, entry in add_entries],
@@ -691,29 +723,10 @@ async def build(
     with db:
         studio_files.record(db, written)
 
-    removed: list[str] = []
-    kept: list[dict] = []
-    for item, row in zip(remove_plan, remove_rows, strict=True):
+    removed, kept = await apply_ready_made_removals(db, remove_plan, remove_rows, server, library_key)
+    for item in remove_plan:
         if not item["deletable"]:
             kept.append({"title": item["title"], "reason": item["reason"] or ""})
-            continue
-        # Delete from Plex only when a Studio-labelled collection is there; re-check labels first.
-        title_key = item["title"].casefold()
-        if server is not None and library_key is not None:
-            try:
-                labelled = await server.labelled_collections(library_key, STUDIO_LABEL)
-                match = next((c for c in labelled if c.title.casefold() == title_key), None)
-                if match is not None:
-                    labels = await server.collection_labels(match.rating_key)
-                    if STUDIO_LABEL in labels:
-                        await server.delete_collection(match.rating_key)
-            except (PlexUnavailable, PlexNotFound) as error:
-                log.warning("Couldn't delete %r from Plex: %s", item["title"], error)
-                kept.append({"title": item["title"], "reason": str(error)})
-                continue
-        with db:
-            col.delete_rows(db, [int(row["id"])])
-        removed.append(item["title"])
 
     run_id = None
     if add_entries and run_plan is not None:

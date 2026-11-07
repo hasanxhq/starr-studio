@@ -127,6 +127,9 @@ def test_maintainerr_and_unlabelled_removals_are_protected(root):
         assert "102" not in plex.deletions
         twin_key = next(c["ratingKey"] for c in plex.COLLECTIONS["1"] if c["title"] == "Hand Made Twin")
         assert twin_key not in plex.deletions
+        blocked_titles = {b["title"] for b in result["blocked"]}
+        assert "Hand Made Twin" in blocked_titles and "Spy Kids" in blocked_titles
+        assert "Hand Made Twin" not in {r["title"] for r in result["remove"]}
         remaining = {r["key"]: r["desired"] for r in col.rows(db, "Movies")}
         assert "Studio Chart" not in remaining
         assert remaining["Spy Kids"] == 0 and remaining["Hand Made Twin"] == 0
@@ -189,3 +192,72 @@ def test_changed_clears_after_run_end(root):
         asyncio.run(finish())
         row = col.built_row(db, built["id"])
         assert row["changed_at"] is None
+
+
+def test_file_scoped_ready_made_and_builder_use_run_files(root):
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_task(client, "ready_made_counts")
+        genre = client.get("/api/v1/ready-made/libraries/Movies/categories/genre").json()["collections"][0]
+        db = client.app.state.db
+        with db:
+            col.mark_present(
+                db,
+                "Movies",
+                [col.Pick(col.Ref("genre", genre["block"], genre["key"]), genre["title"], genre["title"])],
+            )
+            col.set_run_scope(db, "Movies", "genre", "file")
+        saved = client.post("/api/v1/collections", json=body(title="Builder Side", build=False)).json()
+        result = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={
+                "ready_made": {
+                    "add": [
+                        {"category": "basic", "block": "", "key": "Newly Released"},
+                        {"category": "genre", "block": genre["block"], "key": genre["key"]},
+                    ],
+                    "remove": [],
+                },
+                "collections": [saved["id"]],
+                "dry_run": True,
+            },
+        ).json()
+        assert "run_id" not in result
+        built = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={
+                "ready_made": {
+                    "add": [
+                        {"category": "basic", "block": "", "key": "Newly Released"},
+                        {"category": "genre", "block": genre["block"], "key": genre["key"]},
+                    ],
+                    "remove": [],
+                },
+                "collections": [saved["id"]],
+            },
+        ).json()
+        run = wait_for_run(client, built["run_id"])
+        assert run["request"]["collections"] == []
+        assert sorted(run["request"]["files"]) == ["basic", "built", "genre"]
+
+
+def test_refused_build_restores_builder_definition(root):
+    broken = root / "kometa" / "defaults" / "chart" / "broken.yml"
+    broken.write_text(
+        "#####\n# Broken #\n#####\n\ncollections:\n  Broken Pick:\n    tmdb_movie: BROKEN\n"
+    )
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        saved = client.post("/api/v1/collections", json=body(title="Keeps Definition", build=False)).json()
+        before = col.built_row(client.app.state.db, saved["id"])["definition"]
+        response = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={
+                "ready_made": {"add": [{"category": "broken", "block": "", "key": "Broken Pick"}], "remove": []},
+                "collections": [saved["id"]],
+            },
+        )
+        assert response.status_code == 422
+        row = col.built_row(client.app.state.db, saved["id"])
+        assert row["definition"] == before

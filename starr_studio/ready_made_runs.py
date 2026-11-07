@@ -121,6 +121,10 @@ class ReadyMadeRecorder:
             say("ready-made: Kometa's run didn't finish (no run_end)")
             return
 
+        tracked_ids = {int(r["id"]) for r in tracked}
+        with self.db:
+            col.clear_changed(self.db, list(tracked_ids))
+
         if self.settings.kometa_config is None:
             return
         try:
@@ -147,9 +151,6 @@ class ReadyMadeRecorder:
             say(f"ready-made: Plex unavailable ({error})")
             return
 
-        tracked_ids = {int(r["id"]) for r in tracked}
-        with self.db:
-            col.clear_changed(self.db, list(tracked_ids))
         log_path = getattr(self.runner, "log_path", None)
         refused = kometa_summary.read_errors(log_path(run_id)) if log_path else {}  # what Kometa didn't build, and why
         for name in libraries:

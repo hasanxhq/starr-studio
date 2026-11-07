@@ -899,7 +899,7 @@ async def update_collection(row_id: int, body: CollectionIn, request: Request, d
             col.update_built(db, row_id, old_title, json.loads(old_definition or "{}"))
             collection_requests.set_download_missing(db, [row_id], bool(old_flags[0]), old_flags[1], old_flags[2])
         raise HTTPException(refused.status, refused.detail()) from None
-    if body.build and old_title.casefold() != title.casefold():
+    if old_title.casefold() != title.casefold():
         # Kometa finds collections by title, so the old one would stay in Plex under its old name.
         gone, why = await _delete_from_plex(context, old_title)
         if not gone:
