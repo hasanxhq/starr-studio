@@ -127,6 +127,7 @@ class CollectionIn(BaseModel):
     request_cap: int | None = Field(default=None, ge=1)  # most per day for this collection; None = the setting's
     request_profile: str | None = Field(default=None, max_length=200)  # Radarr/Sonarr quality profile; None = the setting's
     confirm_requests: bool = False  # the user saw how many titles this requests now and said yes
+    build: bool = True  # False = save without running Kometa; the collection gets changed_at instead
 
 
 class DownloadMissingIn(BaseModel):
@@ -344,6 +345,28 @@ def _requests_service(request: Request):
     return service
 
 
+def _collection_in_from_row(row: sqlite3.Row) -> CollectionIn:
+    definition = json.loads(row["definition"] or "{}")
+    sources = list_sources.sources_of(definition)
+    return CollectionIn(
+        library=row["library"],
+        title=row["title"],
+        source=sources[0],
+        sources=sources if len(sources) > 1 else None,
+        filters=FiltersIn.model_validate(definition.get("filters") or {"match": "all", "rules": []}),
+        sort_by=definition.get("sort_by"),
+        limit=definition.get("limit"),
+        visible=Visible.model_validate(definition.get("visible") or {"library": True, "home": False, "shared": False}),
+        minimum_items=definition.get("minimum_items") or 1,
+        summary=definition.get("summary"),
+        sort_title=definition.get("sort_title"),
+        poster=PosterIn.model_validate(definition["poster"]) if definition.get("poster") else None,
+        download_missing=bool(row["download_missing"]),
+        request_cap=row["request_cap"],
+        request_profile=row["request_profile"],
+    )
+
+
 async def _missing_now(request: Request, settings, context: Context, body: CollectionIn, db: sqlite3.Connection) -> list:
     """The titles a list collection with Download missing would request right away: what its preview misses, never asked for before."""
     sources = [_source_dict(source) for source in _sources(body)]
@@ -420,6 +443,7 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "last_built_at": row["last_built_at"],
         "last_error": row["last_error"],
         "run_id": row["last_run_id"],
+        "changed": row["changed_at"] is not None,
         "download_missing": bool(row["download_missing"]),
         "request_cap": row["request_cap"],
         "request_profile": row["request_profile"],
@@ -540,6 +564,16 @@ async def _save_and_run(db: sqlite3.Connection, settings, writer, runner, contex
     with db:
         col.set_run(db, [row_id], run_id)
     return run_id
+
+
+async def _save_only(db: sqlite3.Connection, settings, writer, context: Context, row_id: int, reason: str) -> None:
+    """Write generated files (Kometa's check still runs), but don't enqueue a run."""
+    root = _kometa_root(settings)
+    if root is None:
+        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
+    written = await studio_files.write_from_db(writer, root, db, context.library.name, context.library_type, context.all_libraries, reason)
+    with db:
+        studio_files.record(db, written)
 
 
 # --- Fields, values and the preview ------------------------------------------------------------
@@ -794,13 +828,23 @@ async def create_collection(body: CollectionIn, request: Request, db: Db, settin
     taken = await _title_taken(db, request, context, title, None)
     if taken:
         raise HTTPException(409, {"message": taken})
-    missing = await _missing_now(request, settings, context, body, db)
-    _check_requests(request, db, body, missing)
+    if body.build:
+        missing = await _missing_now(request, settings, context, body, db)
+        _check_requests(request, db, body, missing)
+    else:
+        missing = []
     with db:
         row_id = col.insert_built(db, body.library, secrets.token_hex(6), title, _definition(body))
         collection_requests.set_download_missing(db, [row_id], body.download_missing, body.request_cap, body.request_profile)
     try:
-        await _save_and_run(db, settings, writer, runner, context, row_id, f"Built the collection {title!r} in {body.library}")
+        if body.build:
+            await _save_and_run(db, settings, writer, runner, context, row_id, f"Built the collection {title!r} in {body.library}")
+            with db:
+                col.clear_changed(db, [row_id])
+        else:
+            await _save_only(db, settings, writer, context, row_id, f"Saved the collection {title!r} in {body.library}")
+            with db:
+                col.set_changed(db, [row_id])
     except SaveRefused as refused:
         with db:
             col.delete_rows(db, [row_id])
@@ -810,7 +854,8 @@ async def create_collection(body: CollectionIn, request: Request, db: Db, settin
             col.delete_rows(db, [row_id])
         raise
     _cleanup_posters(_config_dir(settings), db)
-    await _request_now(request, db, row_id, missing)
+    if body.build:
+        await _request_now(request, db, row_id, missing)
     return _built_json(db, col.built_row(db, row_id))
 
 
@@ -832,25 +877,36 @@ async def update_collection(row_id: int, body: CollectionIn, request: Request, d
         raise HTTPException(409, {"message": taken})
     old_title, old_definition = row["title"], row["definition"]
     old_flags = (row["download_missing"], row["request_cap"], row["request_profile"])
-    missing = await _missing_now(request, settings, context, body, db) if collection_requests.load_settings(db).enabled else []
-    _check_requests(request, db, body, missing, already_on=bool(row["download_missing"]))
+    if body.build:
+        missing = await _missing_now(request, settings, context, body, db) if collection_requests.load_settings(db).enabled else []
+        _check_requests(request, db, body, missing, already_on=bool(row["download_missing"]))
+    else:
+        missing = []
     with db:
         col.update_built(db, row_id, title, _definition(body))
         collection_requests.set_download_missing(db, [row_id], body.download_missing, body.request_cap, body.request_profile)
     try:
-        await _save_and_run(db, settings, writer, runner, context, row_id, f"Changed the collection {title!r} in {body.library}")
+        if body.build:
+            await _save_and_run(db, settings, writer, runner, context, row_id, f"Changed the collection {title!r} in {body.library}")
+            with db:
+                col.clear_changed(db, [row_id])
+        else:
+            await _save_only(db, settings, writer, context, row_id, f"Saved the collection {title!r} in {body.library}")
+            with db:
+                col.set_changed(db, [row_id])
     except SaveRefused as refused:
         with db:
             col.update_built(db, row_id, old_title, json.loads(old_definition or "{}"))
             collection_requests.set_download_missing(db, [row_id], bool(old_flags[0]), old_flags[1], old_flags[2])
         raise HTTPException(refused.status, refused.detail()) from None
-    if old_title.casefold() != title.casefold():
+    if body.build and old_title.casefold() != title.casefold():
         # Kometa finds collections by title, so the old one would stay in Plex under its old name.
         gone, why = await _delete_from_plex(context, old_title)
         if not gone:
             log.warning("Renamed %r to %r, but the old collection stays in Plex: %s", old_title, title, why)
     _cleanup_posters(_config_dir(settings), db)
-    await _request_now(request, db, row_id, missing)
+    if body.build:
+        await _request_now(request, db, row_id, missing)
     return _built_json(db, col.built_row(db, row_id))
 
 

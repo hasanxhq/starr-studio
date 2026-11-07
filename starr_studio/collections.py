@@ -240,6 +240,28 @@ def update_built(db: sqlite3.Connection, row_id: int, title: str, definition: di
     )
 
 
+def set_changed(db: sqlite3.Connection, ids: list[int]) -> None:
+    """Mark rows as changed (saved but not yet built)."""
+    if not ids:
+        return
+    stamp = now()
+    db.executemany(
+        "UPDATE collections SET changed_at = ?, updated_at = ? WHERE id = ?",
+        [(stamp, stamp, row_id) for row_id in ids],
+    )
+
+
+def clear_changed(db: sqlite3.Connection, ids: list[int]) -> None:
+    """Mark rows as no longer changed (just built or about to build)."""
+    if not ids:
+        return
+    stamp = now()
+    db.executemany(
+        "UPDATE collections SET changed_at = NULL, updated_at = ? WHERE id = ?",
+        [(stamp, row_id) for row_id in ids],
+    )
+
+
 def built_definitions(db: sqlite3.Connection, library: str) -> list[tuple[str, dict]]:
     """(title, definition) for the library's builder collections that should exist, by title."""
     return [(row["title"], json.loads(row["definition"] or "{}")) for row in built_rows(db, library) if row["desired"]]

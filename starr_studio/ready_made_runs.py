@@ -148,6 +148,8 @@ class ReadyMadeRecorder:
             return
 
         tracked_ids = {int(r["id"]) for r in tracked}
+        with self.db:
+            col.clear_changed(self.db, list(tracked_ids))
         log_path = getattr(self.runner, "log_path", None)
         refused = kometa_summary.read_errors(log_path(run_id)) if log_path else {}  # what Kometa didn't build, and why
         for name in libraries:

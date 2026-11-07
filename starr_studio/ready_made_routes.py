@@ -391,11 +391,11 @@ def _restore_rows(db: sqlite3.Connection, library: str, snapshot: list[dict]) ->
             INSERT INTO collections (
                 id, library, category, block, key, kometa_name, title, origin, desired, run_scope,
                 plex_rating_key, plex_exists, plex_items, plex_thumb, plex_checked_at,
-                last_built_at, last_run_id, last_error, created_at, updated_at
+                last_built_at, last_run_id, last_error, created_at, updated_at, changed_at
             ) VALUES (
                 :id, :library, :category, :block, :key, :kometa_name, :title, :origin, :desired, :run_scope,
                 :plex_rating_key, :plex_exists, :plex_items, :plex_thumb, :plex_checked_at,
-                :last_built_at, :last_run_id, :last_error, :created_at, :updated_at
+                :last_built_at, :last_run_id, :last_error, :created_at, :updated_at, :changed_at
             )
             """,
             row,
@@ -482,27 +482,59 @@ async def _not_taken(
     return kept, blocked
 
 
-@router.post("/build")
-async def build(
-    body: BuildIn,
-    request: Request,
-    db: Db,
-    settings: AppSettings,
-    runner: AppRunner,
-    writer: Writer,
-) -> dict:
-    library, all_libraries = _config_library(settings, body.library)
-    library_type = await _library_type(request, settings, library) or "movie"
-    root = _kometa_root(settings)
-    if root is None:
-        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
+def _maintainerr_titles(request: Request, library) -> set[str]:
+    """Case-folded Maintainerr-owned titles for one Plex library."""
+    service = getattr(request.app.state, "maintainerr", None)
+    if service is None or not service.connected():
+        return set()
+    plex_title = _plex_title(library)
+    owned = service.snapshot.owned_by_title()
+    return {t.casefold() for t in owned.get(plex_title.casefold(), [])}
 
-    if body.download_missing and body.add and not body.dry_run and not load_request_settings(db).enabled:
+
+async def _plex_for_library(request: Request, settings, library) -> tuple[PlexServer | None, str | None]:
+    """The Plex server and the library's section key, or (None, None) when Plex can't be reached."""
+    plex_title = _plex_title(library)
+    try:
+        server = kometa_plex(settings, request.app.state.http)
+        await _library_types.types(server)
+        key = await _library_types.key_for(server, plex_title)
+        return server, key
+    except (HTTPException, PlexUnavailable):
+        return None, None
+
+
+async def plan_ready_made_build(
+    db: sqlite3.Connection,
+    request: Request,
+    settings,
+    library,
+    library_name: str,
+    root: Path,
+    library_type: str,
+    add_refs: list[RefIn],
+    remove_refs_in: list[RefIn],
+    download_missing: bool,
+    dry_run: bool,
+) -> tuple[
+    list[tuple[col.Ref, ready_made.Entry]],  # add_entries (safe ones)
+    list[col.Ref],  # remove_refs
+    list[sqlite3.Row],  # remove_rows
+    list[dict],  # remove_plan
+    list[dict],  # blocked
+    set[str],  # maintainerr_titles
+    PlexServer | None,
+    str | None,  # library_key
+]:
+    """Validate ready-made adds and removes, check Maintainerr and Plex label rules.
+
+    Returns the validated, filtered plan components. Raises HTTPException on validation errors.
+    """
+    if download_missing and add_refs and not dry_run and not load_request_settings(db).enabled:
         raise HTTPException(422, {"message": "Turn on requests in Settings → Requests first"})
 
     cats = ready_made.categories(root, library_type)
-    # Merge counted plex entries into the catalogue index so dynamic picks validate.
-    cached = col.counts(db, body.library)
+    cached = col.counts(db, library_name)
     index = _catalogue_index(cats)
     for cat in cats:
         for entry in _entry_dicts(cached.get(cat.name), cat):
@@ -518,7 +550,7 @@ async def build(
 
     bad_add = []
     add_entries: list[tuple[col.Ref, ready_made.Entry]] = []
-    for ref in body.add:
+    for ref in add_refs:
         entry = index.get((ref.category, ref.block, ref.key))
         if entry is None:
             bad_add.append(ref)
@@ -533,13 +565,13 @@ async def build(
             },
         )
 
-    remove_refs = [col.Ref(r.category, r.block, r.key) for r in body.remove]
+    remove_refs = [col.Ref(r.category, r.block, r.key) for r in remove_refs_in]
     remove_rows: list[sqlite3.Row] = []
     bad_remove = []
     for ref in remove_refs:
         row = db.execute(
             "SELECT * FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
-            (body.library, ref.category, ref.block, ref.key),
+            (library_name, ref.category, ref.block, ref.key),
         ).fetchone()
         if row is None:
             bad_remove.append(ref)
@@ -554,27 +586,52 @@ async def build(
             },
         )
 
-    # Maintainerr titles for this Plex library (case-insensitive).
-    maintainerr_titles: set[str] = set()
-    service = getattr(request.app.state, "maintainerr", None)
-    plex_title = _plex_title(library)
-    if service is not None and service.connected():
-        owned = service.snapshot.owned_by_title()
-        maintainerr_titles = {t.casefold() for t in owned.get(plex_title.casefold(), [])}
+    maintainerr = _maintainerr_titles(request, library)
+    server, library_key = await _plex_for_library(request, settings, library)
 
-    server: PlexServer | None = None
-    library_key: str | None = None
-    try:
-        server = kometa_plex(settings, request.app.state.http)
-        await _library_types.types(server)
-        library_key = await _library_types.key_for(server, plex_title)
-    except (HTTPException, PlexUnavailable):
-        server = None
+    remove_plan = await _remove_plan(server, library_key, remove_rows, maintainerr)
+    add_entries, blocked = await _not_taken(server, library_key, add_entries, maintainerr)
 
-    remove_plan = await _remove_plan(server, library_key, remove_rows, maintainerr_titles)
-    # Kometa takes over any collection with the same title, so a pick whose title is already used by a
-    # collection Studio didn't make is never built: the label would land on someone else's collection.
-    add_entries, blocked = await _not_taken(server, library_key, add_entries, maintainerr_titles)
+    return add_entries, remove_refs, remove_rows, remove_plan, blocked, maintainerr, server, library_key
+
+
+@router.post("/build")
+async def build(
+    body: BuildIn,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    runner: AppRunner,
+    writer: Writer,
+) -> dict:
+    library, all_libraries = _config_library(settings, body.library)
+    library_type = await _library_type(request, settings, library) or "movie"
+    root = _kometa_root(settings)
+    if root is None:
+        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
+
+    (
+        add_entries,
+        remove_refs,
+        remove_rows,
+        remove_plan,
+        blocked,
+        maintainerr_titles,
+        server,
+        library_key,
+    ) = await plan_ready_made_build(
+        db,
+        request,
+        settings,
+        library,
+        body.library,
+        root,
+        library_type,
+        body.add,
+        body.remove,
+        body.download_missing,
+        body.dry_run,
+    )
 
     # Run plan for adds.
     rows_by_cat = {name: col.rows(db, body.library, name) for name in {r.category for r, _ in add_entries}}
