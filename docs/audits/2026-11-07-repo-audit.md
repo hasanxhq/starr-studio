@@ -97,9 +97,26 @@ Choices to settle when it's built:
 - HTTP access lines stay out of Info: uvicorn's access log is noise at that level.
 - Rotation is by size, not by day, so a busy Debug day can't grow without limit.
 
+9. **Kometa is bundled, but Studio still treats it as the user's to choose and update** (Should fix; `compose.yaml:8`, `starr_studio/health.py:263`, `frontend/src/pages/SystemUpdates.tsx:16-28`, `docs/install-without-docker.md:167`)
+   - **What this is:** Studio is a fully managed Kometa install. The Docker image is built on `kometateam/kometa:v2.5.4`, and the seedbox script installs exactly v2.5.4. Several modules copy Kometa 2.5.4's own tables and rules (`smart_filters.py`, `ready_made.py`, the source lists, `default_covers.py`, `ready_made_posters.py`, `defaults.ts`), each marked "check on a Kometa update".
+   - **Problem:** Four places still invite users to run some other Kometa:
+     - `KOMETA_TAG` is a user setting in the README and `compose.yaml`, so anyone can build Studio on a Kometa it was never checked against.
+     - System → Status and System → Updates say "Kometa X is out" as soon as Kometa's `version` webhook reports a newer release. The Updates page then says to pull the new Studio image, which still holds the pinned Kometa, so following the advice changes nothing.
+     - The no-Docker guide has a "To update Kometa to a newer tag" section.
+     - The README talks about "an older Kometa you've pointed it at".
+
+     A user who upgrades Kometa on their own gets copied tables that no longer match: wrong titles in Ready-made, filters Kometa refuses, and these only fail at run time.
+   - **Fix:** Kometa versions move with Studio releases. We test a new Kometa, re-check the copied tables, and ship both together.
+     - Keep the pinned version in one place (a `KOMETA_VERSION` constant or file). The Dockerfile, `compose.yaml`, `deploy/install-seedbox.sh` and the docs follow it; a test checks they match, as `tests/test_seedbox_script.py` already does for the script.
+     - Keep `KOMETA_TAG` as a build argument for us; take it out of the README's user settings.
+     - Replace "Kometa X is out" with a version check. A warning when the installed Kometa isn't the pinned one ("Studio is tested with Kometa 2.5.4; you have X"). A newer Kometa release becomes a quiet line on System → Updates ("waits for a Studio update"), not a notice.
+     - Delete the self-update section from the no-Docker guide; updating Studio's install updates Kometa.
+     - Don't vendor Kometa's source or make it a pip dependency: it isn't on PyPI, it pins its own dependencies exactly, and the two separate venvs in the Dockerfile exist so the two sets never clash.
+   - **If we skip it:** Users follow Studio's own update notice into a setup Studio wasn't tested with, and the failures look like Studio bugs.
+
 ## Summary
 
-**Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
+**Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Fix 9 before the next Studio release, so no update notice sends users to an untested Kometa. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
 
 **Lean:** about −100 lines possible, no dependencies to remove.
 
