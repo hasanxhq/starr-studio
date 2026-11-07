@@ -63,9 +63,43 @@ Audited `dev` at `ce32ae0` (after #92), mid-way through the UI rework (`docs/pla
    - **Fix:** Fetch the list once before the loop. The label check just before each delete stays as it is.
    - **If we skip it:** Big removals are slow on large or remote Plex servers.
 
+## Added 2026-11-08
+
+8. **Studio keeps no log of its own; only Kometa's logs exist** (Should fix; `starr_studio/cli.py:62`, `starr_studio/logs_routes.py:25`)
+   - **What this is:** Studio's modules write log lines (`log.info`, `log.warning`, `log.exception`) for things it does outside a Kometa run. Examples: drift it corrected, requests it sent, collections it deleted or rebuilt in Plex, Maintainerr hand-offs. The Logs page (System → Logs) lists files in Kometa's `config/logs/` only.
+   - **Problem:** Logging is never set up. `uvicorn.run` configures only uvicorn's own loggers. As a result:
+     - Studio's 14 `log.info` lines are thrown away. That includes the drift-correction lines that "log it, don't warn" relies on.
+     - Its 36 warnings and errors fall through to Python's last-resort handler: plain text on stderr, with no time, level or module, mixed into `docker logs` with HTTP access lines.
+     - Nothing reaches a file or the Logs page.
+
+     When something goes wrong outside a run (finding 1, a request that failed, a deletion Plex refused), there is no record to look at.
+   - **Fix:** Set up logging once at startup.
+     - Write to a rotating file `<data dir>/logs/studio.log` (`logging.handlers.RotatingFileHandler`, e.g. 5 files of 2 MB).
+     - Also write to stderr, so `docker logs` keeps working.
+     - Use Kometa's line format (`[YYYY-MM-DD HH:MM:SS,mmm] module  [LEVEL]  message`), so the Logs page's existing parser (`LINE_LEVEL`) reads it unchanged.
+     - Have the Logs page list Studio's file next to Kometa's, with a Studio | Kometa switch.
+     - Never log a secret: tokens go in headers today (`X-Plex-Token`); any URL or body logged at Debug or Trace goes through `kometa_files.mask_secrets` first.
+     - Test that a `log.info` line lands in the file and shows on the Logs page.
+   - **If we skip it:** Problems outside Kometa runs leave no trace. Support means asking users to reproduce with `docker logs` open, and even then the info lines aren't there.
+
+### Suggested logging modes
+
+A **Log level** setting in Settings → General, like the *arr apps. The `STUDIO_LOG_LEVEL` environment variable overrides it, for problems that happen before the database opens.
+
+| Mode | Logs | For |
+|---|---|---|
+| **Info** (default) | What Studio did and why, one line each: saves, runs queued and how they ended, drift it corrected, requests sent, collections deleted or unlabelled in Plex, Maintainerr hand-offs, schedules and tasks fired, sign-ins and refused sign-ins (no passwords). Plus every warning and error, with a traceback for errors | Everyday use; small enough to keep weeks of it |
+| **Debug** | Info, plus every call Studio makes to Plex, Radarr/Sonarr/Seerr, Maintainerr, TMDb and MDBList: method, URL without secrets, status and time taken. Plus each decision behind a refusal (why a title was blocked, why a run was held), and HTTP access lines for the API | Chasing a bug or a slow page |
+| **Trace** | Debug, plus request and response bodies of those calls, masked and cut to a few KB each | Last resort, short sessions only |
+
+Choices to settle when it's built:
+- Trace switches itself back to Info after 24 hours, so a forgotten Trace doesn't fill the disk.
+- HTTP access lines stay out of Info: uvicorn's access log is noise at that level.
+- Rotation is by size, not by day, so a busy Debug day can't grow without limit.
+
 ## Summary
 
-**Verdict:** Fix 1 first: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
+**Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
 
 **Lean:** about −100 lines possible, no dependencies to remove.
 
