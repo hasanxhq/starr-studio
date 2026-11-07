@@ -122,6 +122,16 @@ def test_set_run_record_plex_and_scope(db: sqlite3.Connection):
     assert row["last_built_at"]  # unchanged when built=False
 
 
+def test_changed_at_helpers(db: sqlite3.Connection):
+    with db:
+        row_id = col.insert_built(db, "Movies", "abc", "Mine", {"filters": {"match": "all", "rules": []}})
+        col.set_changed(db, [row_id])
+    assert col.built_row(db, row_id)["changed_at"]
+    with db:
+        col.clear_changed(db, [row_id])
+    assert col.built_row(db, row_id)["changed_at"] is None
+
+
 def test_preview_counts(db: sqlite3.Connection):
     with db:
         col.save_counts(db, "Movies", "genre", {"Action": 10, "Drama": 3}, None)

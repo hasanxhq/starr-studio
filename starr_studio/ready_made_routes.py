@@ -385,21 +385,13 @@ def _snapshot_rows(db: sqlite3.Connection, library: str) -> list[dict]:
 
 def _restore_rows(db: sqlite3.Connection, library: str, snapshot: list[dict]) -> None:
     db.execute("DELETE FROM collections WHERE library = ?", (library,))
+    if not snapshot:
+        return
+    cols = list(snapshot[0].keys())
+    col_list = ", ".join(cols)
+    placeholders = ", ".join(f":{c}" for c in cols)
     for row in snapshot:
-        db.execute(
-            """
-            INSERT INTO collections (
-                id, library, category, block, key, kometa_name, title, origin, desired, run_scope,
-                plex_rating_key, plex_exists, plex_items, plex_thumb, plex_checked_at,
-                last_built_at, last_run_id, last_error, created_at, updated_at
-            ) VALUES (
-                :id, :library, :category, :block, :key, :kometa_name, :title, :origin, :desired, :run_scope,
-                :plex_rating_key, :plex_exists, :plex_items, :plex_thumb, :plex_checked_at,
-                :last_built_at, :last_run_id, :last_error, :created_at, :updated_at
-            )
-            """,
-            row,
-        )
+        db.execute(f"INSERT INTO collections ({col_list}) VALUES ({placeholders})", row)
 
 
 async def _remove_plan(
@@ -452,6 +444,66 @@ async def _remove_plan(
     return planned
 
 
+async def apply_ready_made_removals(
+    db: sqlite3.Connection,
+    remove_plan: list[dict],
+    remove_rows: list[sqlite3.Row],
+    server: PlexServer | None,
+    library_key: str | None,
+) -> tuple[list[str], list[dict]]:
+    """Delete deletable removals from Plex and SQLite. Returns removed titles and rows left because Plex failed."""
+    removed: list[str] = []
+    kept: list[dict] = []
+    for item, row in zip(remove_plan, remove_rows, strict=True):
+        if not item["deletable"]:
+            continue
+        title_key = item["title"].casefold()
+        if server is not None and library_key is not None:
+            try:
+                labelled = await server.labelled_collections(library_key, STUDIO_LABEL)
+                match = next((c for c in labelled if c.title.casefold() == title_key), None)
+                if match is not None:
+                    labels = await server.collection_labels(match.rating_key)
+                    if STUDIO_LABEL in labels:
+                        await server.delete_collection(match.rating_key)
+            except (PlexUnavailable, PlexNotFound) as error:
+                log.warning("Couldn't delete %r from Plex: %s", item["title"], error)
+                kept.append({"title": item["title"], "reason": str(error)})
+                continue
+        with db:
+            col.delete_rows(db, [int(row["id"])])
+        removed.append(item["title"])
+    return removed, kept
+
+
+def plan_run_scope(
+    db: sqlite3.Connection,
+    library: str,
+    add_entries: list[tuple[col.Ref, ready_made.Entry]],
+    builder_kometa_names: list[str],
+) -> dict[str, list[str]]:
+    """Kometa collections vs files for one library. Kometa ANDs --run-files and --run-collections."""
+    rows_by_cat = {name: col.rows(db, library, name) for name in {r.category for r, _ in add_entries}}
+    file_cats: set[str] = set()
+    collection_names: list[str] = []
+    for ref, entry in add_entries:
+        scope = "file" if any(r["run_scope"] == "file" for r in rows_by_cat.get(ref.category, [])) else "collection"
+        if scope == "file":
+            file_cats.add(ref.category)
+        else:
+            collection_names.append(entry.kometa_name)
+    files: list[str] = []
+    if file_cats:
+        files = sorted({ref.category for ref, _ in add_entries})
+        if builder_kometa_names:
+            files = sorted(set(files) | {"built"})
+        collection_names = []
+    else:
+        collection_names.extend(builder_kometa_names)
+        collection_names = sorted(set(collection_names))
+    return {"libraries": [library], "collections": collection_names, "files": files}
+
+
 async def _not_taken(
     server: PlexServer | None,
     library_key: str | None,
@@ -482,27 +534,59 @@ async def _not_taken(
     return kept, blocked
 
 
-@router.post("/build")
-async def build(
-    body: BuildIn,
-    request: Request,
-    db: Db,
-    settings: AppSettings,
-    runner: AppRunner,
-    writer: Writer,
-) -> dict:
-    library, all_libraries = _config_library(settings, body.library)
-    library_type = await _library_type(request, settings, library) or "movie"
-    root = _kometa_root(settings)
-    if root is None:
-        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
+def _maintainerr_titles(request: Request, library) -> set[str]:
+    """Case-folded Maintainerr-owned titles for one Plex library."""
+    service = getattr(request.app.state, "maintainerr", None)
+    if service is None or not service.connected():
+        return set()
+    plex_title = _plex_title(library)
+    owned = service.snapshot.owned_by_title()
+    return {t.casefold() for t in owned.get(plex_title.casefold(), [])}
 
-    if body.download_missing and body.add and not body.dry_run and not load_request_settings(db).enabled:
+
+async def _plex_for_library(request: Request, settings, library) -> tuple[PlexServer | None, str | None]:
+    """The Plex server and the library's section key, or (None, None) when Plex can't be reached."""
+    plex_title = _plex_title(library)
+    try:
+        server = kometa_plex(settings, request.app.state.http)
+        await _library_types.types(server)
+        key = await _library_types.key_for(server, plex_title)
+        return server, key
+    except (HTTPException, PlexUnavailable):
+        return None, None
+
+
+async def plan_ready_made_build(
+    db: sqlite3.Connection,
+    request: Request,
+    settings,
+    library,
+    library_name: str,
+    root: Path,
+    library_type: str,
+    add_refs: list[RefIn],
+    remove_refs_in: list[RefIn],
+    download_missing: bool,
+    dry_run: bool,
+) -> tuple[
+    list[tuple[col.Ref, ready_made.Entry]],  # add_entries (safe ones)
+    list[col.Ref],  # remove_refs
+    list[sqlite3.Row],  # remove_rows
+    list[dict],  # remove_plan
+    list[dict],  # blocked
+    set[str],  # maintainerr_titles
+    PlexServer | None,
+    str | None,  # library_key
+]:
+    """Validate ready-made adds and removes, check Maintainerr and Plex label rules.
+
+    Returns the validated, filtered plan components. Raises HTTPException on validation errors.
+    """
+    if download_missing and add_refs and not dry_run and not load_request_settings(db).enabled:
         raise HTTPException(422, {"message": "Turn on requests in Settings → Requests first"})
 
     cats = ready_made.categories(root, library_type)
-    # Merge counted plex entries into the catalogue index so dynamic picks validate.
-    cached = col.counts(db, body.library)
+    cached = col.counts(db, library_name)
     index = _catalogue_index(cats)
     for cat in cats:
         for entry in _entry_dicts(cached.get(cat.name), cat):
@@ -518,7 +602,7 @@ async def build(
 
     bad_add = []
     add_entries: list[tuple[col.Ref, ready_made.Entry]] = []
-    for ref in body.add:
+    for ref in add_refs:
         entry = index.get((ref.category, ref.block, ref.key))
         if entry is None:
             bad_add.append(ref)
@@ -533,13 +617,13 @@ async def build(
             },
         )
 
-    remove_refs = [col.Ref(r.category, r.block, r.key) for r in body.remove]
+    remove_refs = [col.Ref(r.category, r.block, r.key) for r in remove_refs_in]
     remove_rows: list[sqlite3.Row] = []
     bad_remove = []
     for ref in remove_refs:
         row = db.execute(
             "SELECT * FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
-            (body.library, ref.category, ref.block, ref.key),
+            (library_name, ref.category, ref.block, ref.key),
         ).fetchone()
         if row is None:
             bad_remove.append(ref)
@@ -554,49 +638,54 @@ async def build(
             },
         )
 
-    # Maintainerr titles for this Plex library (case-insensitive).
-    maintainerr_titles: set[str] = set()
-    service = getattr(request.app.state, "maintainerr", None)
-    plex_title = _plex_title(library)
-    if service is not None and service.connected():
-        owned = service.snapshot.owned_by_title()
-        maintainerr_titles = {t.casefold() for t in owned.get(plex_title.casefold(), [])}
+    maintainerr = _maintainerr_titles(request, library)
+    server, library_key = await _plex_for_library(request, settings, library)
 
-    server: PlexServer | None = None
-    library_key: str | None = None
-    try:
-        server = kometa_plex(settings, request.app.state.http)
-        await _library_types.types(server)
-        library_key = await _library_types.key_for(server, plex_title)
-    except (HTTPException, PlexUnavailable):
-        server = None
+    remove_plan = await _remove_plan(server, library_key, remove_rows, maintainerr)
+    add_entries, blocked = await _not_taken(server, library_key, add_entries, maintainerr)
 
-    remove_plan = await _remove_plan(server, library_key, remove_rows, maintainerr_titles)
-    # Kometa takes over any collection with the same title, so a pick whose title is already used by a
-    # collection Studio didn't make is never built: the label would land on someone else's collection.
-    add_entries, blocked = await _not_taken(server, library_key, add_entries, maintainerr_titles)
+    return add_entries, remove_refs, remove_rows, remove_plan, blocked, maintainerr, server, library_key
 
-    # Run plan for adds.
-    rows_by_cat = {name: col.rows(db, body.library, name) for name in {r.category for r, _ in add_entries}}
-    file_cats: set[str] = set()
-    collection_names: list[str] = []
-    for ref, entry in add_entries:
-        scope = "file" if any(r["run_scope"] == "file" for r in rows_by_cat.get(ref.category, [])) else "collection"
-        if scope == "file":
-            file_cats.add(ref.category)
-        else:
-            collection_names.append(entry.kometa_name)
-    # Kometa ANDs --run-files and --run-collections, so one run can't mix them. When any category needs
-    # --run-files, the whole run goes by file: each generated file holds only that category's desired
-    # collections, so running a file builds exactly what Studio wants from it.
-    files: list[str] = []
-    if file_cats:
-        files = sorted({ref.category for ref, _ in add_entries})
-        collection_names = []
 
-    run_plan = None
-    if add_entries:
-        run_plan = {"libraries": [body.library], "collections": collection_names, "files": files}
+@router.post("/build")
+async def build(
+    body: BuildIn,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+    runner: AppRunner,
+    writer: Writer,
+) -> dict:
+    library, all_libraries = _config_library(settings, body.library)
+    library_type = await _library_type(request, settings, library) or "movie"
+    root = _kometa_root(settings)
+    if root is None:
+        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
+
+    (
+        add_entries,
+        remove_refs,
+        remove_rows,
+        remove_plan,
+        blocked,
+        maintainerr_titles,
+        server,
+        library_key,
+    ) = await plan_ready_made_build(
+        db,
+        request,
+        settings,
+        library,
+        body.library,
+        root,
+        library_type,
+        body.add,
+        body.remove,
+        body.download_missing,
+        body.dry_run,
+    )
+
+    run_plan = plan_run_scope(db, body.library, add_entries, []) if add_entries else None
 
     plan = {
         "build": [{"category": ref.category, "title": entry.title} for ref, entry in add_entries],
@@ -634,29 +723,10 @@ async def build(
     with db:
         studio_files.record(db, written)
 
-    removed: list[str] = []
-    kept: list[dict] = []
-    for item, row in zip(remove_plan, remove_rows, strict=True):
+    removed, kept = await apply_ready_made_removals(db, remove_plan, remove_rows, server, library_key)
+    for item in remove_plan:
         if not item["deletable"]:
             kept.append({"title": item["title"], "reason": item["reason"] or ""})
-            continue
-        # Delete from Plex only when a Studio-labelled collection is there; re-check labels first.
-        title_key = item["title"].casefold()
-        if server is not None and library_key is not None:
-            try:
-                labelled = await server.labelled_collections(library_key, STUDIO_LABEL)
-                match = next((c for c in labelled if c.title.casefold() == title_key), None)
-                if match is not None:
-                    labels = await server.collection_labels(match.rating_key)
-                    if STUDIO_LABEL in labels:
-                        await server.delete_collection(match.rating_key)
-            except (PlexUnavailable, PlexNotFound) as error:
-                log.warning("Couldn't delete %r from Plex: %s", item["title"], error)
-                kept.append({"title": item["title"], "reason": str(error)})
-                continue
-        with db:
-            col.delete_rows(db, [int(row["id"])])
-        removed.append(item["title"])
 
     run_id = None
     if add_entries and run_plan is not None:

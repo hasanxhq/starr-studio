@@ -101,6 +101,32 @@ def test_bad_filters_and_taken_names_are_refused(root):
         assert col.built_rows(client.app.state.db, "Movies")[0]["title"] == "Action Picks"
 
 
+def test_update_without_build_marks_changed_and_queues_nothing(root):
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        runs_before = len(client.get("/api/v1/runs").json()["runs"])
+        built = client.post("/api/v1/collections", json=body(build=False)).json()
+        updated = client.put(
+            f"/api/v1/collections/{built['id']}",
+            json=body(title="Still Action", filters={"match": "all", "rules": [{"field": "genre", "modifier": "", "value": ["Comedy"]}]}, build=False),
+        ).json()
+        assert updated["changed"] is True and updated.get("run_id") is None
+        assert len(client.get("/api/v1/runs").json()["runs"]) == runs_before
+
+
+def test_rename_without_build_still_deletes_old_studio_collection(root):
+    plex = FakePlex()
+    client, _, _ = make_client(root, plex)
+    with client:
+        wait_for_flags(client)
+        built = client.post("/api/v1/collections", json=body(build=False)).json()
+        old_key = plex.add_collection("1", "Action Picks", labels=["Studio"], items=5)
+        renamed = client.put(f"/api/v1/collections/{built['id']}", json=body(title="Big Bangs", build=False)).json()
+        assert renamed["title"] == "Big Bangs" and renamed["changed"] is True
+        assert old_key in plex.deletions
+
+
 def test_rename_removes_the_old_studio_collection_and_delete_removes_it(root):
     plex = FakePlex()
     client, _, _ = make_client(root, plex)
