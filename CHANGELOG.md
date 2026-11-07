@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Activity, System and Settings** show their pages as a row of tabs at the top, and `/activity`, `/system` and `/settings` open the first one. Page titles name the section too ("Settings · Plex").
 - **Settings → UI → Fonts**: try your device's own fonts instead of Studio's, for text only or everywhere. Remembered in this browser; Studio's fonts stay the default.
 - Collection and Ready-made tiles show their state as a badge on the poster (shared `PosterTile` / `StatusBadge`).
 - The library you pick on **Collections**, **Ready-made** or the **overlay designer** is remembered for the next of those pages in this browser (URL still wins when present).
