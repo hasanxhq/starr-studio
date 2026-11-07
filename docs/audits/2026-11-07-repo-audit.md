@@ -114,6 +114,18 @@ Choices to settle when it's built:
      - Don't vendor Kometa's source or make it a pip dependency: it isn't on PyPI, it pins its own dependencies exactly, and the two separate venvs in the Dockerfile exist so the two sets never clash.
    - **If we skip it:** Users follow Studio's own update notice into a setup Studio wasn't tested with, and the failures look like Studio bugs.
 
+10. **Delete shows no progress while it waits for Plex** (Nice to have, UX; `frontend/src/components/ui.tsx:87-118`, `frontend/src/pages/CollectionBuilder.tsx:441-450,715-721`)
+    - **What this is:** Delete on a collection asks once more (`ConfirmButton`), then calls the API, which deletes the collection from Plex before it answers. On success the page leaves for the Collections list by itself.
+    - **Problem:** While that call runs (seconds, longer on a slow Plex), the only change is that the red Delete button greys out. Its label stays "Delete", the warning text and Keep stay as they were, and Keep still works. It looks like nothing happened, so people press Keep, reload or leave the page mid-delete, and can't tell whether it went through.
+    - **Fix:** In `ConfirmButton`, once, so all its users get it (Delete, Remove, Disconnect, Turn off, Turn overlays off):
+      - While `busy`, show a spinner and a "…ing" label on the confirm button (e.g. "Deleting…"; a `busyLabel` prop, defaulting to `Working…` as `ConfirmDialog` does), and set `aria-busy`.
+      - Disable Keep while busy too.
+      - Keep the spinner until the page has left: on success the builder already navigates away, so only an error clears it (the error then shows as today).
+      - Move `Spinner` from `components/Jobs.tsx` to `components/ui.tsx` and use it in both places.
+      - A test: after confirming, the button reads "Deleting…" and Keep is disabled until the mock API answers.
+      - Check it again after the rework (P3.2 Collections page, P4 builder) in case delete moves.
+    - **If we skip it:** Deletes feel broken, and people who leave mid-delete come back unsure whether the collection is gone from Plex.
+
 ## Summary
 
 **Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Fix 9 before the next Studio release, so no update notice sends users to an untested Kometa. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
