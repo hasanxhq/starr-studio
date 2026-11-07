@@ -15,22 +15,29 @@ Schedules are Studio's ordinary schedules (System → Tasks) with an overlays-on
 lists and adds them through ``/api/v1/schedules``.
 """
 
+import asyncio
+import math
 import re
+from datetime import datetime
 from json import loads
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from .config_routes import Writer, _write_call
 from .config_sections import read_section, save_section
 from .kometa_command import RunRequest
 from .kometa_files import ConfigReader
+from .overlay_originals import BAD_FILENAME, find_backup, get_or_create_original
+from .plex_routes import kometa_plex
 from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/overlays", tags=["overlays"])
-
-BAD_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')  # what Kometa strips from a library's name for its folders
+RATING_KEY_PATTERN = re.compile(r"^[0-9]+$")
 
 
 def _settings(request: Request) -> Settings:
@@ -70,6 +77,27 @@ def _last_pass(db, library: str) -> dict | None:
     return None
 
 
+def _last_pass_seconds(last_pass: dict | None) -> int | None:
+    if not last_pass or not last_pass.get("started_at") or not last_pass.get("finished_at"):
+        return None
+    try:
+        start = datetime.fromisoformat(last_pass["started_at"].replace("Z", "+00:00"))
+        finish = datetime.fromisoformat(last_pass["finished_at"].replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return max(0, int((finish - start).total_seconds()))
+
+
+async def _plex_library_sizes(settings: Settings, http: httpx.AsyncClient) -> dict[str, int | None]:
+    try:
+        server = kometa_plex(settings, http)
+        libraries = await server.libraries()
+        sizes = await asyncio.gather(*(server.size(lib.key, lib.type) for lib in libraries))
+        return {lib.title.casefold(): size for lib, size in zip(libraries, sizes, strict=True)}
+    except Exception:
+        return {}
+
+
 def _maintainerr(request: Request, plex_name: str) -> dict | None:
     service = getattr(request.app.state, "maintainerr", None)
     if service is None or not service.connected():
@@ -89,10 +117,12 @@ async def overview(request: Request, settings: AppSettings) -> dict:
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
     raw = read_section(settings.kometa_config, "libraries") or {}
+    plex_sizes = await _plex_library_sizes(settings, request.app.state.http)
     found = []
     for library in kometa.libraries:
         body = raw.get(library.name) if isinstance(raw.get(library.name), dict) else {}
         plex_name = str(body.get("library_name") or library.name)
+        last_pass = _last_pass(request.app.state.db, library.name)
         found.append(
             {
                 "library": library.name,
@@ -108,8 +138,10 @@ async def overview(request: Request, settings: AppSettings) -> dict:
                     for reference in library.overlay_files
                 ],
                 "backup": _backup(backup_folder(settings.kometa_config, library.name)),
-                "last_pass": _last_pass(request.app.state.db, library.name),
+                "last_pass": last_pass,
                 "maintainerr": _maintainerr(request, plex_name),
+                "items": plex_sizes.get(plex_name.casefold()),
+                "last_pass_seconds": _last_pass_seconds(last_pass),
             }
         )
     return {"libraries": found}
@@ -149,3 +181,42 @@ async def turn_on(name: str, request: Request, settings: AppSettings, writer: Wr
     _library(settings, name)
     await _write_call(save_section(writer, ("libraries", name), {"remove_overlays": None}, f"Turned Kometa's overlays on for {name} on the Overlays page"))
     return _queue(request, name)
+
+
+class LayerDraft(BaseModel):
+    name: str
+    variables: dict[str, Any]
+
+
+class EstimateRequest(BaseModel):
+    layers: list[LayerDraft]
+
+
+@router.post("/{library}/estimate")
+async def estimate(library: str, request_body: EstimateRequest, request: Request, settings: AppSettings) -> dict:
+    body = _library(settings, library)
+    plex_name = str(body.get("library_name") or library)
+    plex_sizes = await _plex_library_sizes(settings, request.app.state.http)
+    posters = plex_sizes.get(plex_name.casefold())
+    last_pass = _last_pass(request.app.state.db, library)
+    duration = _last_pass_seconds(last_pass)
+    minutes = max(1, math.ceil(duration / 60)) if duration is not None else None
+    return {"posters": posters, "minutes": minutes}
+
+
+@router.get("/{library}/original/{rating_key:path}")
+async def original_poster(library: str, rating_key: str, settings: AppSettings) -> FileResponse:
+    if not RATING_KEY_PATTERN.fullmatch(rating_key):
+        raise HTTPException(400, "Rating key must be digits only")
+    _library(settings, library)
+    folder = backup_folder(settings.kometa_config, library)
+    source = find_backup(folder, rating_key)
+    if source is None:
+        raise HTTPException(404, "No original poster backup: Plex's poster is the original")
+    cache_dir = settings.data_dir / "overlay-originals"
+    cached = await get_or_create_original(cache_dir, source, library, rating_key)
+    return FileResponse(
+        cached,
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
