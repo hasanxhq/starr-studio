@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, lazy, type ComponentType } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 
 import { AdvancedProvider } from "./advanced";
 import { AuthGate } from "./components/AuthGate";
@@ -77,6 +77,9 @@ export function App({ queryClient = new QueryClient() }: { queryClient?: QueryCl
           <AuthGate>
             <Routes>
               <Route element={<Layout />}>
+                <Route path="/activity" element={<Navigate replace to="/activity/queue" />} />
+                <Route path="/system" element={<Navigate replace to="/system/status" />} />
+                <Route path="/settings" element={<Navigate replace to="/settings/general" />} />
                 {pages.map((page) => {
                   const Built = built[page.path];
                   return <Route key={page.path} path={page.path} element={Built ? <Built /> : <Placeholder page={page} />} />;

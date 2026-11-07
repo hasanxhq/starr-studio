@@ -62,7 +62,8 @@ describe("Settings → Notifications", () => {
   it("is under Settings in the sidebar", async () => {
     mockApi({ "GET /settings/notifications": () => state });
     renderAt("/settings/notifications");
-    expect(await screen.findByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/settings/notifications");
+    const tabs = await screen.findByRole("navigation", { name: "Settings pages" });
+    expect(within(tabs).getByRole("link", { name: "Notifications" })).toHaveAttribute("aria-current", "page");
   });
 
   it("fills each service in from config.yml, with secrets only as a masked placeholder", async () => {

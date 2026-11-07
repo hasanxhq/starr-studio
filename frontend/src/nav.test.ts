@@ -7,12 +7,14 @@ describe("The header's title", () => {
     expect(pageTitle("/libraries")).toBe("Libraries");
     expect(pageTitle("/libraries/TV%20Shows")).toBe("Library");
     expect(pageTitle("/libraries/TV%20Shows/collections/8752")).toBe("Collection");
-    expect(pageTitle("/activity/queue/12")).toBe("Run");
-    expect(pageTitle("/activity/queue")).toBe("Queue");
+    expect(pageTitle("/activity/queue/3")).toBe("Run");
+    expect(pageTitle("/activity/queue")).toBe("Activity · Queue");
     expect(pageTitle("/ready-made/imdb")).toBe("Category");
     expect(pageTitle("/ready-made")).toBe("Ready-made");
     expect(pageTitle("/requests")).toBe("Requests");
-    expect(pageTitle("/settings/requests")).toBe("Requests");
+    expect(pageTitle("/settings/plex")).toBe("Settings · Plex");
+    expect(pageTitle("/settings/requests")).toBe("Settings · Requests");
+    expect(pageTitle("/collections")).toBe("Collections");
     expect(pageTitle("/items")).toBe("Edit");
     expect(pageTitle("/setup/move-over")).toBe("Move over from Kometa");
     expect(pageTitle("/")).toBe("Overview");

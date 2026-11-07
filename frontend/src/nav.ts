@@ -81,6 +81,22 @@ export const sections: Section[] = [
 
 export const pages: Page[] = sections.flatMap((section) => section.pages);
 
+const tabSections = new Set(["Activity", "System", "Settings"]);
+
+/** The section whose page best matches the path (longest prefix), if it uses hub tabs. */
+export function sectionForPath(pathname: string): Section | null {
+  let best: { section: Section; page: Page } | null = null;
+  for (const section of sections) {
+    for (const page of section.pages) {
+      if (page.path !== "/" && pathname.startsWith(page.path) && (!best || page.path.length > best.page.path.length)) {
+        best = { section, page };
+      }
+    }
+  }
+  if (!best || !tabSections.has(best.section.label)) return null;
+  return best.section;
+}
+
 // Pages reached from other pages rather than the sidebar; the header shows these titles.
 export const otherPages: { path: string; label: string }[] = [
   { path: "/setup", label: "Set up" },
@@ -109,5 +125,10 @@ export function pageTitle(pathname: string): string {
   const match = [...pages, ...otherPages]
     .filter((page) => page.path !== "/" && pathname.startsWith(page.path))
     .sort((a, b) => b.path.length - a.path.length)[0];
-  return match?.label ?? "Starr Studio";
+  if (!match) return "Starr Studio";
+  for (const section of sections) {
+    const page = section.pages.find((p) => p.path === match.path);
+    if (page && tabSections.has(section.label)) return `${section.label} · ${page.label}`;
+  }
+  return match.label;
 }

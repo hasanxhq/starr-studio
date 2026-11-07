@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { pages } from "./nav";
@@ -30,6 +30,29 @@ describe("App shell", () => {
     renderAt("/system/status");
     expect(await screen.findByText("2.5.3")).toBeInTheDocument();
     expect(screen.getByText("v1")).toBeInTheDocument();
+  });
+
+  it("redirects section hubs to their first tab", async () => {
+    mockApi({
+      "GET /status": () => ({ version: "0.0.0", kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", checked_at: null, latest: null, notes: null, available: false } }, database: { schema_version: 1 }, health: [] }),
+      "GET /kometa/full-check": () => ({ last: null }),
+      "GET /settings/general": () => ({ port: 8765, host: "0.0.0.0", timezone: "UTC", auth_configured: true, url_base: "", trusted_proxies: [] }),
+      "GET /runs": () => ({ running: null, queued: [] }),
+      "GET /kometa": () => ({ environment: {} }),
+    });
+    const { unmount: u1 } = renderAt("/system");
+    const systemTabs = await screen.findByRole("navigation", { name: "System pages" });
+    expect(within(systemTabs).getByRole("link", { name: "Status" })).toHaveAttribute("aria-current", "page");
+    u1();
+
+    const { unmount: u2 } = renderAt("/settings");
+    const settingsTabs = await screen.findByRole("navigation", { name: "Settings pages" });
+    expect(within(settingsTabs).getByRole("link", { name: "General" })).toHaveAttribute("aria-current", "page");
+    u2();
+
+    renderAt("/activity");
+    const activityTabs = await screen.findByRole("navigation", { name: "Activity pages" });
+    expect(within(activityTabs).getByRole("link", { name: "Queue" })).toHaveAttribute("aria-current", "page");
   });
 
   it("explains when the API is unreachable", async () => {
