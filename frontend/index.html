@@ -10,6 +10,14 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#0f1114" />
+    <script>
+      (function () {
+        try {
+          var fonts = localStorage.getItem("studio.fonts");
+          if (fonts === "system-text" || fonts === "system") document.documentElement.dataset.fonts = fonts;
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
