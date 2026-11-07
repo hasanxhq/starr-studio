@@ -190,7 +190,10 @@ async def library_build(
     with db:
         studio_files.record(db, written)
 
-    await apply_ready_made_removals(db, remove_plan, remove_rows, server, library_key)
+    _, kept = await apply_ready_made_removals(db, remove_plan, remove_rows, server, library_key)
+    if kept:
+        failed = {item["title"] for item in kept}
+        plan = {**plan, "remove": [item for item in plan["remove"] if item["title"] not in failed], "blocked": plan["blocked"] + kept}
 
     run_id = None
     if will_build:

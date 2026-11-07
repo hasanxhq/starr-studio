@@ -261,3 +261,25 @@ def test_refused_build_restores_builder_definition(root):
         assert response.status_code == 422
         row = col.built_row(client.app.state.db, saved["id"])
         assert row["definition"] == before
+
+
+def test_removal_plex_refuses_is_blocked_not_removed(root, monkeypatch):
+    from starr_studio.plex_library import PlexServer, PlexUnavailable
+
+    async def refuse(self, rating_key):
+        raise PlexUnavailable("Plex timed out")
+
+    monkeypatch.setattr(PlexServer, "delete_collection", refuse)
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        db = client.app.state.db
+        with db:
+            col.mark_present(db, "Movies", [col.Pick(col.Ref("basic", "", "Studio Chart"), "Studio Chart", "Studio Chart")])
+        result = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={"ready_made": {"add": [], "remove": [{"category": "basic", "block": "", "key": "Studio Chart"}]}, "collections": []},
+        ).json()
+        assert result["remove"] == []
+        assert [b["title"] for b in result["blocked"]] == ["Studio Chart"]
+        assert col.rows(db, "Movies", "basic")
