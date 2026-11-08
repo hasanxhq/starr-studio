@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
-import { api, type AuthRequired, type GeneralSettings } from "../api";
+import { api, type AuthRequired, type GeneralSettings, type StudioLogLevel } from "../api";
 import { urlBase } from "../base";
 import { Button, Card, Field, inputClass } from "../components/ui";
 import { timezoneOptions } from "../timezones";
@@ -222,6 +222,63 @@ function Timezone({ settings }: { settings: GeneralSettings }) {
   );
 }
 
+const LOG_LEVELS: { value: StudioLogLevel; label: string }[] = [
+  { value: "info", label: "Info: what Studio did and why" },
+  { value: "debug", label: "Debug: also every call to Plex and the other apps" },
+  { value: "trace", label: "Trace: also what those calls sent and got back (24 hours)" },
+];
+
+function LogLevel({ settings }: { settings: GeneralSettings }) {
+  const queryClient = useQueryClient();
+  const state = settings.log_level;
+  const [level, setLevel] = useState(state.level);
+  const save = useMutation({
+    mutationFn: () => api.general.setLogLevel(level),
+    onSuccess: (data) => queryClient.setQueryData(["general"], data),
+  });
+  return (
+    <Card title="Log level">
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+      >
+        <div className="min-w-60 flex-1">
+          <Field label="Studio's log shows" hint="Read it on System → Logs. Secrets are hidden at every level.">
+            <select
+              className={inputClass}
+              value={level}
+              disabled={state.from_env}
+              onChange={(e) => setLevel(e.target.value as StudioLogLevel)}
+              aria-label="Studio's log shows"
+            >
+              {LOG_LEVELS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <Button type="submit" disabled={state.from_env || save.isPending || level === state.level}>
+          Save
+        </Button>
+      </form>
+      {state.from_env && <p className="mt-2 text-sm text-muted">Set by STUDIO_LOG_LEVEL. Remove it to choose here.</p>}
+      {state.level === "trace" && state.trace_until && (
+        <p className="mt-2 text-sm text-muted">Goes back to info at {new Date(state.trace_until * 1000).toLocaleString()}.</p>
+      )}
+      {save.isError && (
+        <p role="alert" className="mt-2 text-sm text-err">
+          {save.error.message}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function Address({ settings }: { settings: GeneralSettings }) {
   const queryClient = useQueryClient();
   const saved = settings.reverse_proxy;
@@ -335,6 +392,7 @@ export function SettingsGeneral() {
       <SignIn settings={settings} />
       <ApiKey settings={settings} />
       <Timezone settings={settings} />
+      <LogLevel settings={settings} />
       <Address settings={settings} />
     </div>
   );

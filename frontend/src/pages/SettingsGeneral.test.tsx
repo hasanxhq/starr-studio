@@ -14,6 +14,7 @@ const general: GeneralSettings = {
   port: 8484,
   reverse_proxy: { url_base: "", trusted: [] },
   you: { address: "127.0.0.1", peer: "127.0.0.1", proxied: true, trusted_proxy: false, local: false },
+  log_level: { level: "info", from_env: false, trace_until: null },
 };
 
 describe("Signing in", () => {
@@ -164,6 +165,29 @@ describe("Settings → General", () => {
     fireEvent.click(within(select.closest("form")!).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(calls.find((c) => c.route === "PUT /settings/timezone")?.body).toEqual({ timezone: "UTC" }));
+  });
+
+  it("turns on trace logging and says when it goes back to info", async () => {
+    const until = Date.UTC(2026, 10, 10, 1, 0) / 1000;
+    const calls = mockApi({
+      "GET /settings/general": () => general,
+      "PUT /settings/log-level": () => ({ ...general, log_level: { level: "trace", from_env: false, trace_until: until } }),
+    });
+    renderAt("/settings/general");
+
+    const select = await screen.findByLabelText("Studio's log shows");
+    fireEvent.change(select, { target: { value: "trace" } });
+    fireEvent.click(within(select.closest("form")!).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/Goes back to info at/)).toBeInTheDocument();
+    expect(calls.find((c) => c.route === "PUT /settings/log-level")?.body).toEqual({ level: "trace" });
+  });
+
+  it("leaves the log level to STUDIO_LOG_LEVEL when it's set", async () => {
+    mockApi({ "GET /settings/general": () => ({ ...general, log_level: { level: "debug", from_env: true, trace_until: null } }) });
+    renderAt("/settings/general");
+    expect(await screen.findByLabelText("Studio's log shows")).toBeDisabled();
+    expect(screen.getByText(/Set by STUDIO_LOG_LEVEL/)).toBeInTheDocument();
   });
 });
 
