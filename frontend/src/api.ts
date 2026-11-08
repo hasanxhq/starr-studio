@@ -537,7 +537,6 @@ export type HistoryPage = { events: HistoryEvent[]; libraries: string[]; next: n
 // --- Ready-made collections (pick categories, build in one run) ---
 
 export type ReadyMadeKind = "fixed" | "award" | "per_value" | "helper";
-export type ReadyMadeRunScope = "collection" | "file";
 export type ReadyMadeEntryState = "none" | "queued" | "building" | "in_plex" | "missing" | "failed" | "removing";
 
 export type ReadyMadeRef = { category: string; block: string; key: string };
@@ -554,7 +553,6 @@ export type ReadyMadeCategorySummary = {
   count: number | null; // collections it makes in this library (null = not counted yet)
   in_plex: number;
   picked: number; // rows Studio wants (desired)
-  run_scope: ReadyMadeRunScope;
   customisable?: boolean; // category page only: its collections open in the builder (Plex filters)
 };
 
