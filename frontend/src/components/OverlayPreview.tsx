@@ -139,7 +139,7 @@ function AnchorGuides() {
   const dots = anchors.flatMap((row) => anchors.map((column) => ({ left: `${column * 100}%`, top: `${row * 100}%` })));
   const dash = "1px dashed color-mix(in srgb, var(--color-accent) 55%, transparent)";
   return (
-    <div className="pointer-events-none absolute inset-0 motion-reduce:hidden" aria-hidden>
+    <div className="pointer-events-none absolute inset-0" aria-hidden>
       {lines.map((t) => (
         <div key={`v${t}`} className="absolute top-0 bottom-0" style={{ left: `${t * 100}%`, borderLeft: dash }} />
       ))}
