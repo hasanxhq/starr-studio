@@ -25,7 +25,7 @@ describe("App shell", () => {
 
   it("shows versions on System → Status", async () => {
     mockApi({
-      "GET /status": () => ({ version: "0.0.0", kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", checked_at: null, latest: null, notes: null, available: false } }, database: { schema_version: 1 }, health: [] }),
+      "GET /status": () => ({ version: "0.0.0", kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", pinned: "2.5.4", matches: false, checked_at: null, latest: null, notes: null, available: false } }, database: { schema_version: 1 }, health: [] }),
       "GET /kometa/full-check": () => ({ last: null }),
     });
     renderAt("/system/status");
@@ -35,7 +35,7 @@ describe("App shell", () => {
 
   it("redirects section hubs to their first tab", async () => {
     mockApi({
-      "GET /status": () => ({ version: "0.0.0", kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", checked_at: null, latest: null, notes: null, available: false } }, database: { schema_version: 1 }, health: [] }),
+      "GET /status": () => ({ version: "0.0.0", kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", pinned: "2.5.4", matches: false, checked_at: null, latest: null, notes: null, available: false } }, database: { schema_version: 1 }, health: [] }),
       "GET /kometa/full-check": () => ({ last: null }),
       "GET /settings/general": () => ({ port: 8765, host: "0.0.0.0", timezone: "UTC", auth_configured: true, url_base: "", trusted_proxies: [] }),
       "GET /runs": () => ({ running: null, queued: [] }),

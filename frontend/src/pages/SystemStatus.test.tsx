@@ -7,14 +7,21 @@ import { mockApi, renderAt } from "../test-utils";
 const status: Status = {
   version: "0.1.0",
   kometa: {
-    version: "2.5.3",
+    version: "2.5.4",
     config: "/config/config.yml",
-    updates: { installed: "2.5.3", checked_at: "2026-10-30T03:00:05Z", latest: "2.6.0", notes: "- Faster overlays", available: true },
+    updates: {
+      installed: "2.5.4",
+      pinned: "2.5.4",
+      matches: true,
+      checked_at: "2026-10-30T03:00:05Z",
+      latest: "2.6.0",
+      notes: "- Faster overlays",
+      available: true,
+    },
   },
   database: { schema_version: 4 },
   health: [
     { source: "plex", level: "error", message: "Can't reach Plex at the address in config.yml: No answer within 5 s", link: "/settings/plex" },
-    { source: "updates", level: "info", message: "Kometa 2.6.0 is out (you have 2.5.3).", link: "/system/updates" },
   ],
   runs: { current: null, queued: 0, next_scheduled: null },
 };
@@ -40,18 +47,33 @@ describe("Health", () => {
 });
 
 describe("Updates", () => {
-  it("shows a new Kometa version with its notes", async () => {
+  it("shows a muted line for a newer Kometa release without pull advice", async () => {
     mockApi({ "GET /status": () => status });
     renderAt("/system/updates");
-    expect(await screen.findByText("Kometa 2.6.0 is out.")).toBeInTheDocument();
-    expect(screen.getByText("- Faster overlays")).toBeInTheDocument();
+    expect(await screen.findByText(/Kometa 2.6.0 is out\. It comes with a Studio update/)).toBeInTheDocument();
+    expect(screen.queryByText(/pull the new Starr Studio image/i)).toBeNull();
+    expect(screen.queryByText("- Faster overlays")).toBeNull();
   });
 
-  it("says when Kometa was last found up to date", async () => {
+  it("shows a version mismatch warning", async () => {
+    const mismatch = {
+      ...status.kometa.updates,
+      installed: "2.5.3",
+      matches: false,
+      available: false,
+      latest: null,
+      notes: null,
+    };
+    mockApi({ "GET /status": () => ({ ...status, kometa: { ...status.kometa, version: "2.5.3", updates: mismatch } }) });
+    renderAt("/system/updates");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Studio is tested with Kometa 2\.5\.4; this install has 2\.5\.3/);
+  });
+
+  it("says when Kometa last checked for a newer release", async () => {
     const upToDate = { ...status.kometa.updates, latest: null, notes: null, available: false };
     mockApi({ "GET /status": () => ({ ...status, kometa: { ...status.kometa, updates: upToDate } }) });
     renderAt("/system/updates");
-    expect(await screen.findByText(/Up to date when Kometa last checked/)).toBeInTheDocument();
+    expect(await screen.findByText(/Kometa last checked for a newer release/)).toBeInTheDocument();
   });
 });
 

@@ -1,9 +1,8 @@
-"""deploy/install-seedbox.sh: its syntax, its Kometa tag, and that sign-in is set before Studio first starts."""
+"""deploy/install-seedbox.sh: its syntax and that sign-in is set before Studio first starts."""
 
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,11 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "deploy" / "install-seedbox.sh"
 
 
-def test_the_script_parses_and_pins_the_dockers_kometa():
+def test_the_script_parses():
     subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
-    script_tag = re.search(r'^KOMETA_TAG="([^"]+)"', SCRIPT.read_text(), re.M).group(1)
-    docker_tag = re.search(r"^ARG KOMETA_TAG=(\S+)", (ROOT / "Dockerfile").read_text(), re.M).group(1)
-    assert script_tag == docker_tag
 
 
 def test_dry_run_sets_sign_in_before_the_first_start(tmp_path):

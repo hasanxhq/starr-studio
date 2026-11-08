@@ -10,6 +10,7 @@ from fakeplex import REMOTE_URI, SERVER_TOKEN, FakePlex
 from starr_studio.auth import AUTH
 from starr_studio.db import open_database, set_setting
 from starr_studio.health import PlexCheck, health, kometa_updates
+from starr_studio.kometa_pin import KOMETA_VERSION
 from starr_studio.settings import Settings
 
 
@@ -25,7 +26,7 @@ def kometa(tmp_path) -> Settings:
     entry = tmp_path / "kometa" / "kometa.py"
     entry.parent.mkdir()
     entry.write_text("")
-    (entry.parent / "VERSION").write_text("2.5.3\n")
+    (entry.parent / "VERSION").write_text(f"{KOMETA_VERSION}\n")
     config = tmp_path / "config" / "config.yml"
     config.parent.mkdir()
     config.write_text(f"plex:\n  url: {REMOTE_URI}\n  token: {SERVER_TOKEN}\ntmdb:\n  apikey: key\nlibraries:\n  Movies: {{}}\n")
@@ -122,6 +123,8 @@ def test_the_last_run_and_full_check(db, kometa):
 def test_kometa_updates_come_from_the_latest_run(db):
     assert kometa_updates(db, "2.5.3") | {"checked_at": None} == {
         "installed": "2.5.3",
+        "pinned": KOMETA_VERSION,
+        "matches": False,
         "checked_at": None,
         "latest": None,
         "notes": None,
@@ -140,12 +143,27 @@ def test_kometa_updates_come_from_the_latest_run(db):
     assert kometa_updates(db, "2.6.0")["available"] is False
 
 
-def test_an_update_shows_as_info(db, kometa):
+def test_a_kometa_version_mismatch_shows_as_warning(db, kometa):
+    kometa.kometa_entry.parent.joinpath("VERSION").write_text("2.5.3\n")
     run = add_run(db, "succeeded")
     event(db, run, "run_start")
     event(db, run, "version", current="2.5.3", latest="2.6.0")
-    update = next(c for c in check(db, kometa) if c["source"] == "updates")
-    assert update == {"source": "updates", "level": "info", "message": "Kometa 2.6.0 is out (you have 2.5.3).", "link": "/system/updates"}
+    version = next(c for c in check(db, kometa) if c["source"] == "kometa_version")
+    assert version == {
+        "source": "kometa_version",
+        "level": "warning",
+        "message": f"Studio is tested with Kometa {KOMETA_VERSION}; this install has 2.5.3. Ready-made lists and filters may not match it.",
+        "link": "/system/updates",
+    }
+    assert "updates" not in sources(check(db, kometa))
+
+
+def test_a_newer_kometa_release_does_not_add_a_status_check(db, kometa):
+    run = add_run(db, "succeeded")
+    event(db, run, "run_start")
+    event(db, run, "version", current=KOMETA_VERSION, latest="2.6.0")
+    assert "updates" not in sources(check(db, kometa))
+    assert "kometa_version" not in sources(check(db, kometa))
 
 
 def test_original_posters_need_a_recent_full_backup(db, kometa):

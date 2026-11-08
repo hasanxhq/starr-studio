@@ -7,7 +7,15 @@ import type { SchemaKind } from "./yaml/schema";
 export type HealthCheck = { source: string; level: "error" | "warning" | "info"; message: string; link: string | null };
 
 // What the newest Kometa run learned: Kometa checks for a new version as each run starts.
-export type KometaUpdates = { installed: string | null; checked_at: string | null; latest: string | null; notes: string | null; available: boolean };
+export type KometaUpdates = {
+  installed: string | null;
+  pinned: string;
+  matches: boolean;
+  checked_at: string | null;
+  latest: string | null;
+  notes: string | null;
+  available: boolean;
+};
 
 export type Status = {
   version: string;

@@ -27,7 +27,7 @@
 #   -h, --help
 set -euo pipefail
 
-KOMETA_TAG="v2.5.4"  # keep in step with the Dockerfile's KOMETA_TAG (tests/test_seedbox_script.py checks)
+KOMETA_TAG="v2.5.4"  # keep in step with starr_studio/kometa_pin.py and the Dockerfile (tests/test_kometa_pin.py)
 REPO="hasanxhq/starr-studio"
 
 PORT="${STUDIO_PORT:-}"

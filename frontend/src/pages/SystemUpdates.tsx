@@ -8,25 +8,29 @@ import { formatTime } from "../runs";
 
 function KometaVersion({ updates }: { updates: KometaUpdates }) {
   if (!updates.installed) return <p className="text-sm text-muted">Studio doesn't know where Kometa is installed.</p>;
+  const mismatch = `Studio is tested with Kometa ${updates.pinned}; this install has ${updates.installed}. Ready-made lists and filters may not match it.`;
   return (
     <div className="flex flex-col gap-3 text-sm">
       <p>
         Installed: <span className="font-mono">{updates.installed}</span>
       </p>
-      {updates.available ? (
-        <div className="rounded-control border border-info/40 p-3">
-          <p className="font-semibold text-info">Kometa {updates.latest} is out.</p>
-          {updates.notes && <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-mono text-xs text-muted">{updates.notes}</pre>}
-        </div>
+      <p>
+        Studio is tested with Kometa <span className="font-mono">{updates.pinned}</span>
+      </p>
+      {!updates.matches && (
+        <p role="alert" className="rounded-control border border-warn/40 p-3 text-warn">
+          {mismatch}
+        </p>
+      )}
+      {updates.available && updates.latest ? (
+        <p className="text-muted">
+          Kometa {updates.latest} is out. It comes with a Studio update once Studio has been checked against it.
+        </p>
       ) : updates.checked_at ? (
-        <p className="text-ok">Up to date when Kometa last checked ({formatTime(updates.checked_at)}).</p>
+        <p className="text-muted">Kometa last checked for a newer release ({formatTime(updates.checked_at)}).</p>
       ) : (
         <p className="text-muted">Not checked yet. Kometa looks for a new version each time it runs.</p>
       )}
-      <p className="text-muted">
-        Kometa comes with Studio's Docker image, so you update it by updating the image: pull the new Starr Studio image and recreate the
-        container. Your config folder, schedules and history stay.
-      </p>
     </div>
   );
 }

@@ -52,7 +52,7 @@ docker compose up -d --build
 
 Then open http://localhost:8484, and first-run setup takes it from there. `config/` becomes Kometa's config folder inside the container. Keep the repo and `config/` on WSL's own disk rather than under `/mnt/c`.
 
-Settings in `compose.yaml` can be overridden with environment variables or a `.env` file: `PUID`, `PGID`, `TZ`, `STUDIO_PORT`, `STUDIO_ALLOW_LOCAL`, `KOMETA_CONFIG_DIR`, `KOMETA_TAG`. Set `TZ` to your timezone, such as `Europe/Paris`: it's UTC otherwise. Schedules use `TZ` unless `STUDIO_TIMEZONE` is set.
+Settings in `compose.yaml` can be overridden with environment variables or a `.env` file: `PUID`, `PGID`, `TZ`, `STUDIO_PORT`, `STUDIO_ALLOW_LOCAL`, `KOMETA_CONFIG_DIR`. Set `TZ` to your timezone, such as `Europe/Paris`: it's UTC otherwise. Schedules use `TZ` unless `STUDIO_TIMEZONE` is set.
 
 ### Install from a wheel
 
@@ -82,7 +82,7 @@ Some networks block TMDb. Settings → Network has a proxy and DNS over HTTPS, a
 
 ### Known limitations
 
-- Calls per service on System → Status need Kometa 2.5.4 or newer (the image's own). Studio leaves `--timings` off for an older Kometa you've pointed it at, because 2.5.3 crashes on that flag.
+- Studio needs the Kometa version it ships with (2.5.4); a different one shows a warning on System → Status.
 - MyAnimeList, AniDB, WeTrakr, FlickList, Floppy and Serializd can't be connected from Studio yet. Their settings go in `config.yml`, which you can edit from the Libraries page.
 - Simkl, YamTrack, Tracearr and text file sources are under Show Advanced, not in the source list.
 
