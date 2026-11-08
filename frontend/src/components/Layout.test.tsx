@@ -116,6 +116,34 @@ describe("Layout", () => {
     expect(within(navZero).queryByText("2")).toBeNull();
   });
 
+  it("does not show a Jobs button in the header", async () => {
+    mockCommon();
+    renderAt("/");
+    await screen.findByRole("navigation", { name: "Main" });
+    expect(screen.queryByRole("button", { name: /^Jobs/ })).toBeNull();
+  });
+
+  it("opens the jobs drawer from the sidebar run card when a job is running", async () => {
+    const running = {
+      id: "run-1",
+      kind: "run" as const,
+      title: "Kometa: Collections",
+      status: "running" as const,
+      label: "Running",
+      message: null,
+      progress: null,
+      started_at: "2026-10-30T15:16:27Z",
+      finished_at: null,
+      link: "/activity/queue/1",
+      run_id: 1,
+      cancellable: false,
+    };
+    mockCommon({ "GET /jobs": () => ({ jobs: [running], at: "2026-10-30T15:17:00Z" }) });
+    renderAt("/system/status");
+    fireEvent.click(await screen.findByRole("button", { name: /Running: Kometa: Collections/i }));
+    expect(await screen.findByRole("dialog", { name: "Jobs" })).toBeInTheDocument();
+  });
+
   it("keeps Collections current on the Ready-made tab and its categories", async () => {
     mockCommon();
     renderAt("/collections/ready-made/genre");

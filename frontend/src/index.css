@@ -64,3 +64,23 @@ h2,
 h3 {
   font-family: var(--font-display);
 }
+
+@keyframes run-card-bar-slide {
+  0% {
+    margin-left: -35%;
+  }
+  100% {
+    margin-left: 100%;
+  }
+}
+
+.run-card-bar-indeterminate {
+  animation: run-card-bar-slide 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-card-bar-indeterminate {
+    animation: none;
+    opacity: 0.75;
+  }
+}
