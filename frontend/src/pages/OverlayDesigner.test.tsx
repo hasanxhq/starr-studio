@@ -69,7 +69,21 @@ const configSchema = {
   },
 };
 
-const item = (rating_key: string, title: string, video_resolution: string | null): PlexItem => ({ rating_key, title, type: "movie", year: 2021, thumb: `/library/metadata/${rating_key}/thumb/1`, ids: {}, content_rating: null, audience_rating: null, episodes: null, added_at: null, video_resolution, audio_codec: null });
+const item = (rating_key: string, title: string, video_resolution: string | null, extra: Partial<PlexItem> = {}): PlexItem => ({
+  rating_key,
+  title,
+  type: "movie",
+  year: 2021,
+  thumb: `/library/metadata/${rating_key}/thumb/1`,
+  ids: {},
+  content_rating: null,
+  audience_rating: null,
+  episodes: null,
+  added_at: null,
+  video_resolution,
+  audio_codec: null,
+  ...extra,
+});
 
 const status: OverlayLibrary = { library: "Movies", plex_name: "Movies", off: false, files: [], backup: { posters: 100, bytes: 1 }, last_pass: { run_id: 1, status: "succeeded", started_at: null, finished_at: null }, maintainerr: null };
 
@@ -90,13 +104,24 @@ const routes = {
   "GET /overlays": () => ({ libraries: [status] }),
   "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_up: null }),
   "GET /arr": () => ({ settings: { radarr: { enabled: false }, sonarr: { enabled: false } } }),
-  "GET /plex/libraries/1/items": () => ({ items: [item("5", "Dune", "4k"), item("6", "Heat", "1080")], start: 0, total: 2 }),
+  "GET /plex/libraries/1/items": () => ({
+    items: [
+      item("5", "Dune", "4k", { audience_rating: 8.1 }),
+      item("6", "Heat", "1080", { audience_rating: 8.5 }),
+      item("7", "Mystery", "720", { audience_rating: null }),
+    ],
+    start: 0,
+    total: 3,
+  }),
   "GET /plex/libraries/2/items": () => ({ items: [], start: 0, total: 0 }),
 };
 
 const layers = () => screen.findByRole("heading", { name: "Layers" });
 const settings = () => screen.getByRole("complementary", { name: "Layer settings" });
-const pressed = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`) });
+const layerRow = (name: string) => {
+  const heading = screen.getByRole("heading", { name: "Layers" });
+  return within(heading.parentElement!).getByRole("button", { name: new RegExp(`^${name} `) });
+};
 
 describe("The overlay studio", () => {
   it("redirects /overlays/designer to /overlays with the library", async () => {
@@ -120,17 +145,17 @@ describe("The overlay studio", () => {
     renderAt("/overlays?library=Movies");
     await layers();
     fireEvent.click(screen.getByRole("button", { name: "Now in Plex" }));
-    expect(screen.queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /4K.*Drag/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "With your changes" }));
     const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
-    expect(await within(poster).findByRole("button", { name: "Select 4K" })).toBeInTheDocument();
+    expect(await within(poster).findByRole("button", { name: /4K.*Drag/ })).toBeInTheDocument();
     const img = poster.querySelector("img")!;
     expect(img.getAttribute("src")).toContain("/overlays/Movies/original/5");
     fireEvent.error(img);
     await waitFor(() => expect(img.getAttribute("src")).toContain("/plex/image"));
     expect(img.getAttribute("src")).toContain(encodeURIComponent("/library/metadata/5/thumb/1"));
     fireEvent.click(screen.getByRole("button", { name: "Hide Resolution in the preview" }));
-    expect(within(poster).queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
+    expect(within(poster).queryByRole("button", { name: /4K.*Drag/ })).not.toBeInTheDocument();
   });
 
   it("moves a layer with anchors, saves for tonight, or applies now", async () => {
@@ -173,7 +198,7 @@ describe("The overlay studio", () => {
     mockApi(routes);
     renderAt("/overlays?library=Movies");
     await layers();
-    fireEvent.click(await screen.findByRole("button", { name: "Select Status" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Status.*Drag/ }));
     fireEvent.click(screen.getByRole("tab", { name: "Show when" }));
     const when = await screen.findByRole("group", { name: "Show when" });
     fireEvent.click(within(when).getByRole("checkbox", { name: "Ended" }));
@@ -185,7 +210,7 @@ describe("The overlay studio", () => {
     renderAt("/overlays?library=Movies");
     await layers();
     fireEvent.click(await screen.findByRole("button", { name: "Hide Resolution in the preview" }));
-    expect(screen.queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /4K.*Drag/ })).not.toBeInTheDocument();
   });
 
   it("keeps layer drafts when switching layers without asking", async () => {
@@ -193,12 +218,74 @@ describe("The overlay studio", () => {
     renderAt("/overlays?library=Movies");
     await layers();
     fireEvent.click(screen.getByRole("button", { name: "Bottom left" }));
-    fireEvent.click(pressed("Status"));
+    fireEvent.click(layerRow("Status"));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Show when" })).toBeInTheDocument();
-    fireEvent.click(pressed("Resolution"));
+    fireEvent.click(layerRow("Resolution"));
     expect(screen.getByRole("tab", { name: "Place" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bottom left", pressed: true })).toBeInTheDocument();
+  });
+
+  it("drags a box to snap placement and nudges with arrow keys", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi({ ...routes, "POST /overlays/Movies/estimate": () => ({ posters: 1200, minutes: 18 }) });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    const box = within(poster).getByRole("button", { name: /4K.*Drag/ });
+    const rect = { width: 340, height: 510, top: 200, left: 50, bottom: 710, right: 390, x: 50, y: 200, toJSON: () => ({}) } as DOMRect;
+    vi.spyOn(poster, "getBoundingClientRect").mockReturnValue(rect);
+    fireEvent.pointerDown(box, { clientX: 300, clientY: 240, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(box, { clientX: 100, clientY: 250, pointerId: 1, isPrimary: true });
+    fireEvent.pointerUp(box, { clientX: 100, clientY: 250, pointerId: 1, isPrimary: true });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await screen.findByRole("region", { name: "Overlay changes" })).toBeInTheDocument();
+    fireEvent.keyDown(box, { key: "ArrowRight" });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(screen.getByRole("region", { name: "Overlay changes" })).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("treats a short press on a box as select only", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    const box = within(poster).getByRole("button", { name: /Status.*Drag/ });
+    vi.spyOn(poster, "getBoundingClientRect").mockReturnValue({ width: 340, height: 510, top: 0, left: 0, bottom: 510, right: 340, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    expect(screen.queryByRole("region", { name: "Overlay changes" })).not.toBeInTheDocument();
+    fireEvent.click(box);
+    expect(await screen.findByRole("tab", { name: "Show when" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Overlay changes" })).not.toBeInTheDocument();
+  });
+
+  it("reorders layers when one row is dropped on another", async () => {
+    const calls = mockApi({ ...routes, "PUT /config/libraries/Movies/overlay-order": () => saved });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const grips = await screen.findAllByLabelText(/Reorder /);
+    const from = grips.find((node) => node.getAttribute("aria-label") === "Reorder Resolution")!;
+    const to = grips.find((node) => node.getAttribute("aria-label") === "Reorder Status")!;
+    fireEvent.dragStart(from, { dataTransfer: { setData: () => {}, effectAllowed: "move" } });
+    fireEvent.drop(to.parentElement!);
+    await waitFor(() => expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/overlay-order")).toBeDefined());
+    expect(calls.filter((c) => c.route === "PUT /config/libraries/Movies/overlay-order")).toHaveLength(1);
+  });
+
+  it("shows Try it on picks and overlap captions", async () => {
+    mockApi({
+      ...routes,
+      "GET /config/libraries/Movies": () => ({
+        ...movies,
+        overlay_files: [ref("resolution", { horizontal_align: "left", vertical_align: "top", horizontal_offset: 0, vertical_offset: 0 }), ref("ratings", { horizontal_position: "left", vertical_position: "top" }), ref("status")],
+      }),
+    });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    expect(await screen.findByText("Try it on")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Heat/ }));
+    await waitFor(() => expect(screen.getByRole("group", { name: /Overlays on Heat/ })).toBeInTheDocument());
+    expect(screen.getByText(/Overlaps:/)).toBeInTheDocument();
   });
 
   it("adds a layer and removes one after asking", async () => {

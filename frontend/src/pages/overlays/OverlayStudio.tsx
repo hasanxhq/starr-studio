@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router";
 
-import { api, type ConfigLibrary, type DefaultEntry, type FileReference, type OverlayLibrary } from "../../api";
+import { api, type ConfigLibrary, type DefaultEntry, type FileReference, type OverlayLibrary, type PlexItem } from "../../api";
 import { LeaveGuard, useLeaveEditor } from "../../components/LeaveGuard";
-import { OverlayPoster, SamplePicker, useSamples } from "../../components/OverlayPreview";
-import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, LockIcon } from "../../components/icons";
+import { OverlayPoster, pickTryOnSamples, TryItOnRow, useSamples } from "../../components/OverlayPreview";
+import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, GripIcon, LockIcon } from "../../components/icons";
 import { ActionBar, Button } from "../../components/ui";
 import { SaveError } from "../../components/ValidationReport";
 import { shortTitle } from "../../defaults";
-import { layerBoxes, layerText, whereItIs, type Box } from "../../overlayLayout";
+import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, whereItIs, type Box, resolveLayout } from "../../overlayLayout";
 import { loadSchema } from "../../yaml/schema";
 import { useSave, type Values } from "../../components/DefaultVariables";
 import { layerChangeSentence, studioChangeSentence } from "./changeSummary";
@@ -45,6 +45,8 @@ export function OverlayStudio({
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [previewMode, setPreviewMode] = useState<"plex" | "changes">("changes");
   const [showAllAddable, setShowAllAddable] = useState(false);
+  const [titlePickerOpen, setTitlePickerOpen] = useState(false);
+  const [dragRow, setDragRow] = useState<number | null>(null);
   const [estimate, setEstimate] = useState<{ posters: number | null; minutes: number | null } | null>(null);
   const [batchError, setBatchError] = useState<Error | null>(null);
   const [saving, setSaving] = useState(false);
@@ -70,8 +72,80 @@ export function OverlayStudio({
 
   const variablesOf = (layer: Layer) => ({ ...libraryVariables, ...draftValues(layer) });
   const visibleLayers = kometaLayers.filter((layer) => !hidden.has(layer.name));
-  const boxes = (item: typeof samples.sample): Box[] =>
-    visibleLayers.flatMap((layer) => layerBoxes(layer.name, layerText(layer.name, layer.title, item), layer.entry?.layout, variablesOf(layer)));
+  const boxes = (item: PlexItem | null): Box[] =>
+  item ? visibleLayers.flatMap((layer) => layerBoxes(layer.name, layerText(layer.name, layer.title, item), layer.entry?.layout, variablesOf(layer))) : [];
+
+  const tryOnPicks = useMemo(() => pickTryOnSamples(samples.found, libraryType === "show"), [samples.found, libraryType]);
+
+  const applyPlacement = (layerName: string, patch: Record<string, unknown>) => {
+    select(layerName);
+    const layer = kometaLayers.find((entry) => entry.name === layerName);
+    if (!layer) return;
+    const next = { ...draftValues(layer) };
+    for (const [key, value] of Object.entries(patch)) {
+      if (JSON.stringify(value) === JSON.stringify(layer.variables[key])) delete next[key];
+      else next[key] = value;
+    }
+    setDraft(layerName, next);
+  };
+
+  const onBoxDrop = (box: Box) => {
+    const layerName = box.key.replace(/-\d+$/, "");
+    const layer = kometaLayers.find((entry) => entry.name === layerName);
+    if (!layer) return;
+    const position = layer.entry?.layout?.moved_by === "position";
+    if (position) {
+      const layerBoxesNow = boxes(samples.sample).filter((entry) => entry.key.replace(/-\d+$/, "") === layerName);
+      const dragged = layerBoxesNow.find((entry) => entry.key === box.key);
+      if (!dragged) return;
+      const dx = box.x - dragged.x;
+      const dy = box.y - dragged.y;
+      const moved = layerBoxesNow.map((entry) => ({ ...entry, x: entry.x + dx, y: entry.y + dy }));
+      const xs = moved.map((entry) => entry.x);
+      const ys = moved.map((entry) => entry.y);
+      const group = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...moved.map((b) => b.x + b.width)) - Math.min(...xs), height: Math.max(...moved.map((b) => b.y + b.height)) - Math.min(...ys) };
+      applyPlacement(layerName, snapToPosition(group, layer.entry?.layout, variablesOf(layer)));
+      return;
+    }
+    applyPlacement(layerName, snapToAnchor(box));
+  };
+
+  const onNudge = (box: Box, dx: number, dy: number) => {
+    const layerName = box.key.replace(/-\d+$/, "");
+    const layer = kometaLayers.find((entry) => entry.name === layerName);
+    if (!layer || layer.entry?.layout?.moved_by === "position") return;
+    const current = draftValues(layer);
+    const library = variablesOf(layer);
+    // Offsets push inwards from the anchored edge, so right/bottom anchors move the other way.
+    const effective = resolveLayout(layer.entry?.layout, { ...library, ...current });
+    const hOffset = Number(current.horizontal_offset ?? library.horizontal_offset ?? 0) + (effective.horizontal_align === "right" ? -dx : dx);
+    const vOffset = Number(current.vertical_offset ?? library.vertical_offset ?? 0) + (effective.vertical_align === "bottom" ? -dy : dy);
+    applyPlacement(layerName, { horizontal_offset: Math.max(0, hOffset), vertical_offset: Math.max(0, vOffset) });
+  };
+
+  const reorderRows = (fromDisplay: number, toDisplay: number) => {
+    if (fromDisplay === toDisplay) return;
+    const names = kometaOrder();
+    const from = names.length - 1 - fromDisplay;
+    const to = names.length - 1 - toDisplay;
+    const next = [...names];
+    const [name] = next.splice(from, 1);
+    next.splice(to, 0, name);
+    order.mutate(next);
+  };
+
+  const onRowDragStart = (event: DragEvent, displayIndex: number) => {
+    setDragRow(displayIndex);
+    event.dataTransfer.setData("text/plain", String(displayIndex));
+    event.dataTransfer.effectAllowed = "move";
+  };
+
+  const onRowDrop = (event: DragEvent, toDisplay: number) => {
+    event.preventDefault();
+    const from = dragRow ?? Number(event.dataTransfer.getData("text/plain"));
+    setDragRow(null);
+    reorderRows(from, toDisplay);
+  };
 
   const select = (name: string) => {
     if (name !== selected?.name) setSelectedName(name);
@@ -193,7 +267,21 @@ export function OverlayStudio({
           {displayLayers.length === 0 && <p className="text-sm text-muted">No overlay defaults yet. Add a layer to start.</p>}
           <ol className="flex flex-col gap-1.5">
             {displayLayers.map((layer, displayIndex) => (
-              <li key={layer.name} className="flex items-center gap-1">
+              <li
+                key={layer.name}
+                className="flex items-center gap-1"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => onRowDrop(event, displayIndex)}
+              >
+                <span
+                  draggable
+                  aria-label={`Reorder ${layer.title}`}
+                  className="inline-flex size-11 shrink-0 cursor-grab items-center justify-center rounded-control text-muted hover:bg-surface-2 active:cursor-grabbing"
+                  onDragStart={(event) => onRowDragStart(event, displayIndex)}
+                  onDragEnd={() => setDragRow(null)}
+                >
+                  <GripIcon className="size-5" />
+                </span>
                 <button
                   type="button"
                   aria-pressed={layer.name === selected?.name}
@@ -316,7 +404,6 @@ export function OverlayStudio({
               With your changes
             </button>
           </div>
-          <SamplePicker samples={samples} />
           {samples.error && (
             <p role="alert" className="text-sm text-warn">
               Can't get posters from Plex: {samples.error.message}. Placement still shows.
@@ -326,11 +413,26 @@ export function OverlayStudio({
             item={samples.sample}
             boxes={previewMode === "plex" ? [] : boxes(samples.sample)}
             selected={selected?.name}
+            showGuides={previewMode === "changes"}
             onPick={previewMode === "changes" ? (box) => select(box.key.replace(/-\d+$/, "")) : undefined}
+            onBoxDrop={previewMode === "changes" ? onBoxDrop : undefined}
+            onNudge={previewMode === "changes" ? onNudge : undefined}
+            boxAriaLabel={(box) => {
+              const layerName = box.key.replace(/-\d+$/, "");
+              const layer = kometaLayers.find((entry) => entry.name === layerName);
+              const place = layer ? whereItIs(layer.entry?.layout, variablesOf(layer)).replace("-", " ") : "";
+              return `${box.label}, ${place}. Drag or use arrow keys to move`;
+            }}
             imageUrl={previewMode === "changes" ? originalUrl : null}
             label={previewMode === "plex" ? `Plex poster for ${samples.sample?.title ?? "a title"}` : `Overlays on ${samples.sample?.title ?? "a poster"}`}
             className="w-full max-w-[340px] shadow-[0_20px_50px_rgba(0,0,0,0.45)]"
           />
+          {previewMode === "changes" && (() => {
+            const visible = boxes(samples.sample);
+            const pair = overlapPair(visible);
+            return pair ? <p className="text-sm text-warn">Overlaps: {pair[0]} and {pair[1]}</p> : null;
+          })()}
+          <TryItOnRow samples={samples} picks={tryOnPicks} boxesForItem={(entry) => boxes(entry)} pickerOpen={titlePickerOpen} setPickerOpen={setTitlePickerOpen} />
           <p className="text-xs text-muted">Placement only: Kometa draws the real badges with their own images.</p>
         </section>
 
