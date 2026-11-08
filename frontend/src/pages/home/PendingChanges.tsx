@@ -1,16 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 
-import { api, type Run } from "../../api";
+import { api, type RunList } from "../../api";
 import { Card } from "../../components/ui";
 import { describeRequest, formatRelative } from "../../runs";
 import { savedSince } from "./savedSince";
 
 const SHOWN_SAVES = 6;
 
-export function PendingChanges({ runs }: { runs: Run[] | undefined }) {
+export function PendingChanges({ runs }: { runs: RunList | undefined }) {
   const backups = useQuery({ queryKey: ["backups"], queryFn: api.backups.list });
-  const lastGood = runs?.find((run) => run.status === "succeeded");
+  const lastGood = runs?.last_succeeded ?? undefined;
   const scoped = lastGood && (lastGood.request.mode !== "all" || lastGood.request.libraries.length > 0 || lastGood.request.collections.length > 0 || lastGood.request.files.length > 0);
   const pending = backups.data && runs ? savedSince(backups.data.backups, lastGood) : null;
 
