@@ -364,9 +364,11 @@ function UploadDialog({ libraries, initialLibrary, onClose }: { libraries: strin
 }
 
 function filterQs(library: string, by: ByFilter, show: ShowFilter) {
+  // Status filters only apply to Studio tiles, so another Made-by choice drops them.
+  const keepShow = (by === "all" || by === "studio") && show !== "all";
   return libraryQs(library, {
     by: by === "all" ? null : by,
-    show: show === "all" ? null : show,
+    show: keepShow ? show : null,
   });
 }
 
@@ -404,7 +406,7 @@ function AllTab({
   const ownerCounts = useMemo(() => byCounts(collections, others), [collections, others]);
 
   const studioVisible = by === "all" || by === "studio";
-  const othersVisible = by !== "studio" && show === "all";
+  const othersVisible = by !== "studio" && (by !== "all" || show === "all");
   const showStatusRow = by === "all" || by === "studio";
 
   const filteredStudio = useMemo(() => {
@@ -426,7 +428,7 @@ function AllTab({
 
   const listError = error;
   const trouble =
-    plexError ?? (othersError ? (othersError instanceof ApiError ? othersError.message : othersError.message) : null);
+    plexError ?? othersError?.message ?? null;
   const entirelyEmpty = collections.length === 0 && others.length === 0 && !loading && !othersLoading;
   const gridEmpty = filteredStudio.length === 0 && filteredOthers.length === 0 && !loading;
 
@@ -482,7 +484,7 @@ function AllTab({
 
       {trouble ? <p className="text-[13px] text-muted">Only Studio&apos;s collections are shown: {trouble}</p> : null}
 
-      {loading && collections.length === 0 ? (
+      {(loading || othersLoading) && collections.length === 0 ? (
         <p className="text-muted">Loading…</p>
       ) : listError && collections.length === 0 ? (
         <p role="alert" className="text-err">
@@ -506,7 +508,7 @@ function AllTab({
             <CollectionCard key={collection.id} collection={collection} />
           ))}
           {filteredOthers.map((row) => (
-            <OtherCard key={`${row.made_by}:${row.title}`} library={library} row={row} />
+            <OtherCard key={`${row.made_by}:${row.rating_key ?? row.title}`} library={library} row={row} />
           ))}
         </ul>
       )}
@@ -547,6 +549,7 @@ export function Collections() {
         const copy = new URLSearchParams(current);
         if (next === "all") copy.delete("by");
         else copy.set("by", next);
+        if (next !== "all" && next !== "studio") copy.delete("show");
         return copy;
       },
       { replace: true },

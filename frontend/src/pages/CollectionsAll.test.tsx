@@ -177,5 +177,13 @@ describe("Collections All tab", () => {
     renderCollections("/collections?library=Movies&show=missing");
     expect(await screen.findByRole("listitem", { name: "Missing" })).toBeInTheDocument();
     expect(screen.queryByRole("listitem", { name: "Kometa Chart" })).not.toBeInTheDocument();
+
+    // Another Made-by choice drops the Studio-only status filter.
+    fireEvent.click(screen.getByRole("link", { name: "Kometa files (1)" }));
+    expect(await screen.findByRole("listitem", { name: "Kometa Chart" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filter collections" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "All (6)" }));
+    expect(await screen.findByRole("listitem", { name: "In Plex" })).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "Kometa Chart" })).toBeInTheDocument();
   });
 });
