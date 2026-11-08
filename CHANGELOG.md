@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Collections** is one page with two tabs, **Yours** and **Ready-made**, a search box and filter chips (In Plex, Building, Not built, Failed, Fetching missing, Changed). One **Changes** bar builds your ready-made picks and edited collections in a single run. Ready-made pages moved to `/collections/ready-made`; old links redirect.
 - **Activity, System and Settings** show their pages as a row of tabs at the top, and `/activity`, `/system` and `/settings` open the first one. Page titles name the section too ("Settings · Plex").
 - **Settings → UI → Fonts**: try your device's own fonts instead of Studio's, for text only or everywhere. Remembered in this browser; Studio's fonts stay the default.
 - Collection and Ready-made tiles show their state as a badge on the poster (shared `PosterTile` / `StatusBadge`).

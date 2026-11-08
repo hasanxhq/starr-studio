@@ -266,6 +266,7 @@ describe("Collections list", () => {
     expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Ready-made" }));
     expect(screen.getByRole("tab", { name: "Ready-made" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("tab", { name: "Yours" })).not.toHaveAttribute("aria-current");
     fireEvent.click(screen.getByRole("tab", { name: "Yours" }));
     expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
   });

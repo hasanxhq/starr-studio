@@ -461,7 +461,7 @@ export function Collections() {
 
       <nav aria-label="Collections views" className="-mx-4 overflow-x-auto border-b border-border md:-mx-6">
         <div role="tablist" className="flex px-4 md:px-6">
-          <NavLink to={`/collections${tabQs}`} className={tabClass} role="tab">
+          <NavLink to={`/collections${tabQs}`} end className={tabClass} role="tab">
             Yours
           </NavLink>
           <NavLink to={`/collections/ready-made${libraryQs(library)}`} className={tabClass} role="tab">
@@ -490,7 +490,7 @@ export function Collections() {
         />
       )}
 
-      <ChangesBar library={library} changedCollectionIds={changedIds} />
+      <ChangesBar key={library} library={library} changedCollectionIds={changedIds} />
       {uploadOpen && <UploadDialog libraries={names} initialLibrary={library} onClose={() => setUploadOpen(false)} />}
     </div>
   );

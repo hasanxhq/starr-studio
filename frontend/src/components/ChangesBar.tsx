@@ -143,13 +143,13 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
               ?
             </button>
           )}
-          <Button onClick={() => dryRun.mutate()} disabled={dryRun.isPending || total === 0}>
+          <Button onClick={() => dryRun.mutate()} disabled={dryRun.isPending || buildAll.isPending || total === 0}>
             {dryRun.isPending ? "Checking…" : "Review"}
           </Button>
           <Button variant="primary" onClick={() => buildAll.mutate()} disabled={buildAll.isPending || total === 0}>
             {buildAll.isPending ? "Starting…" : "Build all"}
           </Button>
-          <Button onClick={discard} disabled={readyMadeCount === 0}>
+          <Button onClick={discard} disabled={buildAll.isPending || readyMadeCount === 0}>
             Discard
           </Button>
         </ActionBar>
