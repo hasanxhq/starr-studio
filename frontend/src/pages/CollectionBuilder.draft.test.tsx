@@ -15,6 +15,7 @@ function renderBuilder(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
+      { path: "/collections", element: <p>Collections list</p> },
       { path: "/collections/new", element: <CollectionBuilder /> },
       { path: "/collections/:id", element: <CollectionBuilder /> },
     ],
