@@ -155,46 +155,18 @@ def set_run_scope(db: sqlite3.Connection, library: str, category: str, scope: st
     )
 
 
-def last_change(db: sqlite3.Connection, row: sqlite3.Row | dict[str, Any]) -> dict[str, Any] | None:
-    # shortcut: one SQL query per call is fine; a page lists tens of collections, not thousands.
-    try:
-        last_run_id = row["last_run_id"]
-    except (KeyError, IndexError):
+def last_change(db: sqlite3.Connection, row: sqlite3.Row) -> dict | None:
+    """What the row's last run changed, from Kometa's `changes` webhooks for its title (None when none came)."""
+    if not row["last_run_id"]:
         return None
-    if not last_run_id:
-        return None
-    try:
-        title = row["title"]
-    except (KeyError, IndexError):
-        return None
-    if not title:
-        return None
-    rows = db.execute(
-        """
-        SELECT payload FROM run_events
-        WHERE run_id = ? AND event = 'changes' AND lower(json_extract(payload, '$.collection')) = lower(?)
-        """,
-        (int(last_run_id), str(title)),
-    ).fetchall()
-    if not rows:
-        return None
-    added = 0
-    removed = 0
-    for (payload_raw,) in rows:
-        data = json.loads(payload_raw) if isinstance(payload_raw, str) else payload_raw
-        if not isinstance(data, dict):
-            continue
-        adds = data.get("additions")
-        if isinstance(adds, list):
-            added += len(adds)
-        elif isinstance(adds, int):
-            added += adds
-        rems = data.get("removals")
-        if isinstance(rems, list):
-            removed += len(rems)
-        elif isinstance(rems, int):
-            removed += rems
-    return {"added": added, "removed": removed, "run_id": int(last_run_id)}
+    # shortcut: one query per collection; fine for the tens a page lists, batch it if pages list thousands.
+    count, added, removed = db.execute(
+        "SELECT count(*), sum(coalesce(json_array_length(payload, '$.additions'), 0)), "
+        "sum(coalesce(json_array_length(payload, '$.removals'), 0)) FROM run_events "
+        "WHERE run_id = ? AND event = 'changes' AND lower(json_extract(payload, '$.collection')) = lower(?)",
+        (row["last_run_id"], row["title"]),
+    ).fetchone()
+    return {"added": added, "removed": removed, "run_id": int(row["last_run_id"])} if count else None
 
 
 def save_counts(db: sqlite3.Connection, library: str, category: str, data: dict, error: str | None) -> None:
