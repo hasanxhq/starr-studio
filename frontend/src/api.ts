@@ -154,6 +154,8 @@ export type RunEvent = {
   removals?: number;
 };
 
+export type RunList = { runs: Run[]; current: number | null; last_succeeded: Run | null };
+
 export type RunDetail = Run & { events: RunEvent[] };
 
 export type Schedule = {
@@ -866,7 +868,7 @@ export const api = {
     run: (id: number) => request<Run>("POST", `/schedules/${id}/run`),
   },
   runs: {
-    list: () => request<{ runs: Run[]; current: number | null }>("GET", "/runs"),
+    list: () => request<RunList>("GET", "/runs"),
     get: (id: number) => request<RunDetail>("GET", `/runs/${id}`),
     create: (body: RunRequest) => request<Run>("POST", "/runs", body),
     cancel: (id: number) => request<Run>("POST", `/runs/${id}/cancel`),

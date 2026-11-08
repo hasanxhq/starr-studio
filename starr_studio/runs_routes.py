@@ -85,7 +85,13 @@ async def list_runs(db: Db, runner: RunnerDep, limit: Annotated[int, Query(ge=1,
         "CASE WHEN status = 'queued' THEN id END, id DESC LIMIT ?",
         (limit,),
     ).fetchall()
-    return {"runs": [run_json(db, row) for row in rows], "current": runner.current_run_id}
+    # Separate from the page: after many failures in a row, the last good run isn't among the newest.
+    good = db.execute("SELECT * FROM runs WHERE status = 'succeeded' ORDER BY id DESC LIMIT 1").fetchone()
+    return {
+        "runs": [run_json(db, row) for row in rows],
+        "current": runner.current_run_id,
+        "last_succeeded": run_json(db, good) if good else None,
+    }
 
 
 @router.post("/runs", status_code=201)
