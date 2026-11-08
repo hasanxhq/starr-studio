@@ -548,8 +548,7 @@ async def _title_taken(db: sqlite3.Connection, request: Request, context: Contex
 async def _delete_from_plex(context: Context, title: str) -> tuple[bool, str | None]:
     """Delete Studio's own collection called ``title``; (gone, why not)."""
     try:
-        labelled = await context.server.labelled_collections(context.section, STUDIO_LABEL)
-        if reason := await delete_studio_collection(context.server, context.section, title, labelled):
+        if reason := await delete_studio_collection(context.server, context.section, title):
             return False, reason
         return True, None
     except (PlexUnavailable, PlexNotFound) as error:

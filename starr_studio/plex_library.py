@@ -422,17 +422,15 @@ async def delete_studio_collection(
     section: str,
     title: str,
     labelled: list[PlexCollection] | None = None,
-    *,
-    label: str = STUDIO_LABEL,
 ) -> str | None:
     """Delete Studio's own collection called ``title``.
 
     Returns None when the collection is gone or was never there; a reason when a same-name
     collection exists without Studio's label. ``labelled`` may be a prefetch of
-    ``labelled_collections(section, label)``.
+    ``labelled_collections(section, STUDIO_LABEL)``.
     """
     if labelled is None:
-        labelled = await server.labelled_collections(section, label)
+        labelled = await server.labelled_collections(section, STUDIO_LABEL)
     title_key = title.casefold()
     match = next((c for c in labelled if c.title.casefold() == title_key), None)
     if match is None:
@@ -440,7 +438,7 @@ async def delete_studio_collection(
         if any(c.title.casefold() == title_key for c in everyone):
             return "the collection in Plex has no Studio label, so Studio didn't make it"
         return None
-    if label not in await server.collection_labels(match.rating_key):
+    if STUDIO_LABEL not in await server.collection_labels(match.rating_key):
         return "the collection in Plex has no Studio label, so Studio didn't make it"
     await server.delete_collection(match.rating_key)
     return None

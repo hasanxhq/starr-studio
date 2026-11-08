@@ -13,14 +13,12 @@ from . import kometa_summary
 from .kometa_command import RunRequest
 from .kometa_config import read_plex
 from .kometa_files import ConfigReader
-from .plex_library import PlexServer, PlexUnavailable
+from .plex_library import STUDIO_LABEL, PlexServer, PlexUnavailable
 from .runner import KOMETA_CRITICAL, After, Say
 from .settings import Settings
 from .tasks import Tasks
 
 log = logging.getLogger(__name__)
-
-STUDIO_LABEL = "Studio"
 
 
 def _critical_lines(config: Path | None) -> list[str]:

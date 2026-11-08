@@ -23,7 +23,7 @@ from .health import PLEX_CHECK_TTL
 from .kometa_command import RunRequest
 from .kometa_config import read_plex
 from .kometa_files import ConfigReader
-from .plex_library import PlexCollection, PlexNotFound, PlexServer, PlexUnavailable, delete_studio_collection
+from .plex_library import STUDIO_LABEL, PlexCollection, PlexNotFound, PlexServer, PlexUnavailable, delete_studio_collection
 from .plex_routes import kometa_plex
 from .runner import Runner
 from .settings import Settings
@@ -32,8 +32,6 @@ from .tasks import Tasks
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/ready-made", tags=["ready-made"])
-
-STUDIO_LABEL = "Studio"
 
 
 class LibraryTypeCache:
@@ -590,6 +588,7 @@ async def plan_ready_made_build(
     set[str],  # maintainerr_titles
     PlexServer | None,
     str | None,  # library_key
+    list[PlexCollection] | None,  # Studio-labelled collections, when removals needed them
 ]:
     """Validate ready-made adds and removes, check Maintainerr and Plex label rules.
 
