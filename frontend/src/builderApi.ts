@@ -1,6 +1,6 @@
 // Collection builder API: fields, live preview, and Studio-built collections.
 
-import { ApiError, SIGNED_OUT_EVENT, request } from "./api";
+import { ApiError, SIGNED_OUT_EVENT, request, type ReadyMadeRef } from "./api";
 import { urlBase } from "./base";
 import type { RequestSummary } from "./requestsApi";
 
@@ -101,12 +101,29 @@ export type CollectionSaveBody = CollectionInput & { confirm_requests?: boolean 
 export type BuiltCollection = CollectionInput & {
   id: number;
   state: "queued" | "building" | "in_plex" | "failed" | "missing";
+  changed?: boolean;
   plex_items: number | null;
   thumb: string | null;
   last_built_at: string | null;
   last_error: string | null;
   run_id: number | null;
   requests: RequestSummary;
+};
+
+export type LibraryBuildBody = {
+  ready_made: { add: ReadyMadeRef[]; remove: ReadyMadeRef[] };
+  collections: number[];
+  download_missing: boolean;
+  dry_run: boolean;
+};
+
+export type LibraryBuildItem = { kind: "ready_made" | "collection"; title: string };
+
+export type LibraryBuildResult = {
+  build: LibraryBuildItem[];
+  remove: { title: string }[];
+  blocked: { title: string; reason: string }[];
+  run_id?: number | null;
 };
 
 /** A collection's sources: ``sources`` when present, else the one ``source`` (old responses). */
@@ -225,6 +242,8 @@ export const builderApi = {
       `/ready-made/libraries/${encodeURIComponent(library)}/categories/${encodeURIComponent(category)}/preview?${new URLSearchParams({ block, key })}`,
     ),
   list: (library: string) => request<{ collections: BuiltCollection[] }>("GET", `/collections?library=${encodeURIComponent(library)}`),
+  buildLibrary: (library: string, body: LibraryBuildBody) =>
+    request<LibraryBuildResult>("POST", `/libraries/${encodeURIComponent(library)}/build`, body),
   get: (id: number) => request<BuiltCollection>("GET", `/collections/${id}`),
   create: (body: CollectionSaveBody) => request<BuiltCollection>("POST", "/collections", body),
   update: (id: number, body: CollectionSaveBody) => request<BuiltCollection>("PUT", `/collections/${id}`, body),

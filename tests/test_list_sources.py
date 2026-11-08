@@ -188,7 +188,7 @@ def test_sources_link_search_and_preview_routes(root):
         preview = client.post("/api/v1/builder/sources/preview", json={"library": "Movies", "source": {"builder": "tmdb_collection", "value": "131296"}}).json()
         assert preview["previewable"] is True and preview["total"] == 2 and preview["problems"] == []
         assert preview["in_library_count"] == 1 and preview["in_library"][0]["title"] == "Dune"
-        assert preview["missing"] == [{"id": "tmdb-movie:693134", "title": "Dune: Part Two", "year": 2024, "poster": "https://image.tmdb.org/t/p/w342/two.jpg"}]
+        assert preview["missing"] == [{"id": "tmdb-movie:693134", "title": "Dune: Part Two", "year": 2024, "poster": "https://image.tmdb.org/t/p/w342/two.jpg", "requested": False}]
 
         # A chart reads only the pages it needs.
         before = len(calls)

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Collections** is one page with two tabs, **Yours** and **Ready-made**, a search box and filter chips (In Plex, Building, Not built, Failed, Fetching missing, Changed). One **Changes** bar builds your ready-made picks and edited collections in a single run. Ready-made pages moved to `/collections/ready-made`; old links redirect.
 - **Overlays** is one studio page per library: turn overlays on or off and set their schedule from the header, reorder layers (top draws last), hide one in the preview, compare **Now in Plex** with **With your changes** (drawn on Kometa's untouched poster, so badges no longer show twice), style backgrounds, read a one-line summary of what changes, and choose **Save for tonight** or **Apply now** with an estimate of how many posters Kometa redraws. The old designer link redirects.
 - **Activity, System and Settings** show their pages as a row of tabs at the top, and `/activity`, `/system` and `/settings` open the first one. Page titles name the section too ("Settings · Plex").
 - **Settings → UI → Fonts**: try your device's own fonts instead of Studio's, for text only or everywhere. Remembered in this browser; Studio's fonts stay the default.
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Choose which missing titles a collection requests** (API only for now): a builder collection's `skip_requests` lists missing titles Studio never asks Radarr, Sonarr or Seerr for, before or after a build, until they're taken off it. The source preview says which missing titles were already requested.
 - **Save a collection without building it, then build everything at once** (API only for now): `POST`/`PUT /collections` take `build: false` to save and mark the collection `changed` without starting Kometa, and `POST /libraries/{library}/build` builds a library's waiting ready-made picks and saved collections in one Kometa run, with a `dry_run` that lists what would build, be removed or be blocked.
 - **Open a Ready-made collection to see what it would hold** before you build it: click its tile for a panel with its poster, the titles from your library it would hold, and what's missing for charts that read a TMDb or MDBList list. Pick it, Customise it, or open its page once it's built, from the same panel. Picking from the grid moves to the round tick in each poster's corner. IMDb and Letterboxd charts, awards and TMDb-valued categories (franchises, countries of origin, languages) say they show once built.
 - **Ready-made tiles show their poster before they're built:** each collection shows the poster Kometa will give it (a director's portrait, a genre's or decade's artwork, a chart's logo), worked out from Kometa's own default and fetched through Studio. Once built, the tile shows Plex's poster. Where Kometa's image repo has none, the tile keeps its colour banner. Customising a people collection (actor, director, producer, writer) now brings its portrait into the builder too.

@@ -26,7 +26,7 @@ from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from ruamel.yaml import YAML
 
 from . import collections as col
@@ -127,7 +127,14 @@ class CollectionIn(BaseModel):
     request_cap: int | None = Field(default=None, ge=1)  # most per day for this collection; None = the setting's
     request_profile: str | None = Field(default=None, max_length=200)  # Radarr/Sonarr quality profile; None = the setting's
     confirm_requests: bool = False  # the user saw how many titles this requests now and said yes
+    # Missing titles never to request (keys as list_sources.missing_key names them), until they're taken off this list
+    skip_requests: list[str] | None = Field(default=None, max_length=5000)  # None on an update keeps the saved list
     build: bool = True  # False = save without running Kometa; the collection gets changed_at instead
+
+    @field_validator("skip_requests")
+    @classmethod
+    def _clean_skips(cls, keys: list[str] | None) -> list[str] | None:
+        return None if keys is None else sorted({key.strip() for key in keys if key.strip()})
 
 
 class DownloadMissingIn(BaseModel):
@@ -335,6 +342,7 @@ def _definition(body: CollectionIn) -> dict:
         "summary": (body.summary or "").strip() or None,
         "sort_title": (body.sort_title or "").strip() or None,
         "poster": _poster_dict(body.poster),
+        "skip_requests": body.skip_requests or [],
     }
 
 
@@ -364,6 +372,7 @@ def _collection_in_from_row(row: sqlite3.Row) -> CollectionIn:
         download_missing=bool(row["download_missing"]),
         request_cap=row["request_cap"],
         request_profile=row["request_profile"],
+        skip_requests=definition.get("skip_requests") or [],
     )
 
 
@@ -382,7 +391,8 @@ async def _missing_now(request: Request, settings, context: Context, body: Colle
         return []
     _have, missing = list_sources.split(items, library)
     asked = {r[0] for r in db.execute("SELECT item FROM requests")}
-    out, seen = [], set()
+    seen = set(body.skip_requests or [])
+    out = []
     for m in missing:
         key = list_sources.missing_key(m, context.library_type)
         if key.startswith(("tmdb-", "tvdb:")) and key not in asked and key not in seen:
@@ -437,6 +447,7 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "summary": definition.get("summary"),
         "sort_title": definition.get("sort_title"),
         "poster": definition.get("poster"),
+        "skip_requests": definition.get("skip_requests") or [],
         "state": _entry_state(row, run_status),
         "plex_items": int(row["plex_items"]) if row["plex_items"] is not None else None,
         "thumb": row["plex_thumb"],
@@ -764,12 +775,17 @@ def _preview_sources(body: ListPreviewIn, library_type: str) -> tuple[list[dict]
 
 
 @router.post("/builder/sources/preview")
-async def builder_source_preview(body: ListPreviewIn, request: Request, settings: AppSettings) -> dict:
+async def builder_source_preview(body: ListPreviewIn, request: Request, settings: AppSettings, db: Db) -> dict:
     """What a collection's lists and titles hold: the union, split into what the library has and what it's missing.
-    ``skipped`` names the sources Studio can't read itself (IMDb, Letterboxd, a Plex search), which show once built."""
+    ``skipped`` names the sources Studio can't read itself (IMDb, Letterboxd, a Plex search), which show once built.
+    Each missing title's ``id`` is its request key; ``requested`` says Studio has asked for it before (it never asks twice)."""
     context = await _context(request, settings, body.library)
     sources, problems = _preview_sources(body, context.library_type)
-    return await _list_preview(context, _lists(request, settings), sources, problems)
+    preview = await _list_preview(context, _lists(request, settings), sources, problems)
+    asked = {r[0] for r in db.execute("SELECT item FROM requests")}
+    for title in preview["missing"]:
+        title["requested"] = title["id"] in asked
+    return preview
 
 
 async def _list_preview(context: Context, lists: list_sources.Lists, sources: list[dict], problems: list[str]) -> dict:
@@ -876,6 +892,8 @@ async def update_collection(row_id: int, body: CollectionIn, request: Request, d
     if taken:
         raise HTTPException(409, {"message": taken})
     old_title, old_definition = row["title"], row["definition"]
+    if body.skip_requests is None:
+        body.skip_requests = json.loads(old_definition or "{}").get("skip_requests") or []
     old_flags = (row["download_missing"], row["request_cap"], row["request_profile"])
     if body.build:
         missing = await _missing_now(request, settings, context, body, db) if collection_requests.load_settings(db).enabled else []
