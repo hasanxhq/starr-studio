@@ -40,6 +40,17 @@ def rows(db: sqlite3.Connection, library: str, category: str | None = None) -> l
     )
 
 
+def studio_title_owner(
+    db: sqlite3.Connection, library: str, title: str, own_id: int | None = None
+) -> sqlite3.Row | None:
+    """The first row in ``library`` whose title matches ``title`` (casefold), excluding ``own_id``."""
+    key = title.casefold()
+    for row in rows(db, library):
+        if row["title"].casefold() == key and (own_id is None or int(row["id"]) != own_id):
+            return row
+    return None
+
+
 def desired(db: sqlite3.Connection, library: str) -> dict[str, list[Ref]]:
     """The refs with ``desired = 1``, grouped by category."""
     found: dict[str, list[Ref]] = {}
@@ -145,14 +156,6 @@ def record_plex_state(
             """,
             (1 if exists else 0, rating_key, items, thumb, stamp, error, stamp, row_id),
         )
-
-
-def set_run_scope(db: sqlite3.Connection, library: str, category: str, scope: str) -> None:
-    stamp = now()
-    db.execute(
-        "UPDATE collections SET run_scope = ?, updated_at = ? WHERE library = ? AND category = ?",
-        (scope, stamp, library, category),
-    )
 
 
 def last_change(db: sqlite3.Connection, row: sqlite3.Row) -> dict | None:

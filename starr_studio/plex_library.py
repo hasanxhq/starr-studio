@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 import httpx
 
 KOMETA_LABELS = ("Kometa", "PMM")
+STUDIO_LABEL = "Studio"
 COLLECTION_TYPE = "18"  # Plex's metadata type for collections
 TIMEOUT = 20.0
 # Images the poster proxy may fetch: a collection's or item's own artwork, nothing else.
@@ -414,3 +415,32 @@ def _item(m: dict) -> PlexItem:
         video_resolution=str(media["videoResolution"]) if media.get("videoResolution") else None,
         audio_codec=str(media["audioCodec"]) if media.get("audioCodec") else None,
     )
+
+
+async def delete_studio_collection(
+    server: PlexServer,
+    section: str,
+    title: str,
+    labelled: list[PlexCollection] | None = None,
+    *,
+    label: str = STUDIO_LABEL,
+) -> str | None:
+    """Delete Studio's own collection called ``title``.
+
+    Returns None when the collection is gone or was never there; a reason when a same-name
+    collection exists without Studio's label. ``labelled`` may be a prefetch of
+    ``labelled_collections(section, label)``.
+    """
+    if labelled is None:
+        labelled = await server.labelled_collections(section, label)
+    title_key = title.casefold()
+    match = next((c for c in labelled if c.title.casefold() == title_key), None)
+    if match is None:
+        everyone = await server.collections(section)
+        if any(c.title.casefold() == title_key for c in everyone):
+            return "the collection in Plex has no Studio label, so Studio didn't make it"
+        return None
+    if label not in await server.collection_labels(match.rating_key):
+        return "the collection in Plex has no Studio label, so Studio didn't make it"
+    await server.delete_collection(match.rating_key)
+    return None

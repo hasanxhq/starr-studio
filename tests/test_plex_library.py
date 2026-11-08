@@ -1,8 +1,12 @@
+import asyncio
+
+import httpx
 import pytest
 from fakeplex import REMOTE_URI, SERVER_TOKEN, FakePlex
 from fastapi.testclient import TestClient
 
 from starr_studio.app import create_app
+from starr_studio.plex_library import PlexServer, delete_studio_collection
 from starr_studio.settings import Settings
 
 
@@ -121,3 +125,21 @@ def test_a_librarys_titles_for_previewing_overlays(tmp_path, config):
         assert [item["title"] for item in searched["items"]] == ["Heat"]
         assert searched["items"][0]["video_resolution"] is None  # no media info in the listing
         assert client.get("/api/v1/plex/libraries/9/items").status_code == 404
+
+
+def test_delete_studio_collection():
+    fake = FakePlex()
+
+    async def run():
+        async with httpx.AsyncClient(transport=fake.transport()) as client:
+            server = PlexServer(client, REMOTE_URI, SERVER_TOKEN)
+            labelled = await server.labelled_collections("1", "Studio")
+            assert await delete_studio_collection(server, "1", "No Such Title", labelled) is None
+            assert await delete_studio_collection(server, "1", "Spy Kids", labelled) == (
+                "the collection in Plex has no Studio label, so Studio didn't make it"
+            )
+            assert "104" not in fake.deletions
+            assert await delete_studio_collection(server, "1", "Studio Chart", labelled) is None
+            assert "104" in fake.deletions
+
+    asyncio.run(run())

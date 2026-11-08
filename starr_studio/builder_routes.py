@@ -35,7 +35,7 @@ from .config_sections import read_section
 from .config_write import SaveRefused
 from .default_covers import DEFAULT_IMAGES
 from .kometa_command import RunRequest
-from .plex_library import PlexCollection, PlexNotFound, PlexServer, PlexUnavailable
+from .plex_library import PlexCollection, PlexNotFound, PlexServer, PlexUnavailable, delete_studio_collection
 from .plex_routes import kometa_plex, maintainerr_keys
 from .ready_made_routes import (
     STUDIO_LABEL,
@@ -528,9 +528,8 @@ def _body_problems(context: Context, body: CollectionIn, settings) -> list[str]:
 async def _title_taken(db: sqlite3.Connection, request: Request, context: Context, title: str, own_id: int | None) -> str | None:
     """Why ``title`` can't be used in this library, or None. Kometa takes over any collection with the same title."""
     key = title.casefold()
-    for row in col.rows(db, context.library.name):
-        if row["title"].casefold() == key and int(row["id"]) != own_id:
-            return f"Studio already has a collection called {row['title']} in {context.library.name}"
+    if (owner := col.studio_title_owner(db, context.library.name, title, own_id)) is not None:
+        return f"Studio already has a collection called {owner['title']} in {context.library.name}"
     service = getattr(request.app.state, "maintainerr", None)
     if service is not None and service.connected():
         owned = service.snapshot.owned_by_title().get(_plex_title(context.library).casefold(), [])
@@ -550,15 +549,8 @@ async def _delete_from_plex(context: Context, title: str) -> tuple[bool, str | N
     """Delete Studio's own collection called ``title``; (gone, why not)."""
     try:
         labelled = await context.server.labelled_collections(context.section, STUDIO_LABEL)
-        match = next((c for c in labelled if c.title.casefold() == title.casefold()), None)
-        if match is None:
-            everyone = await context.server.collections(context.section)
-            if any(c.title.casefold() == title.casefold() for c in everyone):
-                return False, "the collection in Plex has no Studio label, so Studio didn't make it"
-            return True, None
-        if STUDIO_LABEL not in await context.server.collection_labels(match.rating_key):
-            return False, "the collection in Plex has no Studio label, so Studio didn't make it"
-        await context.server.delete_collection(match.rating_key)
+        if reason := await delete_studio_collection(context.server, context.section, title, labelled):
+            return False, reason
         return True, None
     except (PlexUnavailable, PlexNotFound) as error:
         return False, f"Plex can't be reached ({error})"

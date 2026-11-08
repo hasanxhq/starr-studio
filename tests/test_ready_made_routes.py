@@ -340,28 +340,6 @@ def test_counting_task_stores_counts_and_shows_in_jobs(root):
         wait_for_task(client, "ready_made_counts")
 
 
-def test_a_file_scoped_category_sends_the_whole_run_by_file(root):
-    # Kometa ANDs --run-files with --run-collections, so a mixed run would skip the collection-scoped picks.
-    client, _, _ = make_client(root)
-    with client:
-        wait_for_task(client, "ready_made_counts")
-        genre = client.get("/api/v1/ready-made/libraries/Movies/categories/genre").json()["collections"][0]
-        db = client.app.state.db
-        with db:
-            col.mark_present(db, "Movies", [col.Pick(col.Ref("genre", genre["block"], genre["key"]), genre["title"], genre["title"])])
-            col.set_run_scope(db, "Movies", "genre", "file")
-        plan = client.post(
-            "/api/v1/ready-made/build",
-            json={
-                "library": "Movies",
-                "add": [{"category": "basic", "block": "", "key": "Newly Released"}, {"category": "genre", "block": genre["block"], "key": genre["key"]}],
-                "remove": [],
-                "dry_run": True,
-            },
-        ).json()
-        assert plan["run"] == {"libraries": ["Movies"], "collections": [], "files": ["basic", "genre"]}
-
-
 def test_remove_keeps_everything_while_plex_cant_be_reached(root):
     client, plex, _ = make_client(root)
     with client:
@@ -475,6 +453,84 @@ def test_a_studio_collection_with_the_name_is_built_again(root):
         add = {"library": "Movies", "add": [{"category": "basic", "block": "", "key": "Newly Released"}], "remove": []}
         plan = client.post("/api/v1/ready-made/build", json=add | {"dry_run": True}).json()
         assert plan["blocked"] == [] and plan["run"]["collections"] == ["Newly Released"]
+
+
+def test_ready_made_pick_with_a_builder_title_is_blocked(root):
+    from test_builder_routes import body as builder_body
+
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        wait_for_task(client, "ready_made_counts")
+        client.post("/api/v1/collections", json=builder_body(title="Action Movies", build=False))
+        action = next(
+            c
+            for c in client.get("/api/v1/ready-made/libraries/Movies/categories/genre").json()["collections"]
+            if c["key"] == "Action"
+        )
+        add = {
+            "library": "Movies",
+            "add": [{"category": "genre", "block": action["block"], "key": action["key"]}],
+            "remove": [],
+        }
+        plan = client.post("/api/v1/ready-made/build", json=add | {"dry_run": True}).json()
+        assert plan["build"] == [] and plan["run"] is None
+        assert plan["blocked"] == [
+            {"category": "genre", "title": "Action Movies", "reason": "Studio already has a collection called Action Movies"}
+        ]
+
+
+def test_readding_a_pick_does_not_block_against_its_own_row(root):
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        wait_for_task(client, "ready_made_counts")
+        action = next(
+            c
+            for c in client.get("/api/v1/ready-made/libraries/Movies/categories/genre").json()["collections"]
+            if c["key"] == "Action"
+        )
+        ref = {"category": "genre", "block": action["block"], "key": action["key"]}
+        built = client.post("/api/v1/ready-made/build", json={"library": "Movies", "add": [ref], "remove": []}).json()
+        wait_for_run(client, built["run_id"])
+        plan = client.post("/api/v1/ready-made/build", json={"library": "Movies", "add": [ref], "remove": [], "dry_run": True}).json()
+        assert plan["blocked"] == []
+
+
+def test_removing_three_picks_lists_studio_collections_once(root, monkeypatch):
+    from starr_studio.plex_library import PlexServer
+
+    calls = {"n": 0}
+    original = PlexServer.labelled_collections
+
+    async def counted(self, library_key, label):
+        calls["n"] += 1
+        return await original(self, library_key, label)
+
+    monkeypatch.setattr(PlexServer, "labelled_collections", counted)
+
+    client, plex, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        db = client.app.state.db
+        with db:
+            col.mark_present(
+                db,
+                "Movies",
+                [
+                    col.Pick(col.Ref("basic", "", "Studio Chart"), "Studio Chart", "Studio Chart"),
+                    col.Pick(col.Ref("basic", "", "Newly Released"), "Newly Released", "Newly Released"),
+                    col.Pick(col.Ref("basic", "", "IMDb Top 250"), "IMDb Top 250", "IMDb Top 250"),
+                ],
+            )
+        plex.requests.clear()
+        remove = [
+            {"category": "basic", "block": "", "key": "Studio Chart"},
+            {"category": "basic", "block": "", "key": "Newly Released"},
+            {"category": "basic", "block": "", "key": "IMDb Top 250"},
+        ]
+        client.post("/api/v1/ready-made/build", json={"library": "Movies", "add": [], "remove": remove})
+        assert calls["n"] == 1
 
 
 class PosterPlex(FakePlex):

@@ -90,7 +90,6 @@ def test_set_run_record_plex_and_scope(db: sqlite3.Connection):
             [col.Pick(col.Ref("imdb", "", "IMDb Top 250"), "IMDb Top 250", "IMDb Top 250")],
         )
         col.set_run(db, [row_id], 42)
-        col.set_run_scope(db, "Movies", "imdb", "file")
         col.record_plex_state(
             db,
             row_id,
@@ -103,7 +102,6 @@ def test_set_run_record_plex_and_scope(db: sqlite3.Connection):
         )
     row = col.rows(db, "Movies")[0]
     assert row["last_run_id"] == 42
-    assert row["run_scope"] == "file"
     assert row["plex_exists"] == 1 and row["plex_rating_key"] == "99" and row["plex_items"] == 12
     assert row["plex_checked_at"] and row["last_built_at"] and row["plex_checked_at"] == row["last_built_at"]
     with db:

@@ -28,7 +28,6 @@ const config = {
     count: 1,
     in_plex: 0,
     picked: 0,
-    run_scope: "collection",
     counted_at: null,
     collections: [],
   }),

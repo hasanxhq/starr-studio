@@ -29,7 +29,6 @@ const summary = {
   count: 18,
   in_plex: 3,
   picked: 4,
-  run_scope: "collection" as const,
 };
 
 const gallery: ReadyMadeLibrary = {
@@ -76,7 +75,6 @@ const routes = (category: ReadyMadeCategory = imdbCategory(), library: ReadyMade
   "GET /ready-made/libraries/Movies/categories/genre": () => ({
     ...library.categories.find((c) => c.name === "genre")!,
     counted_at: null,
-    run_scope: "file" as const,
     collections: [entry({ block: "dynamic_collections", key: "Action", title: "Action" })],
   }),
 });
@@ -294,12 +292,6 @@ describe("Ready-made category picks", () => {
       dry_run: false,
       download_missing: false,
     });
-  });
-
-  it("notes when Kometa builds the category as a whole", async () => {
-    mockApi(routes());
-    renderAt("/collections/ready-made/genre?library=Movies");
-    expect(await screen.findByText(/Kometa builds this category as a whole/)).toBeInTheDocument();
   });
 
   it("polls only while a collection is queued or building", async () => {

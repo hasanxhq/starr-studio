@@ -201,9 +201,6 @@ export function ReadyMadeCategory() {
             {library}
           </p>
           <h2 className="mt-1 text-[32px] leading-tight font-semibold">{data.data?.title ?? category}</h2>
-          {data.data?.run_scope === "file" && (
-            <p className="mt-2 text-sm text-warn">Kometa builds this category as a whole: Build runs all of its collections.</p>
-          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
