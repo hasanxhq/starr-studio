@@ -33,7 +33,7 @@ function routes(extra: Record<string, (body: unknown) => unknown> = {}, current 
 }
 
 describe("Settings → Requests", () => {
-  it("is under Settings in the sidebar after Connect", async () => {
+  it("is a Settings tab after Connect", async () => {
     routes();
     renderAt("/settings/requests");
     const tabs = await screen.findByRole("navigation", { name: "Settings pages" });

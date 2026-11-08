@@ -116,29 +116,11 @@ describe("Layout", () => {
     expect(within(navZero).queryByText("2")).toBeNull();
   });
 
-  it("shows the Ready-made sub-link only under an active Collections entry", async () => {
+  it("keeps Collections current on the Ready-made tab and its categories", async () => {
     mockCommon();
-    const { unmount: u1 } = renderAt("/");
-    const navHome = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(navHome).queryByRole("link", { name: "Ready-made" })).toBeNull();
-    u1();
-
-    const { unmount: u2 } = renderAt("/collections");
-    const navCollections = await screen.findByRole("navigation", { name: "Main" });
-    const readyMadeSub = within(navCollections).getByRole("link", { name: "Ready-made" });
-    expect(readyMadeSub).toHaveAttribute("href", "/ready-made");
-    u2();
-
-    const { unmount: u3 } = renderAt("/ready-made");
-    const navReadyMade = await screen.findByRole("navigation", { name: "Main" });
-    const readyMadeActive = within(navReadyMade).getByRole("link", { name: "Ready-made" });
-    expect(readyMadeActive).toHaveAttribute("aria-current", "page");
-    const collectionsActive = within(navReadyMade).getByRole("link", { name: "Collections" });
-    expect(collectionsActive).toHaveAttribute("aria-current", "page");
-    u3();
-
-    renderAt("/requests");
-    const navRequests = await screen.findByRole("navigation", { name: "Main" });
-    expect(within(navRequests).queryByRole("link", { name: "Ready-made" })).toBeNull();
+    renderAt("/collections/ready-made/genre");
+    const nav = await screen.findByRole("navigation", { name: "Main" });
+    expect(within(nav).getByRole("link", { name: /^Collections/ })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).queryByRole("link", { name: "Ready-made" })).toBeNull();
   });
 });

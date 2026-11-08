@@ -30,13 +30,6 @@ function navLinkClass({ isActive }: { isActive: boolean }) {
   ].join(" ");
 }
 
-function subNavLinkClass({ isActive }: { isActive: boolean }) {
-  return [
-    "flex min-h-11 items-center rounded-control pl-11 pr-3 text-sm transition-colors",
-    isActive ? "bg-surface-2 text-accent" : "text-muted hover:bg-surface-2 hover:text-text",
-  ].join(" ");
-}
-
 const ENTRY_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   "/": HomeIcon,
   "/collections": CollectionsIcon,
@@ -117,8 +110,6 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const { pathname } = useLocation();
   const waitingRequests = useRequestsWaiting();
   const collectionsCount = useCollectionsCount();
-  const collectionsActive = isEntryActive("/collections", pathname);
-  const readyMadeActive = pathname === "/ready-made" || pathname.startsWith("/ready-made/");
 
   return (
     <nav aria-label="Main" className="flex flex-1 flex-col gap-1 p-3">
@@ -164,16 +155,6 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
               <span>{entry.label}</span>
               {badge}
             </Link>
-            {entry.path === "/collections" && collectionsActive && (
-              <Link
-                to="/ready-made"
-                aria-current={readyMadeActive ? "page" : undefined}
-                className={subNavLinkClass({ isActive: readyMadeActive })}
-                onClick={onNavigate}
-              >
-                Ready-made
-              </Link>
-            )}
           </div>
         );
       })}
