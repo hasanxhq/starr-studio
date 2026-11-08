@@ -39,7 +39,8 @@ export type SourcePreview = {
   total: number | null;
   in_library: { rating_key: string; title: string; year: number | null; thumb: string | null }[];
   in_library_count: number;
-  missing: { id: string; title: string; year: number | null; poster: string | null }[];
+  /** ``id`` is the title's request key; ``requested``: Studio asked for it before (it never asks twice). */
+  missing: { id: string; title: string; year: number | null; poster: string | null; requested?: boolean }[];
   missing_count: number;
   problems: string[];
   skipped?: SkippedSource[];
@@ -94,9 +95,15 @@ export type CollectionInput = {
   request_cap: number | null;
   /** Radarr/Sonarr quality profile for this collection's requests; null uses the default in Settings → Requests. */
   request_profile: string | null;
+  /** Missing titles (request keys) never to request. Omit on an update to keep the saved list. */
+  skip_requests?: string[];
 };
 
-export type CollectionSaveBody = CollectionInput & { confirm_requests?: boolean };
+/** ``build: false`` saves without running Kometa (the Changes bar builds it later). */
+export type CollectionSaveBody = CollectionInput & { confirm_requests?: boolean; build?: boolean };
+
+/** What a collection's last run changed in Plex, from Kometa's change reports; null when it reported nothing. */
+export type LastChange = { added: number; removed: number; run_id: number } | null;
 
 export type BuiltCollection = CollectionInput & {
   id: number;
@@ -108,6 +115,7 @@ export type BuiltCollection = CollectionInput & {
   last_error: string | null;
   run_id: number | null;
   requests: RequestSummary;
+  last_change: LastChange;
 };
 
 export type OtherCollection = {
@@ -118,6 +126,7 @@ export type OtherCollection = {
   thumb: string | null;
   smart: boolean;
   category: string | null;
+  last_change: LastChange;
 };
 
 export type LibraryBuildBody = {
