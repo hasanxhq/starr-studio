@@ -97,6 +97,82 @@ export function whereItIs(layout: OverlayLayout | undefined, own: Vars): string 
 
 const AUDIO: Record<string, string> = { truehd: "TRUEHD", eac3: "DD+", ac3: "DD", dca: "DTS", "dca-ma": "DTS-HD", aac: "AAC", flac: "FLAC", opus: "OPUS" };
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+const H_ALIGNS = ["left", "center", "right"] as const;
+const V_ALIGNS = ["top", "center", "bottom"] as const;
+
+function refPoint(box: Rect, h: (typeof H_ALIGNS)[number], v: (typeof V_ALIGNS)[number]) {
+  const rx = h === "left" ? box.x : h === "right" ? box.x + box.width : box.x + box.width / 2;
+  const ry = v === "top" ? box.y : v === "bottom" ? box.y + box.height : box.y + box.height / 2;
+  return { rx, ry };
+}
+
+const anchor = (h: (typeof H_ALIGNS)[number], v: (typeof V_ALIGNS)[number]) => ({
+  ax: h === "left" ? 0 : h === "right" ? POSTER_WIDTH : POSTER_WIDTH / 2,
+  ay: v === "top" ? 0 : v === "bottom" ? POSTER_HEIGHT : POSTER_HEIGHT / 2,
+});
+
+/** Nearest nine-cell anchor for a box dropped on the poster; offsets are whole pixels, clamped at 0. */
+export function snapToAnchor(box: Rect) {
+  let best = { h: "left" as (typeof H_ALIGNS)[number], v: "top" as (typeof V_ALIGNS)[number], d: Infinity };
+  for (const h of H_ALIGNS) {
+    for (const v of V_ALIGNS) {
+      const { rx, ry } = refPoint(box, h, v);
+      const { ax, ay } = anchor(h, v);
+      const d = (rx - ax) ** 2 + (ry - ay) ** 2;
+      if (d < best.d) best = { h, v, d };
+    }
+  }
+  const horizontal_offset =
+    best.h === "center" ? 0 : Math.max(0, Math.round(best.h === "left" ? box.x : POSTER_WIDTH - box.width - box.x));
+  const vertical_offset =
+    best.v === "center" ? 0 : Math.max(0, Math.round(best.v === "top" ? box.y : POSTER_HEIGHT - box.height - box.y));
+  return { horizontal_align: best.h, vertical_align: best.v, horizontal_offset, vertical_offset };
+}
+
+const H_POSITIONS = ["left", "left2", "center", "center_left", "center_right", "right", "right2"] as const;
+const V_POSITIONS = ["top", "top2", "top3", "center", "center_top", "center_bottom", "bottom", "bottom2", "bottom3"] as const;
+
+function groupBounds(boxes: Rect[]): Rect {
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const x2 = Math.max(...boxes.map((b) => b.x + b.width));
+  const y2 = Math.max(...boxes.map((b) => b.y + b.height));
+  return { x, y, width: x2 - x, height: y2 - y };
+}
+
+/** Nearest allowed position keys for a position-based overlay (e.g. ratings). */
+export function snapToPosition(box: Rect, layout: OverlayLayout | undefined, own: Vars) {
+  let best = { horizontal_position: "left" as string, vertical_position: "center" as string, d: Infinity };
+  for (const horizontal_position of H_POSITIONS) {
+    for (const vertical_position of V_POSITIONS) {
+      const placed = layerBoxes("__snap__", "__snap__", layout, { ...own, horizontal_position, vertical_position });
+      if (!placed.length) continue;
+      const g = groupBounds(placed);
+      const dx = box.x + box.width / 2 - (g.x + g.width / 2);
+      const dy = box.y + box.height / 2 - (g.y + g.height / 2);
+      const d = dx * dx + dy * dy;
+      if (d < best.d) best = { horizontal_position, vertical_position, d };
+    }
+  }
+  return { horizontal_position: best.horizontal_position, vertical_position: best.vertical_position };
+}
+
+/** The first pair of boxes that overlap with positive area (edge contact alone does not count). */
+export function overlapPair<T extends Rect & { label?: string }>(boxes: T[]): [string, string] | null {
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const w = Math.min(boxes[i].x + boxes[i].width, boxes[j].x + boxes[j].width) - Math.max(boxes[i].x, boxes[j].x);
+      const h = Math.min(boxes[i].y + boxes[i].height, boxes[j].y + boxes[j].height) - Math.max(boxes[i].y, boxes[j].y);
+      if (w > 0 && h > 0) return [boxes[i].label ?? "", boxes[j].label ?? ""];
+    }
+  }
+  return null;
+}
+
+export const overlaps = (boxes: Rect[]): boolean => overlapPair(boxes) !== null;
+
 /** What a layer says on this title, where Plex's listing can tell. */
 export function layerText(name: string, label: string, item: PlexItem | null): string {
   if (name === "resolution") {

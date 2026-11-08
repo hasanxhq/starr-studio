@@ -218,27 +218,3 @@ export function JobsDrawer({ open, onClose }: { open: boolean; onClose: () => vo
   );
 }
 
-/** The header button: a spinner while anything runs, and a count of running and waiting jobs. */
-export function JobsButton({ onOpen }: { onOpen: () => void }) {
-  const jobs = useJobs(false);
-  const list = jobs.data?.jobs ?? [];
-  const running = list.filter((j) => j.status === "running").length;
-  const busy = running + list.filter((j) => j.status === "pending").length;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={busy ? `Jobs: ${running} running, ${busy - running} waiting` : "Jobs"}
-      className="relative flex size-11 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2 hover:text-text"
-    >
-      {running ? (
-        <Spinner />
-      ) : (
-        <svg viewBox="0 0 20 20" className="size-5" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.6">
-          <path d="M3 5h2M3 10h2M3 15h2M8 5h9M8 10h9M8 15h9" strokeLinecap="round" />
-        </svg>
-      )}
-      {busy > 0 && <span className="absolute right-1 top-1 rounded-full bg-accent px-1 text-[10px] font-semibold leading-4 text-on-accent">{busy}</span>}
-    </button>
-  );
-}

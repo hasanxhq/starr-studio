@@ -2,12 +2,13 @@
 // the tile itself opens a preview of what it would hold.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ApiError, api, type ReadyMadeBuildResult, type ReadyMadeEntry } from "../api";
+import { builderApi } from "../builderApi";
 import { useLibrary } from "../library";
-import { BuildBar } from "../components/BuildBar";
+import { ChangesBar } from "../components/ChangesBar";
 import { useHeaderTitle } from "../components/HeaderTitle";
 import { DownloadMissingBadge, RequestCountsLine, RequestWaitingButton } from "../components/RequestCounts";
 import { PlexPoster } from "../components/PlexPoster";
@@ -151,6 +152,15 @@ export function ReadyMadeCategory() {
       return collections.some((entry) => entry.state === "queued" || entry.state === "building") ? 3000 : false;
     },
   });
+  const builtRows = useQuery({
+    queryKey: ["collections", library],
+    queryFn: () => builderApi.list(library!),
+    enabled: library !== null,
+  });
+  const changedIds = useMemo(
+    () => (builtRows.data?.collections ?? []).filter((row) => row.changed).map((row) => row.id),
+    [builtRows.data?.collections],
+  );
   useHeaderTitle(data.data?.title);
 
   if (overview.isPending) return <p className="text-muted">Loading…</p>;
@@ -164,7 +174,7 @@ export function ReadyMadeCategory() {
   if (library === null) {
     return (
       <p className="text-muted">
-        <Link className="underline" to="/ready-made">
+        <Link className="underline" to={`/collections/ready-made?library=${encodeURIComponent(library ?? "")}`}>
           Back to Ready-made
         </Link>
       </p>
@@ -184,7 +194,7 @@ export function ReadyMadeCategory() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[13px] text-muted">
-            <Link className="underline hover:text-text" to={`/ready-made?library=${encodeURIComponent(library)}`}>
+            <Link className="underline hover:text-text" to={`/collections/ready-made?library=${encodeURIComponent(library)}`}>
               Ready-made
             </Link>
             {" · "}
@@ -208,7 +218,7 @@ export function ReadyMadeCategory() {
           >
             Clear
           </Button>
-          <Button variant="primary" onClick={() => navigate(`/ready-made?library=${encodeURIComponent(library)}`)}>
+          <Button variant="primary" onClick={() => navigate(`/collections/ready-made?library=${encodeURIComponent(library)}`)}>
             Save
           </Button>
         </div>
@@ -267,7 +277,7 @@ export function ReadyMadeCategory() {
         />
       )}
 
-      <BuildBar library={library} />
+      <ChangesBar library={library} changedCollectionIds={changedIds} />
     </div>
   );
 }

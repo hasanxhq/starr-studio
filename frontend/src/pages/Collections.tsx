@@ -1,24 +1,145 @@
-// Studio-built smart collections for one library.
+// Collections hub: every collection in the library (All) and ready-made categories, with one Changes bar.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation, useSearchParams } from "react-router";
 
 import { ApiError } from "../api";
 import { useLibrary } from "../library";
-import { builderApi, sourceLabel, sourcesOf, type BuiltCollection } from "../builderApi";
+import { builderApi, sourceLabel, sourcesOf, type BuiltCollection, type OtherCollection } from "../builderApi";
+import { ChangesBar } from "../components/ChangesBar";
 import { FileBlock } from "../components/ImportLanding";
+import { LockIcon, PlusIcon, SearchIcon, UploadIcon } from "../components/icons";
 import { DownloadMissingBadge, RequestCountsLine, RequestWaitingButton } from "../components/RequestCounts";
 import { PlexPoster } from "../components/PlexPoster";
 import { PosterTile, StatusBadge, badgeFor } from "../components/PosterTile";
 import { RetryButton } from "../components/RetryButton";
-import { Button } from "../components/ui";
+import { Button, Tag } from "../components/ui";
 import { importApi, type UploadAddResult, type UploadStaging } from "../importApi";
+import { ReadyMadeTab } from "./ReadyMade";
+
+type ShowFilter = "all" | "in_plex" | "building" | "missing" | "failed" | "fetching" | "changed";
+type ByFilter = "all" | "studio" | "ready_made" | "kometa" | "maintainerr" | "plex";
+
+const BY_FILTERS: { key: ByFilter; label: string; hideAtZero?: boolean }[] = [
+  { key: "all", label: "All" },
+  { key: "studio", label: "Studio" },
+  { key: "ready_made", label: "Ready-made", hideAtZero: true },
+  { key: "kometa", label: "Kometa files", hideAtZero: true },
+  { key: "maintainerr", label: "Maintainerr", hideAtZero: true },
+  { key: "plex", label: "Made in Plex", hideAtZero: true },
+];
+
+const CHIP_FILTERS: { key: ShowFilter; label: string; hideAtZero?: boolean }[] = [
+  { key: "all", label: "All" },
+  { key: "in_plex", label: "In Plex" },
+  { key: "building", label: "Building" },
+  { key: "missing", label: "Not built" },
+  { key: "failed", label: "Failed" },
+  { key: "fetching", label: "Fetching missing", hideAtZero: true },
+  { key: "changed", label: "Changed", hideAtZero: true },
+];
+
+function tabClass({ isActive }: { isActive: boolean }) {
+  return [
+    "flex min-h-11 shrink-0 items-center border-b-2 px-4 text-sm transition-colors",
+    isActive ? "border-accent text-text" : "border-transparent text-muted hover:text-text",
+  ].join(" ");
+}
+
+function libraryQs(library: string, extra?: Record<string, string | null>) {
+  const params = new URLSearchParams();
+  params.set("library", library);
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+  }
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
 
 function sourceLine(collection: BuiltCollection): string {
   const sources = sourcesOf(collection);
   if (sources.length > 1) return `${sources.length} sources`;
   return sourceLabel(sources[0] ?? { kind: "filters" });
+}
+
+function tileBadge(collection: BuiltCollection) {
+  if (collection.changed) return <StatusBadge state={{ kind: "changed" }} />;
+  const state = badgeFor(collection);
+  return <StatusBadge state={state ?? { kind: "missing" }} />;
+}
+
+function matchesFilter(collection: BuiltCollection, filter: ShowFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "in_plex") return collection.state === "in_plex";
+  if (filter === "building") return collection.state === "queued" || collection.state === "building";
+  if (filter === "missing") return collection.state === "missing";
+  if (filter === "failed") return collection.state === "failed";
+  if (filter === "changed") return collection.changed === true;
+  const r = collection.requests;
+  return (r?.waiting ?? 0) + (r?.requested ?? 0) + (r?.downloading ?? 0) > 0;
+}
+
+function parseByParam(value: string | null): ByFilter {
+  if (value === "studio" || value === "ready_made" || value === "kometa" || value === "maintainerr" || value === "plex") return value;
+  return "all";
+}
+
+function byCounts(collections: BuiltCollection[], others: OtherCollection[]): Record<ByFilter, number> {
+  return {
+    all: collections.length + others.length,
+    studio: collections.length,
+    ready_made: others.filter((row) => row.made_by === "ready_made").length,
+    kometa: others.filter((row) => row.made_by === "kometa").length,
+    maintainerr: others.filter((row) => row.made_by === "maintainerr").length,
+    plex: others.filter((row) => row.made_by === "plex").length,
+  };
+}
+
+function madeByLabel(row: OtherCollection): ReactNode {
+  if (row.made_by === "ready_made") return "Ready-made";
+  if (row.made_by === "kometa") return "Kometa file";
+  if (row.made_by === "plex") return "Made in Plex";
+  return (
+    <span className="inline-flex items-center gap-1">
+      <LockIcon className="size-3.5 shrink-0" />
+      Maintainerr
+      <span className="font-normal">protected</span>
+    </span>
+  );
+}
+
+function otherLink(library: string, row: OtherCollection): string {
+  if (row.rating_key) return `/libraries/${encodeURIComponent(library)}/collections/${encodeURIComponent(row.rating_key)}`;
+  if (row.made_by === "ready_made" && row.category) {
+    return `/collections/ready-made/${encodeURIComponent(row.category)}${libraryQs(library)}`;
+  }
+  return `/collections${libraryQs(library)}`;
+}
+
+function filterCounts(collections: BuiltCollection[]): Record<ShowFilter, number> {
+  const counts: Record<ShowFilter, number> = {
+    all: collections.length,
+    in_plex: 0,
+    building: 0,
+    missing: 0,
+    failed: 0,
+    fetching: 0,
+    changed: 0,
+  };
+  for (const row of collections) {
+    if (row.state === "in_plex") counts.in_plex += 1;
+    if (row.state === "queued" || row.state === "building") counts.building += 1;
+    if (row.state === "missing") counts.missing += 1;
+    if (row.state === "failed") counts.failed += 1;
+    if (row.changed) counts.changed += 1;
+    const r = row.requests;
+    if ((r?.waiting ?? 0) + (r?.requested ?? 0) + (r?.downloading ?? 0) > 0) counts.fetching += 1;
+  }
+  return counts;
 }
 
 function CollectionCard({ collection }: { collection: BuiltCollection }) {
@@ -36,7 +157,7 @@ function CollectionCard({ collection }: { collection: BuiltCollection }) {
       title={collection.title}
       to={`/collections/${collection.id}`}
       art={art}
-      badge={<StatusBadge state={badgeFor(collection) ?? { kind: "missing" }} />}
+      badge={tileBadge(collection)}
       liClassName="overflow-hidden rounded-card border border-border bg-surface"
       controlClassName="hover:bg-surface-2/40"
       footer={
@@ -62,6 +183,45 @@ function CollectionCard({ collection }: { collection: BuiltCollection }) {
       <span className="px-3.5 pt-3 font-display text-base leading-snug font-semibold">{collection.title}</span>
       <span className={`px-3.5 pt-1 text-[13px] text-muted ${collection.state === "failed" && collection.last_error ? "" : "pb-3.5"}`}>{sourceLine(collection)}</span>
       {collection.state === "failed" && collection.last_error ? <span className="px-3.5 pt-1 pb-3.5 text-[13px] text-err">{collection.last_error}</span> : null}
+    </PosterTile>
+  );
+}
+
+function OtherCard({ library, row }: { library: string; row: OtherCollection }) {
+  const art = row.thumb ? (
+    <PlexPoster thumb={row.thumb} title={row.title} />
+  ) : (
+    <span aria-hidden="true" className="flex aspect-[2/3] items-end overflow-hidden rounded-control border border-border bg-banner-studio p-3 font-display text-base leading-snug font-semibold">
+      {row.title}
+    </span>
+  );
+  return (
+    <PosterTile
+      title={row.title}
+      to={otherLink(library, row)}
+      art={art}
+      liClassName="overflow-hidden rounded-card border border-border bg-surface"
+      controlClassName="hover:bg-surface-2/40"
+      footer={
+        row.made_by === "kometa" ? (
+          <p className="px-3.5 pb-3.5">
+            <Link className="text-[13px] text-accent underline" to="/setup/move-over">
+              Move over
+            </Link>
+          </p>
+        ) : undefined
+      }
+    >
+      <span className="px-3.5 pt-3 font-display text-base leading-snug font-semibold">{row.title}</span>
+      <span className="flex flex-wrap items-center gap-1.5 px-3.5 pt-1 pb-3.5 text-[13px] text-muted">
+        {row.items != null ? (
+          <span>
+            {row.items} item{row.items === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        <Tag tone={row.made_by === "maintainerr" ? "info" : row.made_by === "kometa" ? "ok" : "muted"}>{madeByLabel(row)}</Tag>
+        {row.smart ? <Tag>Smart</Tag> : null}
+      </span>
     </PosterTile>
   );
 }
@@ -203,11 +363,198 @@ function UploadDialog({ libraries, initialLibrary, onClose }: { libraries: strin
   );
 }
 
+function filterQs(library: string, by: ByFilter, show: ShowFilter) {
+  // Status filters only apply to Studio tiles, so another Made-by choice drops them.
+  const keepShow = (by === "all" || by === "studio") && show !== "all";
+  return libraryQs(library, {
+    by: by === "all" ? null : by,
+    show: keepShow ? show : null,
+  });
+}
+
+function AllTab({
+  collections,
+  others,
+  loading,
+  error,
+  othersError,
+  plexError,
+  othersLoading,
+  search,
+  show,
+  by,
+  library,
+  onShow,
+  onBy,
+}: {
+  collections: BuiltCollection[];
+  others: OtherCollection[];
+  loading: boolean;
+  error: Error | null;
+  othersError: Error | null;
+  plexError: string | null;
+  othersLoading: boolean;
+  search: string;
+  show: ShowFilter;
+  by: ByFilter;
+  library: string;
+  onShow: (next: ShowFilter) => void;
+  onBy: (next: ByFilter) => void;
+}) {
+  const needle = search.trim().toLowerCase();
+  const statusCounts = useMemo(() => filterCounts(collections), [collections]);
+  const ownerCounts = useMemo(() => byCounts(collections, others), [collections, others]);
+
+  const studioVisible = by === "all" || by === "studio";
+  const othersVisible = by !== "studio" && (by !== "all" || show === "all");
+  const showStatusRow = by === "all" || by === "studio";
+
+  const filteredStudio = useMemo(() => {
+    if (!studioVisible) return [];
+    return collections.filter((row) => {
+      if (needle && !row.title.toLowerCase().includes(needle)) return false;
+      return matchesFilter(row, show);
+    });
+  }, [collections, needle, show, studioVisible]);
+
+  const filteredOthers = useMemo(() => {
+    if (!othersVisible) return [];
+    return others.filter((row) => {
+      if (needle && !row.title.toLowerCase().includes(needle)) return false;
+      if (by !== "all" && row.made_by !== by) return false;
+      return true;
+    });
+  }, [others, needle, by, othersVisible]);
+
+  const listError = error;
+  const trouble =
+    plexError ?? othersError?.message ?? null;
+  const entirelyEmpty = collections.length === 0 && others.length === 0 && !loading && !othersLoading;
+  const gridEmpty = filteredStudio.length === 0 && filteredOthers.length === 0 && !loading;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Made by">
+        {BY_FILTERS.map(({ key, label, hideAtZero }) => {
+          const count = ownerCounts[key];
+          if (hideAtZero && count === 0) return null;
+          const active = by === key;
+          return (
+            <Link
+              key={key}
+              to={`/collections${filterQs(library, key, show)}`}
+              replace
+              aria-current={active ? "true" : undefined}
+              className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm transition ${active ? "border-accent bg-accent/15 text-text" : "border-border bg-surface-2 text-muted hover:text-text"}`}
+              onClick={(event) => {
+                event.preventDefault();
+                onBy(key);
+              }}
+            >
+              {label} ({count})
+            </Link>
+          );
+        })}
+      </div>
+
+      {showStatusRow && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter collections">
+          {CHIP_FILTERS.map(({ key, label, hideAtZero }) => {
+            const count = statusCounts[key];
+            if (hideAtZero && count === 0) return null;
+            const active = show === key;
+            return (
+              <Link
+                key={key}
+                to={`/collections${filterQs(library, by, key)}`}
+                replace
+                aria-current={active ? "true" : undefined}
+                className={`inline-flex min-h-11 items-center rounded-full border px-3 text-sm transition ${active ? "border-accent bg-accent/15 text-text" : "border-border bg-surface-2 text-muted hover:text-text"}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onShow(key);
+                }}
+              >
+                {label} ({count})
+              </Link>
+            );
+          })}
+        </div>
+      )}
+
+      {trouble ? <p className="text-[13px] text-muted">Only Studio&apos;s collections are shown: {trouble}</p> : null}
+
+      {(loading || othersLoading) && collections.length === 0 ? (
+        <p className="text-muted">Loading…</p>
+      ) : listError && collections.length === 0 ? (
+        <p role="alert" className="text-err">
+          {listError.message}
+        </p>
+      ) : gridEmpty ? (
+        <div className="flex flex-col items-start gap-3 rounded-card border border-dashed border-border px-4 py-10">
+          <p className="text-muted">{entirelyEmpty ? `No collections yet in ${library}.` : "No collections match this filter."}</p>
+          {entirelyEmpty && (
+            <Link
+              to={`/collections/new?library=${encodeURIComponent(library)}`}
+              className="inline-flex min-h-11 items-center justify-center rounded-control bg-accent px-4 text-sm font-medium text-on-accent transition hover:brightness-110"
+            >
+              New collection
+            </Link>
+          )}
+        </div>
+      ) : (
+        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]" aria-label="Collections">
+          {filteredStudio.map((collection) => (
+            <CollectionCard key={collection.id} collection={collection} />
+          ))}
+          {filteredOthers.map((row) => (
+            <OtherCard key={`${row.made_by}:${row.rating_key ?? row.title}`} library={library} row={row} />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function Collections() {
-  const [params] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
   const kept = params.get("kept");
+  const showParam = params.get("show");
+  const show: ShowFilter =
+    showParam === "in_plex" || showParam === "building" || showParam === "missing" || showParam === "failed" || showParam === "fetching" || showParam === "changed"
+      ? showParam
+      : "all";
+  const by = parseByParam(params.get("by"));
   const [uploadOpen, setUploadOpen] = useState(false);
-  const { library, libraries: names, setLibrary, overview } = useLibrary();
+  const [search, setSearch] = useState("");
+  const { pathname } = useLocation();
+  const readyMadeTab = pathname.startsWith("/collections/ready-made");
+  const { library, libraries: names, overview } = useLibrary();
+
+  const setShow = (next: ShowFilter) => {
+    setSearchParams(
+      (current) => {
+        const copy = new URLSearchParams(current);
+        if (next === "all") copy.delete("show");
+        else copy.set("show", next);
+        return copy;
+      },
+      { replace: true },
+    );
+  };
+
+  const setBy = (next: ByFilter) => {
+    setSearchParams(
+      (current) => {
+        const copy = new URLSearchParams(current);
+        if (next === "all") copy.delete("by");
+        else copy.set("by", next);
+        if (next !== "all" && next !== "studio") copy.delete("show");
+        return copy;
+      },
+      { replace: true },
+    );
+  };
 
   const data = useQuery({
     queryKey: ["collections", library],
@@ -218,6 +565,18 @@ export function Collections() {
       return collections.some((entry) => entry.state === "queued" || entry.state === "building") ? 3000 : false;
     },
   });
+
+  const othersQuery = useQuery({
+    queryKey: ["collections", library, "others"],
+    queryFn: () => builderApi.others(library!),
+    enabled: library !== null,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const collections = data.data?.collections ?? [];
+  const others = othersQuery.data?.others ?? [];
+  const changedIds = useMemo(() => collections.filter((row) => row.changed).map((row) => row.id), [collections]);
 
   if (overview.isPending) return <p className="text-muted">Loading…</p>;
   if (overview.isError) {
@@ -239,37 +598,53 @@ export function Collections() {
     );
   }
 
-  const collections = data.data?.collections ?? [];
+  const tabQs = filterQs(library, by, show);
 
   return (
     <div className="flex max-w-[1400px] flex-col gap-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-[32px] leading-tight font-semibold">Collections</h2>
-          <p className="mt-1 max-w-xl text-[13px] text-muted">Smart collections you build from your library&apos;s own data. Plex keeps them up to date.</p>
+          <p className="mt-1 max-w-xl text-[13px] text-muted">
+            {readyMadeTab ? "Kometa's ready-made collections and the ones you build." : "Smart collections you build from your library's own data. Plex keeps them up to date."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-[13px] text-muted">
-            Apply to
-            <select
-              className="min-h-11 rounded-control border border-border-strong bg-surface-2 px-3 text-sm text-text focus:border-accent focus:outline-none"
-              value={library}
-              onChange={(event) => setLibrary(event.target.value)}
-            >
-              {names.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-            </select>
+          <label className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-control border border-border-strong bg-surface-2 px-3 text-sm sm:min-w-[16rem] sm:flex-none">
+            <SearchIcon className="size-4 text-muted" />
+            <span className="sr-only">Search collections</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search collections"
+              className="min-h-11 min-w-0 flex-1 bg-transparent text-text placeholder:text-muted focus:outline-none"
+            />
           </label>
-          <Button onClick={() => setUploadOpen(true)}>Upload a collection file</Button>
+          <Button onClick={() => setUploadOpen(true)}>
+            <UploadIcon className="mr-1.5 size-4" />
+            Upload a file
+          </Button>
           <Link
             to={`/collections/new?library=${encodeURIComponent(library)}`}
-            className="inline-flex min-h-11 items-center justify-center rounded-control bg-accent px-4 text-sm font-medium text-on-accent transition hover:brightness-110"
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-control bg-accent px-4 text-sm font-medium text-on-accent transition hover:brightness-110"
           >
+            <PlusIcon className="size-4" />
             New collection
           </Link>
         </div>
       </header>
+
+      <nav aria-label="Collections views" className="-mx-4 overflow-x-auto border-b border-border md:-mx-6">
+        <div role="tablist" className="flex px-4 md:px-6">
+          <NavLink to={`/collections${tabQs}`} end className={tabClass} role="tab">
+            All
+          </NavLink>
+          <NavLink to={`/collections/ready-made${libraryQs(library)}`} className={tabClass} role="tab">
+            Ready-made
+          </NavLink>
+        </div>
+      </nav>
 
       {kept && (
         <p role="status" className="rounded-control border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
@@ -277,30 +652,27 @@ export function Collections() {
         </p>
       )}
 
-      {data.isPending ? (
-        <p className="text-muted">Loading…</p>
-      ) : data.isError ? (
-        <p role="alert" className="text-err">
-          {data.error.message}
-        </p>
-      ) : collections.length === 0 ? (
-        <div className="flex flex-col items-start gap-3 rounded-card border border-dashed border-border px-4 py-10">
-          <p className="text-muted">No collections yet in {library}.</p>
-          <Link
-            to={`/collections/new?library=${encodeURIComponent(library)}`}
-            className="inline-flex min-h-11 items-center justify-center rounded-control bg-accent px-4 text-sm font-medium text-on-accent transition hover:brightness-110"
-          >
-            New collection
-          </Link>
-        </div>
+      {readyMadeTab ? (
+        <ReadyMadeTab search={search} />
       ) : (
-        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]" aria-label="Collections">
-          {collections.map((collection) => (
-            <CollectionCard key={collection.id} collection={collection} />
-          ))}
-        </ul>
+        <AllTab
+          collections={collections}
+          others={others}
+          loading={data.isPending}
+          error={data.error}
+          othersError={othersQuery.error}
+          plexError={othersQuery.data?.plex_error ?? null}
+          othersLoading={othersQuery.isPending}
+          search={search}
+          show={show}
+          by={by}
+          library={library}
+          onShow={setShow}
+          onBy={setBy}
+        />
       )}
 
+      <ChangesBar key={library} library={library} changedCollectionIds={changedIds} />
       {uploadOpen && <UploadDialog libraries={names} initialLibrary={library} onClose={() => setUploadOpen(false)} />}
     </div>
   );

@@ -6,7 +6,6 @@ import { Link } from "react-router";
 
 import { ApiError, api, type ReadyMadeCategorySummary, type ReadyMadeKind } from "../api";
 import { useLibrary } from "../library";
-import { BuildBar } from "../components/BuildBar";
 import { Tag } from "../components/ui";
 import { categoryOf, shortTitle } from "../defaults";
 import { formatRelative } from "../runs";
@@ -20,16 +19,15 @@ const SECTIONS: { kind: ReadyMadeKind; label: string }[] = [
 
 function countLine(category: ReadyMadeCategorySummary, counting: boolean): string {
   if (category.count === null) return counting ? "Counting…" : "Not counted yet";
-  const collections = `${category.count} collection${category.count === 1 ? "" : "s"}`;
-  return `${collections} · ${category.in_plex} in Plex`;
+  return `${category.picked} picked · ${category.in_plex} built`;
 }
 
-function CategoryCover({ category }: { category: ReadyMadeCategorySummary }) {
+function CategoryCover({ category, compact }: { category: ReadyMadeCategorySummary; compact?: boolean }) {
   const [noCover, setNoCover] = useState(false);
   const banner = categoryOf("collection", category).banner;
-  if (noCover) {
+  if (noCover || compact) {
     return (
-      <span aria-hidden="true" className={`flex h-[110px] w-full items-end p-3 font-display text-lg leading-snug font-semibold ${banner}`}>
+      <span aria-hidden="true" className={`flex h-[88px] w-full items-end overflow-hidden p-3 font-display text-base leading-snug font-semibold ${banner}`}>
         {shortTitle(category.title)}
       </span>
     );
@@ -50,11 +48,25 @@ function CategoryCover({ category }: { category: ReadyMadeCategorySummary }) {
   );
 }
 
-function CategoryCard({ category, library, counting }: { category: ReadyMadeCategorySummary; library: string; counting: boolean }) {
+function CategoryCard({
+  category,
+  library,
+  counting,
+  compact,
+  search,
+}: {
+  category: ReadyMadeCategorySummary;
+  library: string;
+  counting: boolean;
+  compact?: boolean;
+  search: string;
+}) {
   const muted = !category.listable;
+  if (search && !category.title.toLowerCase().includes(search.toLowerCase())) return null;
+
   const body = (
     <>
-      <CategoryCover category={category} />
+      <CategoryCover category={category} compact={compact} />
       <span className="px-3.5 pt-1 pb-3.5 text-[13px] text-muted">{muted ? category.reason : countLine(category, counting)}</span>
       {category.picked > 0 && (
         <span className="absolute top-2 right-2">
@@ -75,7 +87,7 @@ function CategoryCard({ category, library, counting }: { category: ReadyMadeCate
   return (
     <li aria-label={category.title} className="relative flex flex-col overflow-hidden rounded-card border border-border bg-surface">
       <Link
-        to={`/ready-made/${encodeURIComponent(category.name)}?library=${encodeURIComponent(library)}`}
+        to={`/collections/ready-made/${encodeURIComponent(category.name)}?library=${encodeURIComponent(library)}`}
         className="flex min-h-11 grow flex-col text-left hover:bg-surface-2/40"
       >
         {body}
@@ -84,8 +96,9 @@ function CategoryCard({ category, library, counting }: { category: ReadyMadeCate
   );
 }
 
-export function ReadyMade() {
-  const { library, libraries: names, setLibrary, overview } = useLibrary();
+/** Ready-made category grid (Collections → Ready-made tab). */
+export function ReadyMadeTab({ search = "", compact = true }: { search?: string; compact?: boolean }) {
+  const { library, overview } = useLibrary();
   const data = useQuery({
     queryKey: ["ready-made", "library", library],
     queryFn: () => api.readyMade.library(library!),
@@ -113,30 +126,12 @@ export function ReadyMade() {
     );
   }
 
+  const needle = search.trim().toLowerCase();
+
   return (
-    <div className="flex max-w-[1400px] flex-col gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[13px] text-muted">Kometa's ready-made collections as categories</p>
-          <h2 className="mt-1 text-[32px] leading-tight font-semibold">Ready-made</h2>
-          {data.data?.counted_at && (
-            <p className="mt-1 text-[13px] text-muted">Counted {formatRelative(data.data.counted_at)}</p>
-          )}
-          {data.data?.counting && !data.data.counted_at && <p className="mt-1 text-[13px] text-muted">Counting…</p>}
-        </div>
-        <label className="flex items-center gap-2 text-[13px] text-muted">
-          Apply to
-          <select
-            className="min-h-11 rounded-control border border-border-strong bg-surface-2 px-3 text-sm text-text focus:border-accent focus:outline-none"
-            value={library}
-            onChange={(event) => setLibrary(event.target.value)}
-          >
-            {names.map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
-      </header>
+    <div className="flex flex-col gap-5">
+      {data.data?.counted_at && <p className="text-[13px] text-muted">Counted {formatRelative(data.data.counted_at)}</p>}
+      {data.data?.counting && !data.data.counted_at && <p className="text-[13px] text-muted">Counting…</p>}
 
       {data.isPending ? (
         <p className="text-muted">Loading…</p>
@@ -147,7 +142,8 @@ export function ReadyMade() {
       ) : (
         SECTIONS.map(({ kind, label }) => {
           const items = data.data.categories.filter((category) => category.kind === kind);
-          if (items.length === 0) return null;
+          const visible = needle ? items.filter((category) => category.title.toLowerCase().includes(needle)) : items;
+          if (visible.length === 0) return null;
           return (
             <section key={kind} aria-labelledby={`ready-made-${kind}`}>
               <h3 id={`ready-made-${kind}`} className="mb-3 text-sm font-semibold tracking-wide text-muted uppercase">
@@ -155,15 +151,13 @@ export function ReadyMade() {
               </h3>
               <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((category) => (
-                  <CategoryCard key={category.name} category={category} library={library} counting={data.data.counting} />
+                  <CategoryCard key={category.name} category={category} library={library} counting={data.data.counting} compact={compact} search={needle} />
                 ))}
               </ul>
             </section>
           );
         })
       )}
-
-      <BuildBar library={library} />
     </div>
   );
 }

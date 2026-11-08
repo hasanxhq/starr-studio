@@ -1,6 +1,6 @@
 // Collection builder API: fields, live preview, and Studio-built collections.
 
-import { ApiError, SIGNED_OUT_EVENT, request } from "./api";
+import { ApiError, SIGNED_OUT_EVENT, request, type ReadyMadeRef } from "./api";
 import { urlBase } from "./base";
 import type { RequestSummary } from "./requestsApi";
 
@@ -39,7 +39,8 @@ export type SourcePreview = {
   total: number | null;
   in_library: { rating_key: string; title: string; year: number | null; thumb: string | null }[];
   in_library_count: number;
-  missing: { id: string; title: string; year: number | null; poster: string | null }[];
+  /** ``id`` is the title's request key; ``requested``: Studio asked for it before (it never asks twice). */
+  missing: { id: string; title: string; year: number | null; poster: string | null; requested?: boolean }[];
   missing_count: number;
   problems: string[];
   skipped?: SkippedSource[];
@@ -94,19 +95,54 @@ export type CollectionInput = {
   request_cap: number | null;
   /** Radarr/Sonarr quality profile for this collection's requests; null uses the default in Settings → Requests. */
   request_profile: string | null;
+  /** Missing titles (request keys) never to request. Omit on an update to keep the saved list. */
+  skip_requests?: string[];
 };
 
-export type CollectionSaveBody = CollectionInput & { confirm_requests?: boolean };
+/** ``build: false`` saves without running Kometa (the Changes bar builds it later). */
+export type CollectionSaveBody = CollectionInput & { confirm_requests?: boolean; build?: boolean };
+
+/** What a collection's last run changed in Plex, from Kometa's change reports; null when it reported nothing. */
+export type LastChange = { added: number; removed: number; run_id: number } | null;
 
 export type BuiltCollection = CollectionInput & {
   id: number;
   state: "queued" | "building" | "in_plex" | "failed" | "missing";
+  changed?: boolean;
   plex_items: number | null;
   thumb: string | null;
   last_built_at: string | null;
   last_error: string | null;
   run_id: number | null;
   requests: RequestSummary;
+  last_change: LastChange;
+};
+
+export type OtherCollection = {
+  made_by: "ready_made" | "kometa" | "maintainerr" | "plex";
+  title: string;
+  rating_key: string | null;
+  items: number | null;
+  thumb: string | null;
+  smart: boolean;
+  category: string | null;
+  last_change: LastChange;
+};
+
+export type LibraryBuildBody = {
+  ready_made: { add: ReadyMadeRef[]; remove: ReadyMadeRef[] };
+  collections: number[];
+  download_missing: boolean;
+  dry_run: boolean;
+};
+
+export type LibraryBuildItem = { kind: "ready_made" | "collection"; title: string };
+
+export type LibraryBuildResult = {
+  build: LibraryBuildItem[];
+  remove: { title: string }[];
+  blocked: { title: string; reason: string }[];
+  run_id?: number | null;
 };
 
 /** A collection's sources: ``sources`` when present, else the one ``source`` (old responses). */
@@ -225,6 +261,10 @@ export const builderApi = {
       `/ready-made/libraries/${encodeURIComponent(library)}/categories/${encodeURIComponent(category)}/preview?${new URLSearchParams({ block, key })}`,
     ),
   list: (library: string) => request<{ collections: BuiltCollection[] }>("GET", `/collections?library=${encodeURIComponent(library)}`),
+  others: (library: string) =>
+    request<{ others: OtherCollection[]; plex_error: string | null }>("GET", `/libraries/${encodeURIComponent(library)}/other-collections`),
+  buildLibrary: (library: string, body: LibraryBuildBody) =>
+    request<LibraryBuildResult>("POST", `/libraries/${encodeURIComponent(library)}/build`, body),
   get: (id: number) => request<BuiltCollection>("GET", `/collections/${id}`),
   create: (body: CollectionSaveBody) => request<BuiltCollection>("POST", "/collections", body),
   update: (id: number, body: CollectionSaveBody) => request<BuiltCollection>("PUT", `/collections/${id}`, body),
