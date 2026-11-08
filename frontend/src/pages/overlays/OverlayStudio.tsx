@@ -9,7 +9,7 @@ import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, GripIcon, LockIcon
 import { ActionBar, Button } from "../../components/ui";
 import { SaveError } from "../../components/ValidationReport";
 import { shortTitle } from "../../defaults";
-import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, whereItIs, type Box } from "../../overlayLayout";
+import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, whereItIs, type Box, resolveLayout } from "../../overlayLayout";
 import { loadSchema } from "../../yaml/schema";
 import { useSave, type Values } from "../../components/DefaultVariables";
 import { layerChangeSentence, studioChangeSentence } from "./changeSummary";
@@ -116,8 +116,10 @@ export function OverlayStudio({
     if (!layer || layer.entry?.layout?.moved_by === "position") return;
     const current = draftValues(layer);
     const library = variablesOf(layer);
-    const hOffset = Number(current.horizontal_offset ?? library.horizontal_offset ?? 0) + dx;
-    const vOffset = Number(current.vertical_offset ?? library.vertical_offset ?? 0) + dy;
+    // Offsets push inwards from the anchored edge, so right/bottom anchors move the other way.
+    const effective = resolveLayout(layer.entry?.layout, { ...library, ...current });
+    const hOffset = Number(current.horizontal_offset ?? library.horizontal_offset ?? 0) + (effective.horizontal_align === "right" ? -dx : dx);
+    const vOffset = Number(current.vertical_offset ?? library.vertical_offset ?? 0) + (effective.vertical_align === "bottom" ? -dy : dy);
     applyPlacement(layerName, { horizontal_offset: Math.max(0, hOffset), vertical_offset: Math.max(0, vOffset) });
   };
 

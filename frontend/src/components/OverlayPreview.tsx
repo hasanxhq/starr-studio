@@ -135,7 +135,8 @@ export function TryItOnRow({
 
 function AnchorGuides() {
   const lines = [1 / 3, 2 / 3];
-  const dots = lines.flatMap((row) => lines.map((column) => ({ left: `${column * 100}%`, top: `${row * 100}%` })));
+  const anchors = [0, 0.5, 1];
+  const dots = anchors.flatMap((row) => anchors.map((column) => ({ left: `${column * 100}%`, top: `${row * 100}%` })));
   const dash = "1px dashed color-mix(in srgb, var(--color-accent) 55%, transparent)";
   return (
     <div className="pointer-events-none absolute inset-0 motion-reduce:hidden" aria-hidden>
@@ -258,6 +259,7 @@ export function OverlayPoster({
             onPointerDown={
               onBoxDrop
                 ? (event) => {
+                    if (event.button > 0) return; // only the main button drags (jsdom leaves it undefined)
                     event.currentTarget.setPointerCapture?.(event.pointerId);
                     dragRef.current = { box, startClientX: event.clientX, startClientY: event.clientY, startX: box.x, startY: box.y, dx: 0, dy: 0 };
                     bump();

@@ -97,7 +97,6 @@ export function whereItIs(layout: OverlayLayout | undefined, own: Vars): string 
 
 const AUDIO: Record<string, string> = { truehd: "TRUEHD", eac3: "DD+", ac3: "DD", dca: "DTS", "dca-ma": "DTS-HD", aac: "AAC", flac: "FLAC", opus: "OPUS" };
 
-/** What a layer says on this title, where Plex's listing can tell. */
 type Rect = { x: number; y: number; width: number; height: number };
 
 const H_ALIGNS = ["left", "center", "right"] as const;
@@ -160,30 +159,21 @@ export function snapToPosition(box: Rect, layout: OverlayLayout | undefined, own
   return { horizontal_position: best.horizontal_position, vertical_position: best.vertical_position };
 }
 
-/** True when any two boxes overlap with positive area (edge contact alone does not count). */
-export function overlaps(boxes: Rect[]): boolean {
+/** The first pair of boxes that overlap with positive area (edge contact alone does not count). */
+export function overlapPair<T extends Rect & { label?: string }>(boxes: T[]): [string, string] | null {
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const w = Math.min(boxes[i].x + boxes[i].width, boxes[j].x + boxes[j].width) - Math.max(boxes[i].x, boxes[j].x);
       const h = Math.min(boxes[i].y + boxes[i].height, boxes[j].y + boxes[j].height) - Math.max(boxes[i].y, boxes[j].y);
-      if (w > 0 && h > 0) return true;
-    }
-  }
-  return false;
-}
-
-/** The first pair of overlapping boxes, for captions. */
-export function overlapPair(boxes: Box[]): [string, string] | null {
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      const w = Math.min(boxes[i].x + boxes[i].width, boxes[j].x + boxes[j].width) - Math.max(boxes[i].x, boxes[j].x);
-      const h = Math.min(boxes[i].y + boxes[i].height, boxes[j].y + boxes[j].height) - Math.max(boxes[i].y, boxes[j].y);
-      if (w > 0 && h > 0) return [boxes[i].label, boxes[j].label];
+      if (w > 0 && h > 0) return [boxes[i].label ?? "", boxes[j].label ?? ""];
     }
   }
   return null;
 }
 
+export const overlaps = (boxes: Rect[]): boolean => overlapPair(boxes) !== null;
+
+/** What a layer says on this title, where Plex's listing can tell. */
 export function layerText(name: string, label: string, item: PlexItem | null): string {
   if (name === "resolution") {
     const resolution = item?.video_resolution;
