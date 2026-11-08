@@ -97,9 +97,49 @@ Choices to settle when it's built:
 - HTTP access lines stay out of Info: uvicorn's access log is noise at that level.
 - Rotation is by size, not by day, so a busy Debug day can't grow without limit.
 
+9. **Kometa is bundled, but Studio still treats it as the user's to choose and update** (Should fix; `compose.yaml:8`, `starr_studio/health.py:263`, `frontend/src/pages/SystemUpdates.tsx:16-28`, `docs/install-without-docker.md:167`)
+   - **What this is:** Studio is a fully managed Kometa install. The Docker image is built on `kometateam/kometa:v2.5.4`, and the seedbox script installs exactly v2.5.4. Several modules copy Kometa 2.5.4's own tables and rules (`smart_filters.py`, `ready_made.py`, the source lists, `default_covers.py`, `ready_made_posters.py`, `defaults.ts`), each marked "check on a Kometa update".
+   - **Problem:** Four places still invite users to run some other Kometa:
+     - `KOMETA_TAG` is a user setting in the README and `compose.yaml`, so anyone can build Studio on a Kometa it was never checked against.
+     - System → Status and System → Updates say "Kometa X is out" as soon as Kometa's `version` webhook reports a newer release. The Updates page then says to pull the new Studio image, which still holds the pinned Kometa, so following the advice changes nothing.
+     - The no-Docker guide has a "To update Kometa to a newer tag" section.
+     - The README talks about "an older Kometa you've pointed it at".
+
+     A user who upgrades Kometa on their own gets copied tables that no longer match: wrong titles in Ready-made, filters Kometa refuses, and these only fail at run time.
+   - **Fix:** Kometa versions move with Studio releases. We test a new Kometa, re-check the copied tables, and ship both together.
+     - Keep the pinned version in one place (a `KOMETA_VERSION` constant or file). The Dockerfile, `compose.yaml`, `deploy/install-seedbox.sh` and the docs follow it; a test checks they match, as `tests/test_seedbox_script.py` already does for the script.
+     - Keep `KOMETA_TAG` as a build argument for us; take it out of the README's user settings.
+     - Replace "Kometa X is out" with a version check. A warning when the installed Kometa isn't the pinned one ("Studio is tested with Kometa 2.5.4; you have X"). A newer Kometa release becomes a quiet line on System → Updates ("waits for a Studio update"), not a notice.
+     - Delete the self-update section from the no-Docker guide; updating Studio's install updates Kometa.
+     - Don't vendor Kometa's source or make it a pip dependency: it isn't on PyPI, it pins its own dependencies exactly, and the two separate venvs in the Dockerfile exist so the two sets never clash.
+   - **If we skip it:** Users follow Studio's own update notice into a setup Studio wasn't tested with, and the failures look like Studio bugs.
+
+10. **Delete shows no progress while it waits for Plex** (Nice to have, UX; `frontend/src/components/ui.tsx:87-118`, `frontend/src/pages/CollectionBuilder.tsx:441-450,715-721`)
+    - **What this is:** Delete on a collection asks once more (`ConfirmButton`), then calls the API, which deletes the collection from Plex before it answers. On success the page leaves for the Collections list by itself.
+    - **Problem:** While that call runs (seconds, longer on a slow Plex), the only change is that the red Delete button greys out. Its label stays "Delete", the warning text and Keep stay as they were, and Keep still works. It looks like nothing happened, so people press Keep, reload or leave the page mid-delete, and can't tell whether it went through.
+    - **Fix:** In `ConfirmButton`, once, so all its users get it (Delete, Remove, Disconnect, Turn off, Turn overlays off):
+      - While `busy`, show a spinner and a "…ing" label on the confirm button (e.g. "Deleting…"; a `busyLabel` prop, defaulting to `Working…` as `ConfirmDialog` does), and set `aria-busy`.
+      - Disable Keep while busy too.
+      - Keep the spinner until the page has left: on success the builder already navigates away, so only an error clears it (the error then shows as today).
+      - Move `Spinner` from `components/Jobs.tsx` to `components/ui.tsx` and use it in both places.
+      - A test: after confirming, the button reads "Deleting…" and Keep is disabled until the mock API answers.
+      - Check it again after the rework (P3.2 Collections page, P4 builder) in case delete moves.
+    - **If we skip it:** Deletes feel broken, and people who leave mid-delete come back unsure whether the collection is gone from Plex.
+
+11. **Bug check: Build stays disabled after restoring a draft** (Must check, reported by the user 2026-11-08 in their container; `frontend/src/pages/builder/draft.ts:106-110`, `frontend/src/pages/builder/useLocalDraft.ts:72-75`, `frontend/src/pages/builder/BuildBar.tsx:45-48`, `frontend/src/pages/CollectionBuilder.tsx:377`)
+    - **What this is:** The builder (P4.1, #110) keeps an unsaved draft in the browser and offers to restore it. Build and Save for later are enabled only when `canSave(draft, mode)` holds: a title, and in list mode at least one source with every source ready.
+    - **Problem:** In the user's container, opening Collections → New and restoring the draft leaves Build disabled. Not yet looked into.
+    - **Check:** Reproduce it in the running container (Collections → New, restore). Then find which part of `canSave` fails. Leads to rule out:
+      - the restored draft's title is empty or isn't applied;
+      - the start mode isn't restored with the draft, so a filters draft is judged as a list;
+      - a restored source isn't "ready" (`sourceReady`), e.g. a list URL or ID that needs a re-check after restore;
+      - `saving` is stuck true.
+    - **Fix:** The smallest change at the cause, plus a test in `CollectionBuilder.draft.test.tsx`: restore a stored draft on `/collections/new` and expect Build to be enabled.
+    - **If we skip it:** A restored draft can't be built, so the draft feature loses work instead of saving it.
+
 ## Summary
 
-**Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
+**Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Fix 9 before the next Studio release, so no update notice sends users to an untested Kometa. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
 
 **Lean:** about −100 lines possible, no dependencies to remove.
 
