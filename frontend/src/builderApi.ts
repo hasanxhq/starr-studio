@@ -110,6 +110,16 @@ export type BuiltCollection = CollectionInput & {
   requests: RequestSummary;
 };
 
+export type OtherCollection = {
+  made_by: "ready_made" | "kometa" | "maintainerr" | "plex";
+  title: string;
+  rating_key: string | null;
+  items: number | null;
+  thumb: string | null;
+  smart: boolean;
+  category: string | null;
+};
+
 export type LibraryBuildBody = {
   ready_made: { add: ReadyMadeRef[]; remove: ReadyMadeRef[] };
   collections: number[];
@@ -242,6 +252,8 @@ export const builderApi = {
       `/ready-made/libraries/${encodeURIComponent(library)}/categories/${encodeURIComponent(category)}/preview?${new URLSearchParams({ block, key })}`,
     ),
   list: (library: string) => request<{ collections: BuiltCollection[] }>("GET", `/collections?library=${encodeURIComponent(library)}`),
+  others: (library: string) =>
+    request<{ others: OtherCollection[]; plex_error: string | null }>("GET", `/libraries/${encodeURIComponent(library)}/other-collections`),
   buildLibrary: (library: string, body: LibraryBuildBody) =>
     request<LibraryBuildResult>("POST", `/libraries/${encodeURIComponent(library)}/build`, body),
   get: (id: number) => request<BuiltCollection>("GET", `/collections/${id}`),
