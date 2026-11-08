@@ -1,12 +1,12 @@
-// System → Logs: Kometa's own logs (meta.log, per library and collection), filtered by level (handoff v2 §8).
+// System → Logs: Studio's own log and Kometa's logs (meta.log, per library and collection), filtered by level (handoff v2 §8).
 // Each run's own log is on its run page.
 
 import { useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useState } from "react";
 import { Link } from "react-router";
 
-import { api, type LogLevel } from "../api";
-import { Card, Field, inputClass } from "../components/ui";
+import { api, type LogLevel, type LogSource } from "../api";
+import { Button, Card, Field, inputClass } from "../components/ui";
 
 const levels: { value: LogLevel; label: string }[] = [
   { value: "TRACE", label: "Everything" },
@@ -17,7 +17,7 @@ const levels: { value: LogLevel; label: string }[] = [
 ];
 
 // Kometa's lines: "[2026-10-30 04:00:02,200] builder.py   WARNING    | message   |". Continuations: spaces, then "| message |".
-const ENTRY = /^\[\d{4}-\d\d-\d\d (\d\d:\d\d:\d\d)[,.]\d+\] \S+\s+\[?[A-Z]+\]?\s+\| ?(.*?)\s*\|?$/;
+const ENTRY = /^\[\d{4}-\d\d-\d\d (\d\d:\d\d:\d\d)[,.]\d+\] \S+\s+\[?[A-Z]+\]?\s+(?:\| ?)?(.*?)\s*\|?$/; // Kometa's "| message |" or Studio's bare message
 const CONTINUED = /^\s+\| ?(.*?)\s*\|?$/;
 
 /** The time and message of a line, without Kometa's fixed-width columns, so it fits a phone. */
@@ -30,36 +30,71 @@ export function splitLine(text: string): { time: string | null; message: string 
 
 const lineColours: Partial<Record<LogLevel, string>> = { WARNING: "text-warn", ERROR: "text-err", CRITICAL: "text-err", DEBUG: "text-muted", TRACE: "text-muted" };
 
+const SOURCES: { value: LogSource; label: string }[] = [
+  { value: "kometa", label: "Kometa" },
+  { value: "studio", label: "Studio" },
+];
+
 export function SystemLogs() {
-  const files = useQuery({ queryKey: ["logs"], queryFn: api.logs.list });
+  const [source, setSource] = useState<LogSource>("kometa");
+  const files = useQuery({ queryKey: ["logs", source], queryFn: () => api.logs.list(source) });
   const [chosen, setChosen] = useState<string | null>(null);
   const [level, setLevel] = useState<LogLevel>("INFO");
   const [search, setSearch] = useState("");
   const q = useDeferredValue(search);
   const path = chosen ?? files.data?.files[0]?.path ?? null;
   const log = useQuery({
-    queryKey: ["logs", path, level, q],
-    queryFn: () => api.logs.read(path!, level, q),
+    queryKey: ["logs", source, path, level, q],
+    queryFn: () => api.logs.read(source, path!, level, q),
     enabled: path !== null,
     placeholderData: (previous) => previous,
   });
 
+  const sourcePicker = (
+    <div role="group" aria-label="Whose logs" className="flex gap-2">
+      {SOURCES.map((option) => (
+        <Button
+          key={option.value}
+          aria-pressed={source === option.value}
+          variant={source === option.value ? "primary" : "secondary"}
+          onClick={() => {
+            setSource(option.value);
+            setChosen(null);
+          }}
+        >
+          {option.label}
+        </Button>
+      ))}
+    </div>
+  );
+
   if (files.isPending) return <p className="text-muted">Loading…</p>;
   if (files.isError)
     return (
-      <p role="alert" className="text-err">
-        {files.error.message}
-      </p>
+      <div className="flex flex-col gap-4">
+        {sourcePicker}
+        <p role="alert" className="text-err">
+          {files.error.message}
+        </p>
+      </div>
     );
   if (files.data.files.length === 0)
     return (
-      <Card title="Kometa's logs">
-        <p className="text-sm text-muted">Kometa hasn't written any logs yet. They appear after its first run.</p>
-      </Card>
+      <div className="flex flex-col gap-4">
+        {sourcePicker}
+        <Card title={source === "kometa" ? "Kometa's logs" : "Studio's log"}>
+          <p className="text-sm text-muted">
+            {source === "kometa"
+              ? "Kometa hasn't written any logs yet. They appear after its first run."
+              : "Studio hasn't written its log yet."}
+          </p>
+        </Card>
+      </div>
     );
 
   return (
     <div className="flex flex-col gap-4">
+      {sourcePicker}
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 basis-64">
           <Field label="Log">
@@ -90,7 +125,7 @@ export function SystemLogs() {
         </div>
         {path && (
           <a
-            href={api.logs.downloadUrl(path)}
+            href={api.logs.downloadUrl(source, path)}
             className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface-2 px-4 text-sm font-medium hover:border-muted"
           >
             Download

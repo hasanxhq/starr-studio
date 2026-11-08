@@ -396,7 +396,10 @@ class Maintainerr:
             )
         if not self.snapshot.overlays_enabled:
             return None
-        await self._wait_until_idle(say)
+        try:
+            await self._wait_until_idle(say)
+        except MaintainerrProblem as problem:  # nothing taken over yet, so nothing to put back
+            raise RunHeld(f"Held: {problem}") from None
         self._wrapping = True
         try:
             await self.take_over()  # its own schedule can't draw while Kometa runs
