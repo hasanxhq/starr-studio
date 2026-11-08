@@ -35,8 +35,8 @@ from .config_sections import read_section
 from .config_write import SaveRefused
 from .default_covers import DEFAULT_IMAGES
 from .kometa_command import RunRequest
-from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
-from .plex_routes import kometa_plex
+from .plex_library import PlexCollection, PlexNotFound, PlexServer, PlexUnavailable
+from .plex_routes import kometa_plex, maintainerr_keys
 from .ready_made_routes import (
     STUDIO_LABEL,
     AppRunner,
@@ -823,6 +823,164 @@ async def _list_preview(context: Context, lists: list_sources.Lists, sources: li
 @router.get("/collections")
 async def list_collections(library: str, db: Db) -> dict:
     return {"collections": [_built_json(db, row) for row in col.built_rows(db, library)]}
+
+
+@router.get("/libraries/{library}/other-collections")
+async def other_collections(
+    library: str,
+    request: Request,
+    db: Db,
+    settings: AppSettings,
+) -> dict:
+    library_obj, _ = _config_library(settings, library)
+    plex_title = _plex_title(library_obj)
+
+    all_rows = col.rows(db, library)
+    built_rows = [r for r in all_rows if r["category"] == col.BUILT]
+    ready_rows = [r for r in all_rows if r["category"] != col.BUILT and (r["plex_exists"] or r["desired"])]
+
+    plex_collections: list[PlexCollection] = []
+    plex_error: str | None = None
+
+    try:
+        server = kometa_plex(settings, request.app.state.http)
+        section = await _library_types.key_for(server, plex_title)
+        if section is None:
+            plex_error = f"Plex has no library called {plex_title!r}"
+        else:
+            plex_collections = await server.collections(section)
+    except HTTPException as error:
+        if error.status_code == 409:
+            plex_error = "Kometa isn't connected to Plex yet"
+        else:
+            raise
+    except PlexUnavailable as error:
+        plex_error = f"Plex can't be reached: {error}"
+
+    others: list[dict] = []
+
+    if plex_error is not None:
+        for r in ready_rows:
+            others.append(
+                {
+                    "made_by": "ready_made",
+                    "title": r["title"],
+                    "rating_key": str(r["plex_rating_key"]) if (r["plex_exists"] and r["plex_rating_key"]) else None,
+                    "items": int(r["plex_items"]) if r["plex_items"] is not None else None,
+                    "thumb": r["plex_thumb"],
+                    "smart": False,
+                    "category": r["category"],
+                }
+            )
+        others.sort(key=lambda c: c["title"].casefold())
+        return {"others": others, "plex_error": plex_error}
+
+    # 1. Built collections in Plex are left out (matched by rating key, and failing that by title casefold)
+    built_by_key = {str(r["plex_rating_key"]): r for r in built_rows if r["plex_rating_key"]}
+    matched_built_row_ids: set[int] = set()
+    unmatched_plex: list[PlexCollection] = []
+
+    for p in plex_collections:
+        if p.rating_key in built_by_key:
+            matched_built_row_ids.add(built_by_key[p.rating_key]["id"])
+            continue
+        unmatched_plex.append(p)
+
+    remaining_built_by_title = {
+        r["title"].casefold(): r
+        for r in built_rows
+        if r["id"] not in matched_built_row_ids
+    }
+    non_built_plex: list[PlexCollection] = []
+    for p in unmatched_plex:
+        title_key = p.title.casefold()
+        if title_key in remaining_built_by_title:
+            r = remaining_built_by_title.pop(title_key)
+            matched_built_row_ids.add(r["id"])
+            continue
+        non_built_plex.append(p)
+
+    # 2. Ready-made matching (by rating key, failing that by title casefold)
+    ready_by_key = {str(r["plex_rating_key"]): r for r in ready_rows if r["plex_rating_key"]}
+    matched_ready_row_ids: set[int] = set()
+    matched_plex_keys: set[str] = set()
+    ready_matches: dict[int, PlexCollection] = {}
+
+    for p in non_built_plex:
+        if p.rating_key in ready_by_key:
+            r = ready_by_key[p.rating_key]
+            if r["id"] not in matched_ready_row_ids:
+                ready_matches[r["id"]] = p
+                matched_ready_row_ids.add(r["id"])
+                matched_plex_keys.add(p.rating_key)
+
+    remaining_ready_by_title = {
+        r["title"].casefold(): r
+        for r in ready_rows
+        if r["id"] not in matched_ready_row_ids
+    }
+    for p in non_built_plex:
+        if p.rating_key in matched_plex_keys:
+            continue
+        title_key = p.title.casefold()
+        if title_key in remaining_ready_by_title:
+            r = remaining_ready_by_title.pop(title_key)
+            ready_matches[r["id"]] = p
+            matched_ready_row_ids.add(r["id"])
+            matched_plex_keys.add(p.rating_key)
+
+    for r in ready_rows:
+        if r["id"] in ready_matches:
+            p = ready_matches[r["id"]]
+            others.append(
+                {
+                    "made_by": "ready_made",
+                    "title": p.title,
+                    "rating_key": p.rating_key,
+                    "items": p.items,
+                    "thumb": p.thumb,
+                    "smart": p.smart,
+                    "category": r["category"],
+                }
+            )
+        else:
+            others.append(
+                {
+                    "made_by": "ready_made",
+                    "title": r["title"],
+                    "rating_key": None,
+                    "items": int(r["plex_items"]) if r["plex_items"] is not None else None,
+                    "thumb": r["plex_thumb"],
+                    "smart": False,
+                    "category": r["category"],
+                }
+            )
+
+    # 3. Each remaining Plex collection: maintainerr (wins over Kometa label), else kometa, else plex
+    theirs = maintainerr_keys(request)
+    for p in non_built_plex:
+        if p.rating_key in matched_plex_keys:
+            continue
+        if p.rating_key in theirs:
+            made_by = "maintainerr"
+        elif p.managed:
+            made_by = "kometa"
+        else:
+            made_by = "plex"
+        others.append(
+            {
+                "made_by": made_by,
+                "title": p.title,
+                "rating_key": p.rating_key,
+                "items": p.items,
+                "thumb": p.thumb,
+                "smart": p.smart,
+                "category": None,
+            }
+        )
+
+    others.sort(key=lambda c: c["title"].casefold())
+    return {"others": others, "plex_error": None}
 
 
 @router.get("/collections/{row_id}")
