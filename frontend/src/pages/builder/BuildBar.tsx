@@ -13,6 +13,7 @@ export function BuildBar({
   saving,
   saveAction,
   canSubmit,
+  saveHint,
   onSaveForLater,
   onBuild,
 }: {
@@ -26,9 +27,11 @@ export function BuildBar({
   saving: boolean;
   saveAction: "build" | "later" | null;
   canSubmit: boolean;
+  saveHint: string | null;
   onSaveForLater: () => void;
   onBuild: () => void;
 }) {
+  const buildHintId = saveHint ? "build-bar-save-hint" : undefined;
   const downloadLabel =
     requestsKnown && requestCount != null ? `Download ${requestCount} missing` : "Download missing";
 
@@ -42,12 +45,17 @@ export function BuildBar({
       <Link className="min-h-11 px-3 text-sm underline" to={`/collections?library=${encodeURIComponent(library)}`}>
         Cancel
       </Link>
-      <Button variant="secondary" onClick={onSaveForLater} disabled={!canSubmit || saving}>
+      <Button variant="secondary" onClick={onSaveForLater} disabled={!canSubmit || saving} aria-describedby={buildHintId}>
         {saving && saveAction === "later" ? "Saving…" : "Save for later"}
       </Button>
-      <Button variant="primary" onClick={onBuild} disabled={!canSubmit || saving}>
+      <Button variant="primary" onClick={onBuild} disabled={!canSubmit || saving} aria-describedby={buildHintId}>
         {saving && saveAction === "build" ? "Building…" : "Build"}
       </Button>
+      {saveHint && (
+        <p id={buildHintId} className="w-full text-sm text-muted">
+          {saveHint}
+        </p>
+      )}
     </ActionBar>
   );
 }

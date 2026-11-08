@@ -103,10 +103,43 @@ export function blankDraft(library: string, fields: BuilderField[]): Draft {
   };
 }
 
+const LIST_SORT_KEYS = ["custom", "release", "alpha"] as const;
+
+export function shapeForMode(draft: Draft, mode: StartMode, fields: BuilderField[]): Draft {
+  if (mode === "filters") {
+    const blank = blankDraft(draft.library, fields);
+    return {
+      ...draft,
+      filters: draft.filters.rules.length > 0 ? draft.filters : blank.filters,
+      sources: [blankListSource()],
+      sort_by: null,
+      limit: null,
+      download_missing: false,
+      request_cap: null,
+      request_profile: null,
+      skip_requests: [],
+    };
+  }
+  return {
+    ...draft,
+    sources: draft.sources.length > 0 ? draft.sources : [blankListSource()],
+    filters: { match: "all", rules: [] },
+    sort_by: draft.sort_by && LIST_SORT_KEYS.some((key) => key === draft.sort_by) ? draft.sort_by : "custom",
+    limit: null,
+  };
+}
+
+export function missingForSave(draft: Draft, mode: StartMode): string[] {
+  const missing: string[] = [];
+  if (!draft.title.trim()) missing.push("Add a title");
+  if (mode === "list" && !(draft.sources.length > 0 && draft.sources.every(sourceReady))) {
+    missing.push("Pick a list");
+  }
+  return missing;
+}
+
 export function canSave(draft: Draft, mode: StartMode): boolean {
-  if (!draft.title.trim()) return false;
-  if (mode === "list") return draft.sources.length > 0 && draft.sources.every(sourceReady);
-  return true;
+  return missingForSave(draft, mode).length === 0;
 }
 
 export function startModeOf(input: CollectionInput): StartMode {
@@ -166,9 +199,7 @@ export function clearStoredDraft(key: string): void {
 }
 
 export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode): boolean {
-  const skipA = [...a.skip_requests].sort().join("\0");
-  const skipB = [...b.skip_requests].sort().join("\0");
-  if (skipA !== skipB) return true;
+  if (skipRequestsChanged(a.skip_requests, b.skip_requests)) return true;
   return JSON.stringify(toInput(a, modeA)) !== JSON.stringify(toInput(b, modeB));
 }
 
