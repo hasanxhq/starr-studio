@@ -10,6 +10,7 @@ const config = {
     playlist_files: [],
   }),
   "GET /collections?library=Movies": () => ({ collections: [] }),
+  "GET /libraries/Movies/other-collections": () => ({ others: [], plex_error: null }),
   "GET /ready-made/libraries/Movies": () => ({
     library: "Movies",
     library_type: "movie",

@@ -53,8 +53,12 @@ function renderCollections(path: string) {
   );
 }
 
+const emptyOthers = { others: [], plex_error: null as string | null };
+
 const config = {
   "GET /config": () => ({ path: "/config/config.yml", libraries: [{ name: "Movies", plex_name: "Movies" }, { name: "TV Shows", plex_name: "TV Shows" }], playlist_files: [] }),
+  "GET /libraries/Movies/other-collections": () => emptyOthers,
+  "GET /libraries/TV%20Shows/other-collections": () => emptyOthers,
 };
 
 afterEach(() => {
@@ -232,7 +236,7 @@ describe("Collections list", () => {
     expect(calls).toBe(after);
   });
 
-  it("filters Yours with chips in the URL and search by title", async () => {
+  it("filters All with chips in the URL and search by title", async () => {
     mockApi({
       ...config,
       "GET /collections?library=Movies": () => ({
@@ -266,8 +270,8 @@ describe("Collections list", () => {
     expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Ready-made" }));
     expect(screen.getByRole("tab", { name: "Ready-made" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("tab", { name: "Yours" })).not.toHaveAttribute("aria-current");
-    fireEvent.click(screen.getByRole("tab", { name: "Yours" }));
+    expect(screen.getByRole("tab", { name: "All" })).not.toHaveAttribute("aria-current");
+    fireEvent.click(screen.getByRole("tab", { name: "All" }));
     expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
   });
 
@@ -307,6 +311,7 @@ describe("Collections list", () => {
       if (route === "GET /auth") return new Response(JSON.stringify({ allowed: true, reason: null, message: null, configured: true, signed_in: true, local: true }));
       if (route === "GET /config") return new Response(JSON.stringify(config["GET /config"]()));
       if (route === "GET /collections?library=Movies") return new Response(JSON.stringify({ collections: [] }));
+      if (route === "GET /libraries/Movies/other-collections") return new Response(JSON.stringify(emptyOthers));
       if (route.startsWith("POST /import/upload?")) {
         return new Response(JSON.stringify({ token: "abcdabcdabcdabcd", library: "Movies", file: landing }));
       }
@@ -351,6 +356,7 @@ describe("Collections list", () => {
       if (route === "GET /auth") return new Response(JSON.stringify({ allowed: true, reason: null, message: null, configured: true, signed_in: true, local: true }));
       if (route === "GET /config") return new Response(JSON.stringify(config["GET /config"]()));
       if (route === "GET /collections?library=Movies") return new Response(JSON.stringify({ collections: [] }));
+      if (route === "GET /libraries/Movies/other-collections") return new Response(JSON.stringify(emptyOthers));
       if (route.startsWith("POST /import/upload?")) {
         return new Response(JSON.stringify({ detail: "File must hold a mapping at the top level (a Kometa collection file)" }), { status: 422 });
       }
