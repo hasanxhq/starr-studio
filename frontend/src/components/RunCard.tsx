@@ -37,20 +37,20 @@ function ProgressBar({ job }: { job: Job }) {
   if (job.progress && job.status === "running") {
     const { value, max } = job.progress;
     return (
-      <div
-        className="h-1 w-full overflow-hidden rounded-full bg-border-strong"
+      <span
+        className="block h-1 w-full overflow-hidden rounded-full bg-border-strong"
         role="progressbar"
         aria-valuenow={value}
         aria-valuemax={max}
       >
-        <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: max > 0 ? `${Math.min(100, (value / max) * 100)}%` : "0%" }} />
-      </div>
+        <span className="block h-full rounded-full bg-accent transition-[width]" style={{ width: max > 0 ? `${Math.min(100, (value / max) * 100)}%` : "0%" }} />
+      </span>
     );
   }
   return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-border-strong" role="progressbar" aria-label="In progress">
-      <div className="run-card-bar-indeterminate h-full w-1/3 rounded-full bg-accent" />
-    </div>
+    <span className="block h-1 w-full overflow-hidden rounded-full bg-border-strong" role="progressbar" aria-label="In progress">
+      <span className="run-card-bar-indeterminate block h-full w-1/3 rounded-full bg-accent" />
+    </span>
   );
 }
 
@@ -84,12 +84,12 @@ export function RunCard({ onOpen }: { onOpen: () => void }) {
           aria-label={label}
           className="flex min-h-11 w-full flex-col gap-1.5 rounded-control border border-border bg-surface p-3 text-left transition-colors hover:bg-surface-2"
         >
-          <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <span className="flex min-w-0 items-baseline justify-between gap-2">
             <span className="min-w-0 truncate text-sm font-semibold">{waiting ? "Waiting to start" : primary.title}</span>
             {elapsed && <span className="shrink-0 text-xs text-muted">{elapsed}</span>}
-          </div>
+          </span>
           {waiting && <span className="truncate text-xs text-muted">{primary.title}</span>}
-          {primary.message && <p className="truncate font-mono text-xs text-muted">{primary.message}</p>}
+          {primary.message && <span className="block truncate font-mono text-xs text-muted">{primary.message}</span>}
           {extraQueued > 0 && <span className="text-xs text-muted">+{extraQueued} queued</span>}
           <ProgressBar job={primary} />
         </button>
