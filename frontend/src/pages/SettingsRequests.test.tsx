@@ -33,11 +33,11 @@ function routes(extra: Record<string, (body: unknown) => unknown> = {}, current 
 }
 
 describe("Settings → Requests", () => {
-  it("is under Settings in the sidebar after Connect", async () => {
+  it("is a Settings tab after Connect", async () => {
     routes();
     renderAt("/settings/requests");
-    const nav = await screen.findByRole("navigation", { name: "Main" });
-    const links = within(nav).getAllByRole("link").map((link) => link.getAttribute("href"));
+    const tabs = await screen.findByRole("navigation", { name: "Settings pages" });
+    const links = within(tabs).getAllByRole("link").map((link) => link.getAttribute("href"));
     const connect = links.indexOf("/settings/connect");
     const requests = links.indexOf("/settings/requests");
     expect(connect).toBeGreaterThanOrEqual(0);

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +30,17 @@ describe("SectionTabs", () => {
     const nav = screen.getByRole("navigation", { name: "Activity pages" });
     expect(nav).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Queue" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("shows Settings tabs with Libraries active on /libraries and /libraries/:name", () => {
+    const { unmount } = renderTabs("/libraries");
+    const nav = screen.getByRole("navigation", { name: "Settings pages" });
+    expect(within(nav).getByRole("link", { name: "Libraries" })).toHaveAttribute("aria-current", "page");
+    unmount();
+
+    renderTabs("/libraries/Movies");
+    const nav2 = screen.getByRole("navigation", { name: "Settings pages" });
+    expect(within(nav2).getByRole("link", { name: "Libraries" })).toHaveAttribute("aria-current", "page");
   });
 
   it("renders nothing outside Activity, System and Settings", () => {

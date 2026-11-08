@@ -161,30 +161,3 @@ export function ReadyMadeTab({ search = "", compact = true }: { search?: string;
     </div>
   );
 }
-
-/** Standalone page shape for tests and `/ready-made` redirect target in the router. */
-export function ReadyMade() {
-  const { library, libraries: names, setLibrary, overview } = useLibrary();
-
-  if (overview.isPending) return <p className="text-muted">Loading…</p>;
-  if (library === null) return <p className="text-muted">No libraries in config.yml yet.</p>;
-
-  return (
-    <div className="flex max-w-[1400px] flex-col gap-5">
-      <label className="flex items-center gap-2 text-[13px] text-muted">
-        Apply to
-        <select
-          className="min-h-11 rounded-control border border-border-strong bg-surface-2 px-3 text-sm text-text focus:border-accent focus:outline-none"
-          aria-label="Apply to"
-          value={library}
-          onChange={(event) => setLibrary(event.target.value)}
-        >
-          {names.map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-      </label>
-      <ReadyMadeTab compact={false} />
-    </div>
-  );
-}

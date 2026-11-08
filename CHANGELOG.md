@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A new sidebar:** nine entries with icons (Home, Collections, Requests, Overlays, Playlists, Activity, System, Settings), one **Library** picker at the top for the whole app, and badges for waiting requests and the library's collections. Libraries moved into Settings as a tab; the pages' own library pickers are gone.
 - **Collections** is one page with two tabs, **Yours** and **Ready-made**, a search box and filter chips (In Plex, Building, Not built, Failed, Fetching missing, Changed). One **Changes** bar builds your ready-made picks and edited collections in a single run. Ready-made pages moved to `/collections/ready-made`; old links redirect.
 - **Overlays** is one studio page per library: turn overlays on or off and set their schedule from the header, reorder layers (top draws last), hide one in the preview, compare **Now in Plex** with **With your changes** (drawn on Kometa's untouched poster, so badges no longer show twice), style backgrounds, read a one-line summary of what changes, and choose **Save for tonight** or **Apply now** with an estimate of how many posters Kometa redraws. The old designer link redirects.
 - **Activity, System and Settings** show their pages as a row of tabs at the top, and `/activity`, `/system` and `/settings` open the first one. Page titles name the section too ("Settings · Plex").
