@@ -2,6 +2,8 @@
 
 Audited `dev` at `f9c1ecf` (after #111, the end of the UI rework). Read-only apart from this file. It compares with the first audit, `docs/audits/2026-11-07-repo-audit.md`. Findings 8–11 of that audit live on draft PR #95 (branch `audit-kometa-pin`), which merges just before the fixes start.
 
+**Status (2026-11-09):** all fourteen findings are fixed: 1 and 8 in #114, 2–4 and 7 in #117, 5 and 6 in #116, 9 in #119, 10 in #118, 11, 12 and 14 in #113, 13 in #115.
+
 **What this repo does:** Starr Studio is a self-hosted web app (FastAPI + React) that manages collections, posters and overlays for a Plex library. It keeps your choices in SQLite, writes the YAML files Kometa reads, and starts Kometa one run at a time from a queue. It can ask Radarr, Sonarr or Seerr for missing titles, and steers around Maintainerr's collections and overlays. Assumed load: one household, one admin, a few browser tabs, background schedules, one Kometa process at a time.
 
 ## What changed since the first audit

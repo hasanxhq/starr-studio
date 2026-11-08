@@ -54,6 +54,8 @@ Then open http://localhost:8484, and first-run setup takes it from there. `confi
 
 Settings in `compose.yaml` can be overridden with environment variables or a `.env` file: `PUID`, `PGID`, `TZ`, `STUDIO_PORT`, `STUDIO_ALLOW_LOCAL`, `KOMETA_CONFIG_DIR`. Set `TZ` to your timezone, such as `Europe/Paris`: it's UTC otherwise. Schedules use `TZ` unless `STUDIO_TIMEZONE` is set.
 
+Studio's own log is `logs/studio.log` in its data folder, readable on System → Logs. Choose how much it says in Settings → General → Log level: info, debug (every call to Plex and the other apps) or trace (also what they sent back, for 24 hours). Secrets are hidden at every level. To set it before Studio starts, add `STUDIO_LOG_LEVEL` (`info`, `debug` or `trace`) under `environment:` in `compose.yaml`; it then wins over the setting.
+
 ### Install from a wheel
 
 Each [GitHub release](https://github.com/hasanxhq/starr-studio/releases) attaches a Python wheel with the frontend already built. Download the `.whl`, then:

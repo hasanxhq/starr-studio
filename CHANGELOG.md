@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Studio's own log** (`logs/studio.log` in its data folder), on System → Logs next to Kometa's. Settings → General → **Log level** sets how much it says: info, debug (every call to Plex and the other apps, with secrets hidden) or trace (also what they sent back, for 24 hours). `STUDIO_LOG_LEVEL` sets it from the environment.
 - Each collection's API entry carries its **last change** (titles added and removed in its last run, from Kometa's change reports), ready for the Home page.
 - **Choose which missing titles a collection requests** (API only for now): a builder collection's `skip_requests` lists missing titles Studio never asks Radarr, Sonarr or Seerr for, before or after a build, until they're taken off it. The source preview says which missing titles were already requested.
 - **Save a collection without building it, then build everything at once** (API only for now): `POST`/`PUT /collections` take `build: false` to save and mark the collection `changed` without starting Kometa, and `POST /libraries/{library}/build` builds a library's waiting ready-made picks and saved collections in one Kometa run, with a `dry_run` that lists what would build, be removed or be blocked.
@@ -99,8 +100,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Ready-made category's header shows the category's name instead of "Category".
 - A library whose operations are a list (Kometa's way to run more than one block, each with its own schedule) was treated as having none. An import then skipped that library's operations, and its Operations tab was empty.
 
+- **One failed start no longer stops every later run**: an unexpected error before Kometa started (such as Maintainerr going away while Studio waited for it) stopped the run queue until a restart. That run now fails with the error, and a lost Maintainerr holds the run like its other problems.
+- **A ready-made pick can't take a builder collection's title** any more. Removing that pick could have deleted the builder's collection from Plex. It's now blocked with "Studio already has a collection called …".
+- **Two requests at once can't send the same title twice** or go past a collection's daily limit, for example a run's after-step and a click on Request.
+- **The daily request limit resets at midnight in Studio's timezone** (Settings → General), not at midnight UTC.
+- **New collection:** restoring an unsaved draft brings back what you had, not an empty form. An empty draft no longer overwrites it while you're asked. When Save is greyed out, the build bar says what's missing, and an empty title looks like a field to fill in.
+- **"Saved since the last run"** finds the last good run even after many failed runs in a row, instead of saying no run has finished.
+- **Confirm buttons show progress**: after you confirm a Delete, Remove or Disconnect, the button shows a spinner and "Deleting…" or "Working…", and Keep waits until it's done.
+
 ### Removed
 
+- **"Kometa X is out" notices.** Kometa moves with Studio releases: Studio is tested with one Kometa version (2.5.4). System → Status warns when the installed one differs, and System → Updates mentions a newer Kometa as one quiet line. `KOMETA_TAG` is no longer a user setting in `compose.yaml`, and the no-Docker guide no longer explains switching Kometa versions.
 - The Defaults gallery (Defaults in the sidebar and a library's Defaults tab). Ready-made replaces it for collections, and the overlay designer for overlays.
 - The "← Libraries" link on a library's page; the sidebar already goes there.
 
