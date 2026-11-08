@@ -826,161 +826,66 @@ async def list_collections(library: str, db: Db) -> dict:
 
 
 @router.get("/libraries/{library}/other-collections")
-async def other_collections(
-    library: str,
-    request: Request,
-    db: Db,
-    settings: AppSettings,
-) -> dict:
-    library_obj, _ = _config_library(settings, library)
-    plex_title = _plex_title(library_obj)
+async def other_collections(library: str, request: Request, db: Db, settings: AppSettings) -> dict:
+    """Every collection of the library that Studio's builder didn't make: ready-made picks and Plex's others."""
+    config_library, _ = _config_library(settings, library)
+    plex_title = _plex_title(config_library)
+    rows = [r for r in col.rows(db, library) if r["category"] == col.BUILT or r["plex_exists"] or r["desired"]]
 
-    all_rows = col.rows(db, library)
-    built_rows = [r for r in all_rows if r["category"] == col.BUILT]
-    ready_rows = [r for r in all_rows if r["category"] != col.BUILT and (r["plex_exists"] or r["desired"])]
-
-    plex_collections: list[PlexCollection] = []
+    plex: list[PlexCollection] = []
     plex_error: str | None = None
-
     try:
         server = kometa_plex(settings, request.app.state.http)
         section = await _library_types.key_for(server, plex_title)
         if section is None:
             plex_error = f"Plex has no library called {plex_title!r}"
         else:
-            plex_collections = await server.collections(section)
+            plex = await server.collections(section)
     except HTTPException as error:
-        if error.status_code == 409:
-            plex_error = "Kometa isn't connected to Plex yet"
-        else:
+        if error.status_code != 409:
             raise
-    except PlexUnavailable as error:
+        plex_error = "Kometa isn't connected to Plex yet"
+    except (PlexUnavailable, PlexNotFound) as error:
         plex_error = f"Plex can't be reached: {error}"
 
-    others: list[dict] = []
-
-    if plex_error is not None:
-        for r in ready_rows:
-            others.append(
-                {
-                    "made_by": "ready_made",
-                    "title": r["title"],
-                    "rating_key": str(r["plex_rating_key"]) if (r["plex_exists"] and r["plex_rating_key"]) else None,
-                    "items": int(r["plex_items"]) if r["plex_items"] is not None else None,
-                    "thumb": r["plex_thumb"],
-                    "smart": False,
-                    "category": r["category"],
-                }
-            )
-        others.sort(key=lambda c: c["title"].casefold())
-        return {"others": others, "plex_error": plex_error}
-
-    # 1. Built collections in Plex are left out (matched by rating key, and failing that by title casefold)
-    built_by_key = {str(r["plex_rating_key"]): r for r in built_rows if r["plex_rating_key"]}
-    matched_built_row_ids: set[int] = set()
-    unmatched_plex: list[PlexCollection] = []
-
-    for p in plex_collections:
-        if p.rating_key in built_by_key:
-            matched_built_row_ids.add(built_by_key[p.rating_key]["id"])
-            continue
-        unmatched_plex.append(p)
-
-    remaining_built_by_title = {
-        r["title"].casefold(): r
-        for r in built_rows
-        if r["id"] not in matched_built_row_ids
-    }
-    non_built_plex: list[PlexCollection] = []
-    for p in unmatched_plex:
-        title_key = p.title.casefold()
-        if title_key in remaining_built_by_title:
-            r = remaining_built_by_title.pop(title_key)
-            matched_built_row_ids.add(r["id"])
-            continue
-        non_built_plex.append(p)
-
-    # 2. Ready-made matching (by rating key, failing that by title casefold)
-    ready_by_key = {str(r["plex_rating_key"]): r for r in ready_rows if r["plex_rating_key"]}
-    matched_ready_row_ids: set[int] = set()
-    matched_plex_keys: set[str] = set()
-    ready_matches: dict[int, PlexCollection] = {}
-
-    for p in non_built_plex:
-        if p.rating_key in ready_by_key:
-            r = ready_by_key[p.rating_key]
-            if r["id"] not in matched_ready_row_ids:
-                ready_matches[r["id"]] = p
-                matched_ready_row_ids.add(r["id"])
-                matched_plex_keys.add(p.rating_key)
-
-    remaining_ready_by_title = {
-        r["title"].casefold(): r
-        for r in ready_rows
-        if r["id"] not in matched_ready_row_ids
-    }
-    for p in non_built_plex:
-        if p.rating_key in matched_plex_keys:
-            continue
-        title_key = p.title.casefold()
-        if title_key in remaining_ready_by_title:
-            r = remaining_ready_by_title.pop(title_key)
-            ready_matches[r["id"]] = p
-            matched_ready_row_ids.add(r["id"])
-            matched_plex_keys.add(p.rating_key)
-
-    for r in ready_rows:
-        if r["id"] in ready_matches:
-            p = ready_matches[r["id"]]
-            others.append(
-                {
-                    "made_by": "ready_made",
-                    "title": p.title,
-                    "rating_key": p.rating_key,
-                    "items": p.items,
-                    "thumb": p.thumb,
-                    "smart": p.smart,
-                    "category": r["category"],
-                }
-            )
+    # A Plex collection belongs to a Studio row by rating key, else by title; key matches go first.
+    claimed: dict[int, PlexCollection] = {}
+    unclaimed: list[PlexCollection] = []
+    by_key = {str(r["plex_rating_key"]): r for r in rows if r["plex_rating_key"]}
+    for p in plex:
+        row = by_key.get(p.rating_key)
+        if row is not None and row["id"] not in claimed:
+            claimed[row["id"]] = p
         else:
-            others.append(
-                {
-                    "made_by": "ready_made",
-                    "title": r["title"],
-                    "rating_key": None,
-                    "items": int(r["plex_items"]) if r["plex_items"] is not None else None,
-                    "thumb": r["plex_thumb"],
-                    "smart": False,
-                    "category": r["category"],
-                }
-            )
+            unclaimed.append(p)
+    by_title = {r["title"].casefold(): r for r in reversed(rows) if r["id"] not in claimed}
+    leftover: list[PlexCollection] = []
+    for p in unclaimed:
+        row = by_title.pop(p.title.casefold(), None)
+        if row is not None:
+            claimed[row["id"]] = p
+        else:
+            leftover.append(p)
 
-    # 3. Each remaining Plex collection: maintainerr (wins over Kometa label), else kometa, else plex
+    def entry(made_by: str, p: PlexCollection, category: str | None = None) -> dict:
+        return {"made_by": made_by, "title": p.title, "rating_key": p.rating_key, "items": p.items, "thumb": p.thumb, "smart": p.smart, "category": category}
+
+    others = []
+    for r in rows:
+        if r["category"] == col.BUILT:
+            continue
+        if r["id"] in claimed:
+            others.append(entry("ready_made", claimed[r["id"]], r["category"]))
+        else:
+            items = int(r["plex_items"]) if r["plex_items"] is not None else None
+            # Plex answered without it: not in Plex. Plex didn't answer: trust what the last check saw.
+            stored = str(r["plex_rating_key"]) if plex_error and r["plex_exists"] and r["plex_rating_key"] else None
+            others.append({"made_by": "ready_made", "title": r["title"], "rating_key": stored, "items": items, "thumb": r["plex_thumb"], "smart": False, "category": r["category"]})
     theirs = maintainerr_keys(request)
-    for p in non_built_plex:
-        if p.rating_key in matched_plex_keys:
-            continue
-        if p.rating_key in theirs:
-            made_by = "maintainerr"
-        elif p.managed:
-            made_by = "kometa"
-        else:
-            made_by = "plex"
-        others.append(
-            {
-                "made_by": made_by,
-                "title": p.title,
-                "rating_key": p.rating_key,
-                "items": p.items,
-                "thumb": p.thumb,
-                "smart": p.smart,
-                "category": None,
-            }
-        )
-
+    for p in leftover:
+        others.append(entry("maintainerr" if p.rating_key in theirs else "kometa" if p.managed else "plex", p))
     others.sort(key=lambda c: c["title"].casefold())
-    return {"others": others, "plex_error": None}
+    return {"others": others, "plex_error": plex_error}
 
 
 @router.get("/collections/{row_id}")
