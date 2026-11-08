@@ -35,8 +35,8 @@ from .config_sections import read_section
 from .config_write import SaveRefused
 from .default_covers import DEFAULT_IMAGES
 from .kometa_command import RunRequest
-from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
-from .plex_routes import kometa_plex
+from .plex_library import PlexCollection, PlexNotFound, PlexServer, PlexUnavailable
+from .plex_routes import kometa_plex, maintainerr_keys
 from .ready_made_routes import (
     STUDIO_LABEL,
     AppRunner,
@@ -823,6 +823,69 @@ async def _list_preview(context: Context, lists: list_sources.Lists, sources: li
 @router.get("/collections")
 async def list_collections(library: str, db: Db) -> dict:
     return {"collections": [_built_json(db, row) for row in col.built_rows(db, library)]}
+
+
+@router.get("/libraries/{library}/other-collections")
+async def other_collections(library: str, request: Request, db: Db, settings: AppSettings) -> dict:
+    """Every collection of the library that Studio's builder didn't make: ready-made picks and Plex's others."""
+    config_library, _ = _config_library(settings, library)
+    plex_title = _plex_title(config_library)
+    rows = [r for r in col.rows(db, library) if r["category"] == col.BUILT or r["plex_exists"] or r["desired"]]
+
+    plex: list[PlexCollection] = []
+    plex_error: str | None = None
+    try:
+        server = kometa_plex(settings, request.app.state.http)
+        section = await _library_types.key_for(server, plex_title)
+        if section is None:
+            plex_error = f"Plex has no library called {plex_title!r}"
+        else:
+            plex = await server.collections(section)
+    except HTTPException as error:
+        if error.status_code != 409:
+            raise
+        plex_error = "Kometa isn't connected to Plex yet"
+    except (PlexUnavailable, PlexNotFound) as error:
+        plex_error = f"Plex can't be reached: {error}"
+
+    # A Plex collection belongs to a Studio row by rating key, else by title; key matches go first.
+    claimed: dict[int, PlexCollection] = {}
+    unclaimed: list[PlexCollection] = []
+    by_key = {str(r["plex_rating_key"]): r for r in rows if r["plex_rating_key"]}
+    for p in plex:
+        row = by_key.get(p.rating_key)
+        if row is not None and row["id"] not in claimed:
+            claimed[row["id"]] = p
+        else:
+            unclaimed.append(p)
+    by_title = {r["title"].casefold(): r for r in reversed(rows) if r["id"] not in claimed}
+    leftover: list[PlexCollection] = []
+    for p in unclaimed:
+        row = by_title.pop(p.title.casefold(), None)
+        if row is not None:
+            claimed[row["id"]] = p
+        else:
+            leftover.append(p)
+
+    def entry(made_by: str, p: PlexCollection, category: str | None = None) -> dict:
+        return {"made_by": made_by, "title": p.title, "rating_key": p.rating_key, "items": p.items, "thumb": p.thumb, "smart": p.smart, "category": category}
+
+    others = []
+    for r in rows:
+        if r["category"] == col.BUILT:
+            continue
+        if r["id"] in claimed:
+            others.append(entry("ready_made", claimed[r["id"]], r["category"]))
+        else:
+            items = int(r["plex_items"]) if r["plex_items"] is not None else None
+            # Plex answered without it: not in Plex. Plex didn't answer: trust what the last check saw.
+            stored = str(r["plex_rating_key"]) if plex_error and r["plex_exists"] and r["plex_rating_key"] else None
+            others.append({"made_by": "ready_made", "title": r["title"], "rating_key": stored, "items": items, "thumb": r["plex_thumb"], "smart": False, "category": r["category"]})
+    theirs = maintainerr_keys(request)
+    for p in leftover:
+        others.append(entry("maintainerr" if p.rating_key in theirs else "kometa" if p.managed else "plex", p))
+    others.sort(key=lambda c: c["title"].casefold())
+    return {"others": others, "plex_error": plex_error}
 
 
 @router.get("/collections/{row_id}")
