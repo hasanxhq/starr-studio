@@ -15,6 +15,7 @@ the collection that asked for it, so the collection fills itself without waiting
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
@@ -35,7 +36,7 @@ def _row(db: sqlite3.Connection, row_id: int) -> sqlite3.Row | None:
 
 
 def waiting(db: sqlite3.Connection, row: sqlite3.Row) -> list[Item]:
-    """What Kometa last reported this collection missing that Studio has never asked for."""
+    """What Kometa last reported this collection missing that Studio has never asked for, less the builder's ``skip_requests``."""
     found = db.execute(
         """
         SELECT w.item, w.title FROM wanted w
@@ -44,7 +45,8 @@ def waiting(db: sqlite3.Connection, row: sqlite3.Row) -> list[Item]:
         """,
         (row["library"], row["kometa_name"]),
     ).fetchall()
-    return [Item(item=r["item"], title=r["title"]) for r in found]
+    skip = set(json.loads(row["definition"] or "{}").get("skip_requests") or [])
+    return [Item(item=r["item"], title=r["title"]) for r in found if r["item"] not in skip]
 
 
 def summary(db: sqlite3.Connection, row: sqlite3.Row) -> dict[str, int]:
