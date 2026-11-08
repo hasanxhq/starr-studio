@@ -459,6 +459,7 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "request_cap": row["request_cap"],
         "request_profile": row["request_profile"],
         "requests": collection_requests.summary(db, row),
+        "last_change": col.last_change(db, row),
     }
 
 
@@ -867,23 +868,24 @@ async def other_collections(library: str, request: Request, db: Db, settings: Ap
         else:
             leftover.append(p)
 
-    def entry(made_by: str, p: PlexCollection, category: str | None = None) -> dict:
-        return {"made_by": made_by, "title": p.title, "rating_key": p.rating_key, "items": p.items, "thumb": p.thumb, "smart": p.smart, "category": category}
+    def entry(made_by: str, p: PlexCollection, category: str | None = None, last_change: dict | None = None) -> dict:
+        return {"made_by": made_by, "title": p.title, "rating_key": p.rating_key, "items": p.items, "thumb": p.thumb, "smart": p.smart, "category": category, "last_change": last_change}
 
     others = []
     for r in rows:
         if r["category"] == col.BUILT:
             continue
+        change = col.last_change(db, r)
         if r["id"] in claimed:
-            others.append(entry("ready_made", claimed[r["id"]], r["category"]))
+            others.append(entry("ready_made", claimed[r["id"]], r["category"], last_change=change))
         else:
             items = int(r["plex_items"]) if r["plex_items"] is not None else None
             # Plex answered without it: not in Plex. Plex didn't answer: trust what the last check saw.
             stored = str(r["plex_rating_key"]) if plex_error and r["plex_exists"] and r["plex_rating_key"] else None
-            others.append({"made_by": "ready_made", "title": r["title"], "rating_key": stored, "items": items, "thumb": r["plex_thumb"], "smart": False, "category": r["category"]})
+            others.append({"made_by": "ready_made", "title": r["title"], "rating_key": stored, "items": items, "thumb": r["plex_thumb"], "smart": False, "category": r["category"], "last_change": change})
     theirs = maintainerr_keys(request)
     for p in leftover:
-        others.append(entry("maintainerr" if p.rating_key in theirs else "kometa" if p.managed else "plex", p))
+        others.append(entry("maintainerr" if p.rating_key in theirs else "kometa" if p.managed else "plex", p, last_change=None))
     others.sort(key=lambda c: c["title"].casefold())
     return {"others": others, "plex_error": plex_error}
 

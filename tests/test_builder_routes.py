@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 
 from PIL import Image
 from ruamel.yaml import YAML
@@ -344,3 +345,40 @@ def test_a_ready_made_previews_before_its_built(root):
         # Nothing Studio can read before the build: the fixture's basic chart names no list.
         basic = client.get(url.format("basic"), params={"key": "Newly Released"}).json()
         assert basic["previewable"] is False and "Build it to see" in basic["why"]
+
+
+def test_built_collection_includes_last_change_when_run_events_exist(root):
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        built = client.post("/api/v1/collections", json=body(title="Action Picks", build=False)).json()
+        assert built["last_change"] is None
+
+        # GET /collections/{id} without events
+        single = client.get(f"/api/v1/collections/{built['id']}").json()
+        assert single["last_change"] is None
+
+        # GET /collections?library=Movies without events
+        listed = client.get("/api/v1/collections", params={"library": "Movies"}).json()["collections"]
+        assert len(listed) == 1
+        assert listed[0]["last_change"] is None
+
+        # Record a run and changes event
+        db = client.app.state.db
+        col.set_run(db, [built["id"]], 42)
+        with db:
+            db.execute("INSERT INTO runs (id, request) VALUES (42, '{}')")
+            db.execute(
+                "INSERT INTO run_events (run_id, event, payload) VALUES (42, 'changes', ?)",
+                (json.dumps({"collection": "action picks", "additions": [{"title": "Die Hard"}], "removals": [{"title": "Old Movie"}]}),),
+            )
+
+        # GET /collections/{id} with events
+        single = client.get(f"/api/v1/collections/{built['id']}").json()
+        assert single["last_change"] == {"added": 1, "removed": 1, "run_id": 42}
+
+        # GET /collections?library=Movies with events
+        listed = client.get("/api/v1/collections", params={"library": "Movies"}).json()["collections"]
+        assert len(listed) == 1
+        assert listed[0]["last_change"] == {"added": 1, "removed": 1, "run_id": 42}
+
