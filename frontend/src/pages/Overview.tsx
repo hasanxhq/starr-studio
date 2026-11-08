@@ -1,7 +1,7 @@
 // Home: what needs attention, your collections, requests, and connections for the current library.
 
 import { useQuery } from "@tanstack/react-query";
-import { Navigate } from "react-router";
+import { Link, Navigate } from "react-router";
 
 import { api } from "../api";
 import { builderApi } from "../builderApi";
@@ -22,7 +22,7 @@ export function Overview() {
 }
 
 function Home() {
-  const { library } = useLibrary();
+  const { library, overview } = useLibrary();
   const status = useQuery({ queryKey: ["status"], queryFn: api.status, refetchInterval: 30_000 });
   const runs = useQuery({
     queryKey: ["runs"],
@@ -42,8 +42,16 @@ function Home() {
   });
   const requests = useQuery({ queryKey: ["requests", "list", ""], queryFn: () => requestsApi.list({ status: "", limit: 200 }) });
 
+  if (overview.isPending) return <p className="text-muted">Loading…</p>;
   if (!library) {
-    return <p className="text-muted">Loading…</p>;
+    return (
+      <p className="text-muted">
+        {overview.isError ? "Can't read the config. " : "config.yml has no libraries yet. "}
+        <Link className="underline hover:text-text" to="/libraries">
+          Libraries
+        </Link>
+      </p>
+    );
   }
 
   const built = collections.data?.collections ?? [];
