@@ -1,23 +1,84 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { type ComponentType, useState } from "react";
+import { Link, Outlet, useLocation } from "react-router";
 
 import { useAdvanced } from "../advanced";
 import { api } from "../api";
+import { builderApi } from "../builderApi";
+import {
+  ActivityIcon,
+  CollectionsIcon,
+  HomeIcon,
+  OverlaysIcon,
+  PlaylistsIcon,
+  RequestsIcon,
+  SettingsIcon,
+  SystemIcon,
+} from "./icons";
 import { HeaderTitleProvider, useHeaderTitleValue } from "./HeaderTitle";
 import { JobsButton, JobsDrawer } from "./Jobs";
+import { useLibrary } from "../library";
 import { PosterMark, Wordmark } from "./Logo";
 import { SectionTabs } from "./SectionTabs";
-import { pageTitle, sections } from "../nav";
+import { pageTitle, sidebarEntries } from "../nav";
+import { requestsApi } from "../requestsApi";
 
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return [
-    "flex min-h-11 items-center rounded-control px-3 text-sm transition-colors",
+    "flex min-h-11 items-center gap-3 rounded-control px-3 text-sm transition-colors",
     isActive ? "bg-surface-2 text-accent" : "text-muted hover:bg-surface-2 hover:text-text",
   ].join(" ");
 }
 
-// A dot on System → Status while a health check is failing, as the arr apps do.
+function subNavLinkClass({ isActive }: { isActive: boolean }) {
+  return [
+    "flex min-h-11 items-center rounded-control pl-11 pr-3 text-sm transition-colors",
+    isActive ? "bg-surface-2 text-accent" : "text-muted hover:bg-surface-2 hover:text-text",
+  ].join(" ");
+}
+
+const ENTRY_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  "/": HomeIcon,
+  "/collections": CollectionsIcon,
+  "/requests": RequestsIcon,
+  "/overlays": OverlaysIcon,
+  "/playlists": PlaylistsIcon,
+  "/activity": ActivityIcon,
+  "/system": SystemIcon,
+  "/settings": SettingsIcon,
+};
+
+function isEntryActive(path: string, pathname: string): boolean {
+  if (path === "/") return pathname === "/";
+  if (path === "/collections") return pathname.startsWith("/collections") || pathname.startsWith("/ready-made");
+  if (path === "/settings") return pathname.startsWith("/settings") || pathname.startsWith("/libraries");
+  return pathname === path || pathname.startsWith(path + "/");
+}
+
+function LibraryPicker() {
+  const { library, libraries, setLibrary } = useLibrary();
+  if (libraries.length === 0) return null;
+  return (
+    <div className="px-3 pb-3">
+      <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+        <span>Library</span>
+        <select
+          value={library ?? ""}
+          onChange={(event) => setLibrary(event.target.value)}
+          className="min-h-11 w-full rounded-control border border-border-strong bg-surface-2 px-3 text-sm text-text focus:border-accent focus:outline-none"
+        >
+          {libraries.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+// A dot on System while a health check is failing, as the arr apps do.
 function HealthDot() {
   const status = useQuery({ queryKey: ["status"], queryFn: api.status, refetchInterval: 60_000 });
   const checks = status.data?.health ?? [];
@@ -32,30 +93,90 @@ function HealthDot() {
   );
 }
 
+function useRequestsWaiting(): number {
+  const query = useQuery({
+    queryKey: ["requests", "list", ""],
+    queryFn: () => requestsApi.list({ limit: 200 }),
+    refetchInterval: 60_000,
+  });
+  const counts = query.data?.counts;
+  return (counts?.requested ?? 0) + (counts?.downloading ?? 0);
+}
+
+function useCollectionsCount(): number {
+  const { library } = useLibrary();
+  const query = useQuery({
+    queryKey: ["collections", library],
+    queryFn: () => builderApi.list(library!),
+    enabled: library !== null,
+  });
+  return query.data?.collections?.length ?? 0;
+}
+
 function Sidebar({ onNavigate }: { onNavigate: () => void }) {
+  const { pathname } = useLocation();
+  const waitingRequests = useRequestsWaiting();
+  const collectionsCount = useCollectionsCount();
+  const collectionsActive = isEntryActive("/collections", pathname);
+  const readyMadeActive = pathname === "/ready-made" || pathname.startsWith("/ready-made/");
+
   return (
-    <nav aria-label="Main" className="flex flex-col gap-5 p-3">
-      {sections.map((section) =>
-        section.pages.length === 1 ? (
-          <NavLink key={section.label} to={section.pages[0].path} end className={navLinkClass} onClick={onNavigate}>
-            {section.label}
-          </NavLink>
-        ) : (
-          <div key={section.label}>
-            <h2 className="px-3 pb-1 text-xs font-medium uppercase tracking-wider text-muted">{section.label}</h2>
-            <ul>
-              {section.pages.map((page) => (
-                <li key={page.path}>
-                  <NavLink to={page.path} className={navLinkClass} onClick={onNavigate}>
-                    {page.label}
-                    {page.path === "/system/status" && <HealthDot />}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
+    <nav aria-label="Main" className="flex flex-1 flex-col gap-1 p-3">
+      <LibraryPicker />
+      {sidebarEntries.map((entry, index) => {
+        if (entry.spacer) {
+          return <div key={`spacer-${index}`} className="mt-auto" aria-hidden="true" />;
+        }
+
+        const Icon = ENTRY_ICONS[entry.path];
+        const active = isEntryActive(entry.path, pathname);
+        let ariaLabel: string | undefined;
+        let badge: React.ReactNode = null;
+
+        if (entry.path === "/requests" && waitingRequests > 0) {
+          ariaLabel = `Requests, ${waitingRequests} waiting`;
+          badge = (
+            <span aria-hidden="true" className="ml-auto rounded-full bg-border px-2 py-0.5 text-xs font-medium text-muted">
+              {waitingRequests}
+            </span>
+          );
+        } else if (entry.path === "/collections" && collectionsCount > 0) {
+          ariaLabel = `Collections, ${collectionsCount} ${collectionsCount === 1 ? "collection" : "collections"}`;
+          badge = (
+            <span aria-hidden="true" className="ml-auto rounded-full bg-border px-2 py-0.5 text-xs font-medium text-muted">
+              {collectionsCount}
+            </span>
+          );
+        } else if (entry.path === "/system") {
+          badge = <HealthDot />;
+        }
+
+        return (
+          <div key={entry.path} className="flex flex-col gap-1">
+            <Link
+              to={entry.path}
+              aria-label={ariaLabel}
+              aria-current={active ? "page" : undefined}
+              className={navLinkClass({ isActive: active })}
+              onClick={onNavigate}
+            >
+              {Icon && <Icon className="size-5 shrink-0" />}
+              <span>{entry.label}</span>
+              {badge}
+            </Link>
+            {entry.path === "/collections" && collectionsActive && (
+              <Link
+                to="/ready-made"
+                aria-current={readyMadeActive ? "page" : undefined}
+                className={subNavLinkClass({ isActive: readyMadeActive })}
+                onClick={onNavigate}
+              >
+                Ready-made
+              </Link>
+            )}
           </div>
-        ),
-      )}
+        );
+      })}
     </nav>
   );
 }
@@ -117,17 +238,17 @@ function LayoutFrame() {
       {/* Sidebar: always visible from md up, a slide-over menu below that. */}
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-20 w-60 overflow-y-auto border-r border-border bg-sidebar md:static md:block",
+          "fixed inset-y-0 left-0 z-20 flex w-60 flex-col overflow-y-auto border-r border-border bg-sidebar md:static md:block",
           menuOpen ? "block" : "hidden",
         ].join(" ")}
       >
-        <div className="flex h-14 items-center gap-2 px-6 font-display text-lg font-semibold">
+        <div className="flex h-14 shrink-0 items-center gap-2 px-6 font-display text-lg font-semibold">
           <PosterMark />
           <Wordmark />
         </div>
         <Sidebar onNavigate={() => setMenuOpen(false)} />
         {/* On phones the header has no room for it. */}
-        {auth.data?.signed_in && <SignOut className="mx-3 mb-3 sm:hidden" />}
+        {auth.data?.signed_in && <SignOut className="mx-3 mb-3 shrink-0 sm:hidden" />}
       </aside>
       {menuOpen && <div className="fixed inset-0 z-10 bg-black/50 md:hidden" onClick={() => setMenuOpen(false)} />}
 

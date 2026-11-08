@@ -1,25 +1,26 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { pages } from "./nav";
+import { sidebarEntries, type SidebarLink } from "./nav";
 import { mockApi, renderAt } from "./test-utils";
 
 describe("App shell", () => {
-  it("links to every page in the sidebar", async () => {
+  it("links to every sidebar entry", async () => {
     mockApi({});
-    renderAt("/libraries");
+    renderAt("/collections");
     const nav = await screen.findByRole("navigation", { name: "Main" });
-    for (const page of pages) {
-      expect(nav.querySelector(`a[href="${page.path}"]`)).not.toBeNull();
+    const links = sidebarEntries.filter((e): e is SidebarLink => !e.spacer);
+    for (const entry of links) {
+      expect(nav.querySelector(`a[href="${entry.path}"]`)).not.toBeNull();
     }
   });
 
-  it("opens on the Overview", async () => {
+  it("opens on Home", async () => {
     mockApi({});
     renderAt("/");
-    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Overview"));
-    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: "Libraries" })).not.toHaveAttribute("aria-current");
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Home"));
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Collections" })).not.toHaveAttribute("aria-current");
   });
 
   it("shows versions on System → Status", async () => {

@@ -11,31 +11,67 @@ export type Section = {
   pages: Page[];
 };
 
+export type SidebarLink = {
+  label: string;
+  path: string;
+  spacer?: false;
+};
+
+export type SidebarSpacer = {
+  spacer: true;
+  label?: undefined;
+  path?: undefined;
+};
+
+export type SidebarEntry = SidebarLink | SidebarSpacer;
+
+export const sidebarEntries: SidebarEntry[] = [
+  { label: "Home", path: "/" },
+  { label: "Collections", path: "/collections" },
+  { label: "Requests", path: "/requests" },
+  { label: "Overlays", path: "/overlays" },
+  { label: "Playlists", path: "/playlists" },
+  { label: "Activity", path: "/activity" },
+  { spacer: true },
+  { label: "System", path: "/system" },
+  { label: "Settings", path: "/settings" },
+];
+
 export const sections: Section[] = [
   {
-    label: "Overview",
-    pages: [{ label: "Overview", path: "/", summary: "What's running, the last and next run, health, unapplied changes and Run now." }],
+    label: "Home",
+    pages: [{ label: "Home", path: "/", summary: "What's running, the last and next run, health, unapplied changes and Run now." }],
   },
   {
-    label: "Libraries",
+    label: "Collections",
     pages: [
-      {
-        label: "Libraries",
-        path: "/libraries",
-        summary: "One card per Plex library, with its collections, overlays and operations.",
-      },
+      { label: "Collections", path: "/collections", summary: "Smart collections you build from your library's own data. Plex keeps them up to date." },
       {
         label: "Ready-made",
         path: "/ready-made",
         summary: "Kometa's ready-made collections as categories: pick the ones you want and build them in one run.",
       },
-      { label: "Collections", path: "/collections", summary: "Smart collections you build from your library's own data. Plex keeps them up to date." },
+    ],
+  },
+  {
+    label: "Requests",
+    pages: [
       {
         label: "Requests",
         path: "/requests",
         summary: "Titles Studio asked Radarr, Sonarr or Seerr to download for your collections.",
       },
+    ],
+  },
+  {
+    label: "Overlays",
+    pages: [
       { label: "Overlays", path: "/overlays", summary: "Kometa's overlays per library: the designer, what draws them, when, and turning them off and on." },
+    ],
+  },
+  {
+    label: "Playlists",
+    pages: [
       { label: "Playlists", path: "/playlists", summary: "Kometa's playlists, from config.yml's playlist_files." },
     ],
   },
@@ -65,6 +101,11 @@ export const sections: Section[] = [
     pages: [
       { label: "General", path: "/settings/general", summary: "Port, sign-in, API key and timezone." },
       { label: "Plex", path: "/settings/plex", summary: "Sign in with Plex and pick your server." },
+      {
+        label: "Libraries",
+        path: "/libraries",
+        summary: "One card per Plex library, with its collections, overlays and operations.",
+      },
       { label: "Connect", path: "/settings/connect", summary: "Radarr, Sonarr, Maintainerr, TMDb and MDBList, each tested before it is saved." },
       {
         label: "Requests",
@@ -106,6 +147,8 @@ const nestedPages: { pattern: RegExp; label: string }[] = [
   { pattern: /^\/libraries\/[^/]+\/?$/, label: "Library" },
   { pattern: /^\/ready-made\/[^/]+\/?$/, label: "Category" },
   { pattern: /^\/collections\/new\/?$/, label: "New collection" },
+  { pattern: /^\/collections\/ready-made\/[^/]+\/?$/, label: "Category" },
+  { pattern: /^\/collections\/ready-made\/?$/, label: "Collections" },
   { pattern: /^\/collections\/[^/]+\/?$/, label: "Collection" },
   { pattern: /^\/overlays\/designer\/?$/, label: "Overlay designer" },
   { pattern: /^\/activity\/queue\/[^/]+\/?$/, label: "Run" },
@@ -115,7 +158,7 @@ const nestedPages: { pattern: RegExp; label: string }[] = [
 export function pageTitle(pathname: string): string {
   const nested = nestedPages.find((page) => page.pattern.test(pathname));
   if (nested) return nested.label;
-  if (pathname === "/") return "Overview";
+  if (pathname === "/") return "Home";
   // Longest prefix wins so /settings/requests isn't titled as Libraries → Requests.
   const match = [...pages, ...otherPages]
     .filter((page) => page.path !== "/" && pathname.startsWith(page.path))
