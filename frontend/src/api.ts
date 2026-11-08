@@ -42,6 +42,7 @@ export type GeneralSettings = {
   auth: { configured: boolean; username: string | null; required: AuthRequired; allow_local: boolean };
   api_key: string;
   timezone: string;
+  log_level: StudioLogState;
   host: string;
   port: number;
   reverse_proxy: ReverseProxy;
@@ -49,6 +50,11 @@ export type GeneralSettings = {
 };
 
 export type ReverseProxy = { url_base: string; trusted: string[] };
+
+export type StudioLogLevel = "info" | "debug" | "trace";
+// from_env: STUDIO_LOG_LEVEL sets it, so the page can't. trace_until: epoch seconds when trace goes back to info.
+export type StudioLogState = { level: StudioLogLevel; from_env: boolean; trace_until: number | null };
+export type LogSource = "kometa" | "studio";
 
 export type AuthInput = { username: string; password: string | null; required: AuthRequired; current_password: string | null };
 
@@ -161,6 +167,8 @@ export type RunEvent = {
   additions?: number;
   removals?: number;
 };
+
+export type RunList = { runs: Run[]; current: number | null; last_succeeded: Run | null };
 
 export type RunDetail = Run & { events: RunEvent[] };
 
@@ -699,6 +707,7 @@ export const api = {
     setAuth: (body: AuthInput) => request<GeneralSettings>("PUT", "/settings/auth", body),
     newApiKey: () => request<GeneralSettings>("POST", "/settings/api-key"),
     setTimezone: (timezone: string) => request<GeneralSettings>("PUT", "/settings/timezone", { timezone }),
+    setLogLevel: (level: StudioLogLevel) => request<GeneralSettings>("PUT", "/settings/log-level", { level }),
     setReverseProxy: (body: ReverseProxy) => request<GeneralSettings>("PUT", "/settings/reverse-proxy", body),
   },
   plex: {
@@ -789,10 +798,10 @@ export const api = {
   },
 
   logs: {
-    list: () => request<{ files: LogFile[] }>("GET", "/logs"),
-    read: (path: string, level: LogLevel, q: string) =>
-      request<LogView>("GET", `/logs/file?${new URLSearchParams({ path, level, q }).toString()}`),
-    downloadUrl: (path: string) => `${urlBase}/api/v1/logs/download?path=${encodeURIComponent(path)}`,
+    list: (source: LogSource) => request<{ files: LogFile[] }>("GET", `/logs?source=${source}`),
+    read: (source: LogSource, path: string, level: LogLevel, q: string) =>
+      request<LogView>("GET", `/logs/file?${new URLSearchParams({ source, path, level, q }).toString()}`),
+    downloadUrl: (source: LogSource, path: string) => `${urlBase}/api/v1/logs/download?${new URLSearchParams({ source, path }).toString()}`,
   },
   maintainerr: {
     get: () => request<MaintainerrState>("GET", "/settings/maintainerr"),
@@ -874,7 +883,7 @@ export const api = {
     run: (id: number) => request<Run>("POST", `/schedules/${id}/run`),
   },
   runs: {
-    list: () => request<{ runs: Run[]; current: number | null }>("GET", "/runs"),
+    list: () => request<RunList>("GET", "/runs"),
     get: (id: number) => request<RunDetail>("GET", `/runs/${id}`),
     create: (body: RunRequest) => request<Run>("POST", "/runs", body),
     cancel: (id: number) => request<Run>("POST", `/runs/${id}/cancel`),

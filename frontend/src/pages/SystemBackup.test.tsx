@@ -81,7 +81,8 @@ describe("Saved since the last run", () => {
     const lastGood = run({ id: 7, started_at: hoursAgo(3), finished_at: hoursAgo(2.9) });
     mockApi({
       "GET /import/switch-over": () => ({ active: null }),
-      "GET /runs": () => ({ runs: [lastGood], current: null }),
+      // 50 failures since: the good run is only in last_succeeded, not on the page of runs
+      "GET /runs": () => ({ runs: [run({ id: 57, status: "failed", exit_code: 1 })], current: null, last_succeeded: lastGood }),
       "GET /backups": () => ({ backups: [backup("b2", 1, "Added the Pixar collection"), backup("b1", 26, "Turned on the basic default")], keep: 30 }),
       "GET /tasks": () => ({ tasks: [backupTask, checkTask] }),
       "GET /backups/full": () => ({ backups: [] }),
