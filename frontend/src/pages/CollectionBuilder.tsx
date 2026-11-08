@@ -15,7 +15,7 @@ import {
   type FilterRule,
   type FilterSpec,
 } from "../builderApi";
-import { blankListSource, toApiSources } from "../components/builder/SourcesEditor";
+import { toApiSources, withFreshUids } from "../components/builder/SourcesEditor";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useHeaderTitle } from "../components/HeaderTitle";
 import { LeaveGuard } from "../components/LeaveGuard";
@@ -29,6 +29,8 @@ import {
   canSave,
   draftsDiffer,
   fromInput,
+  missingForSave,
+  shapeForMode,
   skipRequestsChanged,
   startModeOf,
   toInput,
@@ -47,12 +49,6 @@ function saveProblems(error: unknown): string[] {
   }
   return [];
 }
-
-const LIST_SORTS = [
-  { key: "custom", label: "List order" },
-  { key: "release", label: "Release date" },
-  { key: "alpha", label: "Title" },
-] as const;
 
 function setDraftPatch(setDraft: React.Dispatch<React.SetStateAction<Draft>>, patch: Partial<Draft> | ((current: Draft) => Draft)) {
   if (typeof patch === "function") setDraft(patch);
@@ -89,7 +85,12 @@ function BuilderForm({
   const [saveAction, setSaveAction] = useState<"build" | "later" | null>(null);
 
   const baselineMode: StartMode = initialMode ?? mode ?? "list";
-  const dirty = mode !== null && draftsDiffer(draft, baselineSnap, mode, baselineMode);
+  const compareBaseline = useMemo(() => {
+    if (id === null && mode !== null) return shapeForMode(blankDraft(library, fields.fields), mode, fields.fields);
+    return baselineSnap;
+  }, [id, mode, library, fields.fields, baselineSnap]);
+  const compareBaselineMode: StartMode = id === null && mode !== null ? mode : baselineMode;
+  const dirty = mode !== null && draftsDiffer(draft, compareBaseline, mode, compareBaselineMode);
 
   const kometaUrl = useMemo(() => {
     const b = baselineSnap.poster;
@@ -109,11 +110,11 @@ function BuilderForm({
     id,
     mode,
     draft,
-    baseline: baselineSnap,
-    baselineMode,
+    baseline: compareBaseline,
+    baselineMode: compareBaselineMode,
     onRestore: (stored: StoredBuilderDraft) => {
       setMode(stored.mode);
-      setDraft(stored.draft);
+      setDraft({ ...stored.draft, sources: withFreshUids(stored.draft.sources) });
       setOpenStep(1);
     },
   });
@@ -191,8 +192,10 @@ function BuilderForm({
   const removeNotice = remove.error instanceof ApiError ? remove.error.message : null;
 
   useEffect(() => {
-    if (problems.length > 0) setOpenStep(stepForSaveProblem(problems[0]!));
-  }, [problems]);
+    if (!save.error) return;
+    const saveProblemList = saveProblems(save.error);
+    if (saveProblemList.length > 0) setOpenStep(stepForSaveProblem(saveProblemList[0]!));
+  }, [save.error]);
 
   const requestSettings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
   const requestsEnabled = requestSettings.data?.settings.enabled === true;
@@ -213,30 +216,7 @@ function BuilderForm({
   const switchMode = (next: StartMode) => {
     setMode(next);
     setOpenStep(1);
-    if (next === "filters") {
-      setDraft((current) => {
-        const blank = blankDraft(library, fields.fields);
-        return {
-          ...current,
-          filters: current.filters.rules.length > 0 ? current.filters : blank.filters,
-          sources: [blankListSource()],
-          sort_by: null,
-          limit: null,
-          download_missing: false,
-          request_cap: null,
-          request_profile: null,
-          skip_requests: [],
-        };
-      });
-      return;
-    }
-    setDraft((current) => ({
-      ...current,
-      sources: current.sources.length > 0 ? current.sources : [blankListSource()],
-      filters: { match: "all", rules: [] },
-      sort_by: current.sort_by && LIST_SORTS.some((s) => s.key === current.sort_by) ? current.sort_by : "custom",
-      limit: null,
-    }));
+    setDraft((current) => shapeForMode(current, next, fields.fields));
   };
 
   const breadcrumbTitle = id === null ? "New collection" : draft.title.trim() || "Collection";
@@ -255,7 +235,7 @@ function BuilderForm({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="min-w-0 flex-1 text-[32px] leading-tight font-semibold">
             <input
-              className={`${inputClass} w-full border-0 bg-transparent px-0 text-[32px] leading-tight font-semibold shadow-none focus:ring-0`}
+              className={`${inputClass} w-full border-0 bg-transparent px-0 text-[32px] leading-tight font-semibold shadow-none focus:ring-0${draft.title.trim() === "" ? " border-b border-dashed border-border" : ""}`}
               value={draft.title}
               onChange={(event) => {
                 setAutoTitle(null);
@@ -375,6 +355,10 @@ function BuilderForm({
             saving={save.isPending}
             saveAction={saveAction}
             canSubmit={canSave(draft, mode)}
+            saveHint={(() => {
+              const missing = missingForSave(draft, mode);
+              return missing.length > 0 ? missing.join(" and ") : null;
+            })()}
             onSaveForLater={() => {
               setSaveAction("later");
               save.mutate({ confirm_requests: false, build: false });
