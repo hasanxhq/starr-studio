@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ConfigLibrary, DefaultsCatalogue, FileReference, OverlayLayout, OverlayLibrary, PlexItem } from "../api";
 import { mockApi, renderAt } from "../test-utils";
@@ -62,6 +62,7 @@ const configSchema = {
         builder_level: { type: "string", enum: ["show", "season", "episode"] },
         use_resolution: { type: "boolean" },
         use_edition: { type: "boolean" },
+        rating_alignment: { type: "string", enum: ["horizontal", "vertical"] },
       },
       patternProperties: { "^use_.*$": { type: "boolean" } },
     },
@@ -70,7 +71,7 @@ const configSchema = {
 
 const item = (rating_key: string, title: string, video_resolution: string | null): PlexItem => ({ rating_key, title, type: "movie", year: 2021, thumb: `/library/metadata/${rating_key}/thumb/1`, ids: {}, content_rating: null, audience_rating: null, episodes: null, added_at: null, video_resolution, audio_codec: null });
 
-const status: OverlayLibrary = { library: "Movies", plex_name: "Movies", off: false, files: [], backup: null, last_pass: null, maintainerr: null };
+const status: OverlayLibrary = { library: "Movies", plex_name: "Movies", off: false, files: [], backup: { posters: 100, bytes: 1 }, last_pass: { run_id: 1, status: "succeeded", started_at: null, finished_at: null }, maintainerr: null };
 
 const saved = { backup: "b", files: [{ path: "config.yml", hash: "h" }], validation: { ok: true, errors: [], warnings: [], existing_errors: [], checked_by_kometa: true, crashed: false, output: "" } };
 
@@ -87,174 +88,121 @@ const routes = {
   "GET /config/defaults": () => catalogue,
   "GET /config/schemas/config": () => configSchema,
   "GET /overlays": () => ({ libraries: [status] }),
+  "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_up: null }),
+  "GET /arr": () => ({ settings: { radarr: { enabled: false }, sonarr: { enabled: false } } }),
   "GET /plex/libraries/1/items": () => ({ items: [item("5", "Dune", "4k"), item("6", "Heat", "1080")], start: 0, total: 2 }),
   "GET /plex/libraries/2/items": () => ({ items: [], start: 0, total: 0 }),
 };
 
-const layers = () => screen.findByRole("region", { name: "Layers · Movies" });
+const layers = () => screen.findByRole("heading", { name: "Layers" });
 const settings = () => screen.getByRole("complementary", { name: "Layer settings" });
 const pressed = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name}`) });
 
-describe("The overlay designer", () => {
-  it("lists the library's overlay defaults as layers, in order, and is reached from Overlays", async () => {
-    mockApi({ ...routes, "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_ups: [] }), "GET /arr": () => ({ settings: { radarr: { enabled: false }, sonarr: { enabled: false } } }) });
-    renderAt("/overlays");
-    fireEvent.click(await screen.findByRole("link", { name: "Open the overlay designer" }));
-    expect(await screen.findByRole("heading", { name: "Overlay designer" })).toBeInTheDocument();
-
-    const list = await layers();
-    await waitFor(() => expect(within(list).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Resolutiontop-right↑↓", "Ratingscenter-left↑↓", "Statustop-left↑↓"]));
-    expect(within(list).getByText(/Also draws 1 of your own overlay file/)).toBeInTheDocument();
+describe("The overlay studio", () => {
+  it("redirects /overlays/designer to /overlays with the library", async () => {
+    mockApi(routes);
+    renderAt("/overlays/designer?library=Movies");
+    expect(await screen.findByRole("heading", { name: "Overlays · Movies" })).toBeInTheDocument();
   });
 
-  it("moves a layer with the anchor grid and offsets, live on the preview, and saves its template variables", async () => {
-    const calls = mockApi({ ...routes, "PUT /config/libraries/Movies/defaults/overlay/resolution": () => saved });
-    renderAt("/overlays/designer");
-    await layers();
-    const poster = await screen.findByRole("group", { name: "Overlays on Dune" });
-    const badge = await within(poster).findByRole("button", { name: "Select 4K" });
-    expect(badge.style.left).toBe("68%"); // right, 15 in: 1000 − 305 − 15
-    expect(await screen.findByRole("button", { name: "Top right" })).toHaveAttribute("aria-pressed", "true");
+  it("lists layers top-draws-last with locked user files", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    const heading = await layers();
+    const list = heading.parentElement!;
+    await waitFor(() => expect(within(list).getAllByRole("listitem").map((li) => li.textContent?.replace(/\s+/g, " ").trim())).toEqual(expect.arrayContaining(["config/mine.yml"])));
+    expect(within(list).getByRole("button", { name: /^Status / })).toBeInTheDocument();
+    expect(within(list).getByRole("button", { name: /^Resolution / })).toBeInTheDocument();
+  });
 
+  it("uses Plex thumb without boxes for Now in Plex and original with boxes for With your changes", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(screen.getByRole("button", { name: "Now in Plex" }));
+    expect(screen.queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "With your changes" }));
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    expect(await within(poster).findByRole("button", { name: "Select 4K" })).toBeInTheDocument();
+    expect(poster.querySelector("img")?.getAttribute("src")).toContain("/overlays/Movies/original/5");
+    fireEvent.click(screen.getByRole("button", { name: "Hide Resolution in the preview" }));
+    expect(within(poster).queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
+  });
+
+  it("moves a layer with anchors, saves for tonight, or applies now", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = mockApi({
+      ...routes,
+      "POST /overlays/Movies/estimate": () => ({ posters: 1200, minutes: 18 }),
+      "PUT /config/libraries/Movies/defaults/overlay/resolution": () => saved,
+      "POST /overlays/Movies/apply": () => ({ run_id: 12 }),
+    });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    await screen.findByRole("group", { name: /Overlays on Dune/ });
     fireEvent.click(screen.getByRole("button", { name: "Bottom right" }));
-    expect(badge.style.top).toBe(`${((1500 - 105 - 15) / 1500) * 100}%`);
-    fireEvent.change(screen.getByLabelText("Offset X"), { target: { value: "40" } });
-    expect(badge.style.left).toBe(`${((1000 - 305 - 40) / 1000) * 100}%`);
-    expect(within(settings()).getByLabelText("What this writes to config.yml")).toHaveTextContent("- default: resolution template_variables: horizontal_align: right vertical_align: bottom horizontal_offset: 40");
-
-    fireEvent.click(screen.getByRole("button", { name: "Apply on next run" }));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await screen.findByRole("region", { name: "Overlay changes" })).toHaveTextContent(/1 layer changed/);
+    fireEvent.click(screen.getByRole("button", { name: "Save for tonight" }));
     await waitFor(() =>
-      expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/resolution")?.body).toEqual({ template_variables: { horizontal_align: "right", vertical_align: "bottom", horizontal_offset: 40 } }),
+      expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/resolution")?.body).toEqual({
+        template_variables: { horizontal_align: "right", vertical_align: "bottom" },
+      }),
     );
-    expect(await screen.findByText(/Kometa draws it on the next overlay run/)).toBeInTheDocument();
+    expect(calls.some((c) => c.route === "POST /overlays/Movies/apply")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Bottom left" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply now" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "POST /overlays/Movies/apply")).toBe(true));
+    vi.useRealTimers();
   });
 
-  it("takes a variable out when the anchor goes back to where the default starts", async () => {
-    mockApi(routes);
-    renderAt("/overlays/designer");
-    await layers();
-    fireEvent.click(await screen.findByRole("button", { name: "Top left" }));
-    expect(within(settings()).getByLabelText("What this writes to config.yml").textContent).toBe("- default: resolution");
-  });
-
-  it("moves ratings with their own position variables, and has no offsets for them", async () => {
-    mockApi(routes);
-    renderAt("/overlays/designer");
-    fireEvent.click(await within(await layers()).findByRole("button", { name: /^Ratings/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Bottom right" }));
-    expect(within(settings()).getByLabelText("What this writes to config.yml")).toHaveTextContent("horizontal_position: right vertical_position: bottom");
-    expect(screen.queryByLabelText("Offset X")).not.toBeInTheDocument();
-    fireEvent.change(await within(settings()).findByRole("combobox", { name: /^Rating 1 \(/ }), { target: { value: "critic" } });
-    fireEvent.change(within(settings()).getByRole("combobox", { name: /Rating 1 logo/ }), { target: { value: "rt_tomato" } });
-    expect(within(settings()).getByLabelText("What this writes to config.yml")).toHaveTextContent("rating1: critic rating1_image: rt_tomato");
-  });
-
-  it("offers what a default can choose under Show when, and says so when it has nothing", async () => {
-    mockApi(routes);
-    renderAt("/overlays/designer");
-    await layers();
-    expect(await within(settings()).findByText(/own resolution and edition/)).toBeInTheDocument();
-    fireEvent.click(pressed("Ratings"));
-    expect(await within(settings()).findByText(/no choices to make there/)).toBeInTheDocument();
-    fireEvent.click(pressed("Status"));
-    const when = await screen.findByRole("group", { name: "Show when" });
-    fireEvent.click(within(when).getByRole("checkbox", { name: "Ended" }));
-    expect(within(settings()).getByLabelText("What this writes to config.yml")).toHaveTextContent("use_ended: false");
-  });
-
-  it("selects a layer from the poster", async () => {
-    mockApi(routes);
-    renderAt("/overlays/designer");
-    await layers();
-    fireEvent.click(await screen.findByRole("button", { name: "Select Status" }));
-    expect(await screen.findByRole("form", { name: "Variables for Status" })).toBeInTheDocument();
-  });
-
-  it("previews on a chosen title, and the same layers on others", async () => {
-    mockApi(routes);
-    renderAt("/overlays/designer");
-    await layers();
-    const small = await screen.findByRole("group", { name: "Overlays on Heat" });
-    expect(within(small).getByText("1080P")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Preview on"), { target: { value: "6" } });
-    expect(await screen.findByRole("button", { name: "Select 1080P" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Overlays on Dune" })).toBeInTheDocument();
-  });
-
-  it("still places overlays when Plex can't be reached", async () => {
-    mockApi({ ...routes, "GET /plex/libraries/1/items": () => new Response(JSON.stringify({ detail: "Plex answered HTTP 503" }), { status: 503 }) });
-    renderAt("/overlays/designer");
-    await layers();
-    expect(await screen.findByText(/Can't get posters from Plex/)).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Select 4K" })).toBeInTheDocument();
-  });
-
-  it("adds a layer that suits the library, and turns one off after asking", async () => {
-    const calls = mockApi({ ...routes, "PUT /config/libraries/Movies/defaults/overlay/ribbon": () => saved, "DELETE /config/libraries/Movies/defaults/overlay/resolution": () => saved });
-    renderAt("/overlays/designer");
-    await layers();
-    const add = await screen.findByLabelText("Add a layer");
-    await waitFor(() => expect(within(add).getByRole("option", { name: "Ribbon" })).toBeInTheDocument());
-    expect(within(add).queryByRole("option", { name: "Episode Info" })).not.toBeInTheDocument(); // shows only
-    fireEvent.change(add, { target: { value: "ribbon" } });
-    await waitFor(() => expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/ribbon")?.body).toEqual({ template_variables: {} }));
-
-    fireEvent.click(await within(settings()).findByRole("button", { name: "Turn off" }));
-    expect(calls.some((c) => c.route.startsWith("DELETE"))).toBe(false);
-    fireEvent.click(within(settings()).getByRole("button", { name: "Turn off Resolution" }));
-    await waitFor(() => expect(calls.some((c) => c.route === "DELETE /config/libraries/Movies/defaults/overlay/resolution")).toBe(true));
-  });
-
-  it("shows Kometa's refusal beside the button", async () => {
-    const refusal = { message: "Kometa found problems, so nothing was saved.", validation: { ...saved.validation, ok: false, errors: ["config.yml: back_color doesn't match the pattern"] } };
-    mockApi({ ...routes, "PUT /config/libraries/Movies/defaults/overlay/resolution": () => new Response(JSON.stringify({ detail: refusal }), { status: 422 }) });
-    renderAt("/overlays/designer");
-    await layers();
-    fireEvent.click(await screen.findByRole("button", { name: "Bottom left" }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply on next run" }));
-    expect(await within(settings()).findByText(/back_color doesn't match/)).toBeInTheDocument();
-  });
-
-  it("changes the order Kometa draws them in", async () => {
+  it("reorders layers when Move up is pressed", async () => {
     const calls = mockApi({ ...routes, "PUT /config/libraries/Movies/overlay-order": () => saved });
-    renderAt("/overlays/designer");
-    const list = await layers();
-    expect(await within(list).findByRole("button", { name: "Draw Resolution earlier" })).toBeDisabled();
-    fireEvent.click(within(list).getByRole("button", { name: "Draw Resolution later" }));
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: "Move Resolution up" }));
     await waitFor(() => expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/overlay-order")?.body).toEqual({ names: ["ratings", "resolution", "status"] }));
   });
 
-  it("asks before unsaved changes are lost, by picking a layer or a library", async () => {
+  it("selects a layer from the poster and shows Show when toggles", async () => {
     mockApi(routes);
-    renderAt("/overlays/designer");
+    renderAt("/overlays?library=Movies");
     await layers();
-    fireEvent.click(await screen.findByRole("button", { name: "Bottom left" }));
-
-    fireEvent.click(pressed("Status"));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Stay here" }));
-    expect(screen.getByRole("form", { name: "Variables for Resolution" })).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText("Library"), { target: { value: "TV Shows" } });
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Stay here" }));
-    expect(screen.getByLabelText("Library")).toHaveValue("Movies");
-
-    fireEvent.click(pressed("Status"));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Leave without saving" }));
-    expect(await screen.findByRole("form", { name: "Variables for Status" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Select Status" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Show when" }));
+    const when = await screen.findByRole("group", { name: "Show when" });
+    fireEvent.click(within(when).getByRole("checkbox", { name: "Ended" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save for tonight" }));
   });
 
-  it("offers Draw on in a show library, and says when overlays are off or Maintainerr's go on top", async () => {
-    mockApi({ ...routes, "GET /overlays": () => ({ libraries: [{ ...status, library: "TV Shows", plex_name: "TV Shows", off: true, maintainerr: { collections: ["Leaving"], on_top: true } }] }) });
-    renderAt("/overlays/designer?library=TV%20Shows");
-    expect(await screen.findByRole("combobox", { name: /Draw on/ })).toBeInTheDocument();
-    expect(screen.getByText(/Overlays are turned off for TV Shows/)).toBeInTheDocument();
-    expect(screen.getByText(/Maintainerr's overlays still go on top/)).toBeInTheDocument();
+  it("hides a layer in the preview without saving", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: "Hide Resolution in the preview" }));
+    expect(screen.queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
   });
 
-  it("starts empty with a way in", async () => {
-    mockApi({ ...routes, "GET /config/libraries/Movies": () => ({ ...movies, overlay_files: [] }) });
-    renderAt("/overlays/designer");
-    expect(await screen.findByText("No overlay defaults yet. Add a layer to start.")).toBeInTheDocument();
-    expect(screen.getByText("Pick a layer to move and style it.")).toBeInTheDocument();
+  it("asks before unsaved changes are lost when picking another layer", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(screen.getByRole("button", { name: "Bottom left" }));
+    fireEvent.click(pressed("Status"));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Stay here" }));
+    expect(screen.getByRole("tab", { name: "Place" })).toBeInTheDocument();
+  });
+
+  it("adds a layer and removes one after asking", async () => {
+    const calls = mockApi({ ...routes, "PUT /config/libraries/Movies/defaults/overlay/ribbon": () => saved, "DELETE /config/libraries/Movies/defaults/overlay/resolution": () => saved });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: "Ribbon" }));
+    await waitFor(() => expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/ribbon")?.body).toEqual({ template_variables: {} }));
+    fireEvent.click(screen.getByRole("button", { name: /^Resolution / }));
+    fireEvent.click(within(settings()).getByRole("button", { name: "Remove layer" }));
+    fireEvent.click(within(settings()).getByRole("button", { name: "Turn off Resolution" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "DELETE /config/libraries/Movies/defaults/overlay/resolution")).toBe(true));
   });
 });
