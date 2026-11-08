@@ -10,6 +10,7 @@ from fakeplex import REMOTE_URI, SERVER_TOKEN, FakePlex
 
 from starr_studio import arr
 from starr_studio.arr import Connection
+from starr_studio.auth_routes import TIMEZONE
 from starr_studio.crypto import SecretBox
 from starr_studio.db import open_database
 from starr_studio.plex_library import PlexServer
@@ -90,9 +91,15 @@ class FakeMockEnvironment:
         self.plex = FakePlex()
         self.requests: list[httpx.Request] = []
         self._next_id = 100
+        self.delay: float = 0.0
 
     def transport(self) -> httpx.MockTransport:
-        return httpx.MockTransport(self.handle)
+        async def handler(request: httpx.Request) -> httpx.Response:
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            return self.handle(request)
+
+        return httpx.MockTransport(handler)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -1104,3 +1111,110 @@ async def test_cancelling_a_seerr_request_leaves_an_untagged_movie_alone(env):
 
     await service.cancel(row["id"], T0 + timedelta(minutes=1))
     assert mock.radarr_movies[77]["monitored"] is True
+
+
+@pytest.mark.anyio
+async def test_concurrent_requests_one_at_a_time(env):
+    """Finding 5: two concurrent request() calls for the same title and collection, with a fake *arr that awaits briefly
+    per call: the title is sent once and the second call reports it skipped."""
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    mock.delay = 0.05
+    item = Item(item="tmdb-movie:603", title="The Matrix", year=1999)
+
+    outcome1, outcome2 = await asyncio.gather(
+        service.request([item], library="Movies", collection_id=1, now=T0),
+        service.request([item], library="Movies", collection_id=1, now=T0),
+    )
+
+    outcomes = [outcome1, outcome2]
+    requested = [o for o in outcomes if o.requested == 1]
+    skipped = [o for o in outcomes if o.skipped == 1]
+
+    assert len(requested) == 1
+    assert len(skipped) == 1
+    assert skipped[0].items[0].status == "skipped"
+
+    # Radarr received the movie add POST exactly once
+    post_movie_requests = [r for r in mock.requests if r.url.path == "/api/v3/movie" and r.method == "POST"]
+    assert len(post_movie_requests) == 1
+    assert len(mock.radarr_movies) == 1
+
+
+@pytest.mark.anyio
+async def test_concurrent_requests_respect_daily_cap(env):
+    """Two concurrent request() calls for different titles when cap=1: one is requested, one is capped."""
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    mock.delay = 0.05
+    item1 = Item(item="tmdb-movie:201", title="Movie 201")
+    item2 = Item(item="tmdb-movie:202", title="Movie 202")
+
+    outcome1, outcome2 = await asyncio.gather(
+        service.request([item1], library="Movies", collection_id=1, now=T0, cap=1),
+        service.request([item2], library="Movies", collection_id=1, now=T0, cap=1),
+    )
+
+    outcomes = [outcome1, outcome2]
+    requested = [o for o in outcomes if o.requested == 1]
+    capped = [o for o in outcomes if o.capped == 1]
+
+    assert len(requested) == 1
+    assert len(capped) == 1
+
+
+@pytest.mark.anyio
+async def test_daily_cap_resets_at_local_midnight(env):
+    """Finding 6: timezone America/New_York, cap 1. A request recorded at 2026-03-10T23:30:00Z (19:30 local) uses that
+    day's cap, so a second request at 2026-03-11T01:00:00Z (21:00 local, the same local day) is capped.
+    With timezone UTC, the same second request is allowed."""
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    set_setting(db, TIMEZONE, "America/New_York")
+
+    # A request recorded at 2026-03-10T23:30:00Z (19:30 local) uses that day's cap
+    t1 = datetime(2026, 3, 10, 23, 30, 0, tzinfo=UTC)
+    outcome1 = await service.request(
+        [Item(item="tmdb-movie:1", title="Movie 1")],
+        library="Movies",
+        collection_id=1,
+        now=t1,
+        cap=1,
+    )
+    assert outcome1.requested == 1
+    assert outcome1.capped == 0
+
+    # Second request at 2026-03-11T01:00:00Z (21:00 local, the same local day) is capped
+    t2 = datetime(2026, 3, 11, 1, 0, 0, tzinfo=UTC)
+    outcome2 = await service.request(
+        [Item(item="tmdb-movie:2", title="Movie 2")],
+        library="Movies",
+        collection_id=1,
+        now=t2,
+        cap=1,
+    )
+    assert outcome2.requested == 0
+    assert outcome2.capped == 1
+    assert outcome2.items[0].status == "capped"
+
+    # With timezone UTC, the same second request is allowed
+    set_setting(db, TIMEZONE, "UTC")
+    outcome3 = await service.request(
+        [Item(item="tmdb-movie:2", title="Movie 2")],
+        library="Movies",
+        collection_id=1,
+        now=t2,
+        cap=1,
+    )
+    assert outcome3.requested == 1
+    assert outcome3.capped == 0
+    assert outcome3.items[0].status == "requested"

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import BaseModel, Field
@@ -24,11 +25,12 @@ from . import arr, tmdb_details
 from .arr import ArrProblem, Connection, Kind
 from .config_sections import read_section, save_section
 from .config_write import ConfigWriter, SaveRefused
+from .auth_routes import TIMEZONE
 from .crypto import SecretBox
 from .db import delete_setting, get_setting, set_setting
 from .kometa_config import read_plex
 from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
-from .scheduler import utc_text
+from .scheduler import default_timezone, utc_text
 from .services import mask
 
 log = logging.getLogger(__name__)
@@ -383,6 +385,7 @@ class RequestService:
         self.writer = writer
         self._task: asyncio.Task | None = None
         self._carrying = asyncio.Lock()
+        self._requesting = asyncio.Lock()
         # Called after each check; the app uses it to rebuild collections whose requested titles reached Plex.
         self.after_labelling: Callable[[], object] | None = None
 
@@ -874,128 +877,132 @@ class RequestService:
     ) -> RequestOutcome:
         """Ask for ``items``. ``profile`` names the quality profile to use instead of the default: Radarr's/Sonarr's,
         or, through Seerr, one on Seerr's default Radarr/Sonarr server."""
-        settings = self.load_settings()
-        if not settings.enabled:
-            raise RequestsDisabled("Requests are disabled")
+        async with self._requesting:
+            settings = self.load_settings()
+            if not settings.enabled:
+                raise RequestsDisabled("Requests are disabled")
 
-        # Asked once is enough: a title already requested, downloading, imported, or already in Radarr/Sonarr
-        # ('exists', which Studio leaves alone) isn't filed again on every later run.
-        active_rows = self.db.execute(
-            "SELECT item FROM requests WHERE status IN ('requested', 'downloading', 'imported', 'exists')"
-        ).fetchall()
-        active_items = {r[0] for r in active_rows}
-        seen_in_batch: set[str] = set()
+            # Asked once is enough: a title already requested, downloading, imported, or already in Radarr/Sonarr
+            # ('exists', which Studio leaves alone) isn't filed again on every later run.
+            active_rows = self.db.execute(
+                "SELECT item FROM requests WHERE status IN ('requested', 'downloading', 'imported', 'exists')"
+            ).fetchall()
+            active_items = {r[0] for r in active_rows}
+            seen_in_batch: set[str] = set()
 
-        # Daily cap calculation
-        effective_cap = cap if cap is not None else settings.daily_cap
-        if collection_id is not None and effective_cap is not None:
-            today_start = f"{now.date().isoformat()}T00:00:00Z"
-            used_today = self.db.execute(
-                # Only what was actually sent counts towards the cap, not failures or titles the app already had.
-                "SELECT count(*) FROM requests WHERE collection_id = ? AND requested_at >= ? AND status IN ('requested', 'downloading', 'imported')",
-                (collection_id, today_start),
-            ).fetchone()[0]
-            remaining_cap = max(0, effective_cap - used_today)
-        else:
-            remaining_cap = None
-
-        outcome = RequestOutcome()
-        seerr_choice: dict[str, tuple[SeerrServer | None, int | None, str | None]] = {}  # per media, looked up once
-
-        for it in items:
-            if it.item in active_items or it.item in seen_in_batch:
-                outcome.skipped += 1
-                outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
-                continue
-
-            if remaining_cap is not None and remaining_cap <= 0:
-                outcome.capped += 1
-                outcome.items.append(RequestItemResult(item=it.item, status="capped"))
-                continue
-
-            seen_in_batch.add(it.item)
-            if remaining_cap is not None:
-                remaining_cap -= 1
-
-            # Parse media and raw id
-            if it.item.startswith("tmdb-movie:"):
-                media = "movie"
-                kind_id = ("tmdb-movie", it.item.removeprefix("tmdb-movie:"))
-            elif it.item.startswith("tmdb-show:"):
-                media = "show"
-                kind_id = ("tmdb-show", it.item.removeprefix("tmdb-show:"))
-            elif it.item.startswith("tvdb:"):
-                media = "show"
-                kind_id = ("tvdb", it.item.removeprefix("tvdb:"))
+            # Daily cap calculation
+            effective_cap = cap if cap is not None else settings.daily_cap
+            if collection_id is not None and effective_cap is not None:
+                tz = get_setting(self.db, TIMEZONE) or default_timezone()
+                local = now.astimezone(ZoneInfo(tz))
+                start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+                today_start = utc_text(start)
+                used_today = self.db.execute(
+                    # Only what was actually sent counts towards the cap, not failures or titles the app already had.
+                    "SELECT count(*) FROM requests WHERE collection_id = ? AND requested_at >= ? AND status IN ('requested', 'downloading', 'imported')",
+                    (collection_id, today_start),
+                ).fetchone()[0]
+                remaining_cap = max(0, effective_cap - used_today)
             else:
-                outcome.failed += 1
-                error_msg = f"Unknown item key format: {it.item}"
-                self._record(it.item, "movie", it.title, it.year, library, collection_id, "unknown", None, "failed", error_msg, now)
-                outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
-                continue
+                remaining_cap = None
 
-            # Route target
-            chosen_via = settings.via
-            if chosen_via == "auto":
-                seerr_conn = self.load_seerr_connection()
-                target_app = "seerr" if seerr_conn is not None else ("radarr" if media == "movie" else "sonarr")
-            elif chosen_via == "seerr":
-                target_app = "seerr"
-            else:
-                target_app = "radarr" if media == "movie" else "sonarr"
+            outcome = RequestOutcome()
+            seerr_choice: dict[str, tuple[SeerrServer | None, int | None, str | None]] = {}  # per media, looked up once
 
-            if target_app == "seerr":
-                seerr_conn = self.load_seerr_connection()
-                if seerr_conn is None:
-                    error_msg = "Seerr isn't connected"
-                    status = "failed"
-                    external_id = None
-                    self._record(it.item, media, it.title, it.year, library, collection_id, "seerr", None, status, error_msg, now)
-                    outcome.failed += 1
-                    outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+            for it in items:
+                if it.item in active_items or it.item in seen_in_batch:
+                    outcome.skipped += 1
+                    outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
                     continue
-                via_record = "seerr"
-                if media not in seerr_choice:
-                    seerr_choice[media] = await self._seerr_profile(seerr_conn, media, profile)
-                server, profile_id, note = seerr_choice[media]
-                status, external_id, error_msg = await self._request_seerr(seerr_conn, it, media, kind_id, server, profile_id, note)
-            elif target_app == "radarr":
-                via_record = "radarr"
-                radarr_conn = arr.connection(self.db, self.box, self.config, "radarr")
-                if radarr_conn is None:
-                    error_msg = "Radarr isn't connected"
-                    status = "failed"
-                    external_id = None
-                    self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
-                    outcome.failed += 1
-                    outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+
+                if remaining_cap is not None and remaining_cap <= 0:
+                    outcome.capped += 1
+                    outcome.items.append(RequestItemResult(item=it.item, status="capped"))
                     continue
-                status, external_id, error_msg = await self._request_radarr(radarr_conn, settings.radarr, it, kind_id, profile)
-            else:  # sonarr
-                via_record = "sonarr"
-                sonarr_conn = arr.connection(self.db, self.box, self.config, "sonarr")
-                if sonarr_conn is None:
-                    error_msg = "Sonarr isn't connected"
-                    status = "failed"
-                    external_id = None
-                    self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
+
+                seen_in_batch.add(it.item)
+                if remaining_cap is not None:
+                    remaining_cap -= 1
+
+                # Parse media and raw id
+                if it.item.startswith("tmdb-movie:"):
+                    media = "movie"
+                    kind_id = ("tmdb-movie", it.item.removeprefix("tmdb-movie:"))
+                elif it.item.startswith("tmdb-show:"):
+                    media = "show"
+                    kind_id = ("tmdb-show", it.item.removeprefix("tmdb-show:"))
+                elif it.item.startswith("tvdb:"):
+                    media = "show"
+                    kind_id = ("tvdb", it.item.removeprefix("tvdb:"))
+                else:
                     outcome.failed += 1
-                    outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+                    error_msg = f"Unknown item key format: {it.item}"
+                    self._record(it.item, "movie", it.title, it.year, library, collection_id, "unknown", None, "failed", error_msg, now)
+                    outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
                     continue
-                status, external_id, error_msg = await self._request_sonarr(sonarr_conn, settings.sonarr, it, kind_id, profile)
 
-            self._record(it.item, media, it.title, it.year, library, collection_id, via_record, external_id, status, error_msg, now)
-            if status == "requested":
-                outcome.requested += 1
-                active_items.add(it.item)
-            elif status == "exists":
-                outcome.exists += 1
-            elif status == "failed":
-                outcome.failed += 1
+                # Route target
+                chosen_via = settings.via
+                if chosen_via == "auto":
+                    seerr_conn = self.load_seerr_connection()
+                    target_app = "seerr" if seerr_conn is not None else ("radarr" if media == "movie" else "sonarr")
+                elif chosen_via == "seerr":
+                    target_app = "seerr"
+                else:
+                    target_app = "radarr" if media == "movie" else "sonarr"
 
-            outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+                if target_app == "seerr":
+                    seerr_conn = self.load_seerr_connection()
+                    if seerr_conn is None:
+                        error_msg = "Seerr isn't connected"
+                        status = "failed"
+                        external_id = None
+                        self._record(it.item, media, it.title, it.year, library, collection_id, "seerr", None, status, error_msg, now)
+                        outcome.failed += 1
+                        outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+                        continue
+                    via_record = "seerr"
+                    if media not in seerr_choice:
+                        seerr_choice[media] = await self._seerr_profile(seerr_conn, media, profile)
+                    server, profile_id, note = seerr_choice[media]
+                    status, external_id, error_msg = await self._request_seerr(seerr_conn, it, media, kind_id, server, profile_id, note)
+                elif target_app == "radarr":
+                    via_record = "radarr"
+                    radarr_conn = arr.connection(self.db, self.box, self.config, "radarr")
+                    if radarr_conn is None:
+                        error_msg = "Radarr isn't connected"
+                        status = "failed"
+                        external_id = None
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
+                        outcome.failed += 1
+                        outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+                        continue
+                    status, external_id, error_msg = await self._request_radarr(radarr_conn, settings.radarr, it, kind_id, profile)
+                else:  # sonarr
+                    via_record = "sonarr"
+                    sonarr_conn = arr.connection(self.db, self.box, self.config, "sonarr")
+                    if sonarr_conn is None:
+                        error_msg = "Sonarr isn't connected"
+                        status = "failed"
+                        external_id = None
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
+                        outcome.failed += 1
+                        outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+                        continue
+                    status, external_id, error_msg = await self._request_sonarr(sonarr_conn, settings.sonarr, it, kind_id, profile)
 
-        return outcome
+                self._record(it.item, media, it.title, it.year, library, collection_id, via_record, external_id, status, error_msg, now)
+                if status == "requested":
+                    outcome.requested += 1
+                    active_items.add(it.item)
+                elif status == "exists":
+                    outcome.exists += 1
+                elif status == "failed":
+                    outcome.failed += 1
+
+                outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
+
+            return outcome
 
     async def refresh(self, now: datetime) -> dict[str, int]:
         rows = self.db.execute("SELECT * FROM requests WHERE status IN ('requested', 'downloading')").fetchall()
