@@ -242,3 +242,49 @@ def test_a_check_rebuilds_after_labelling(root):
         service.after_labelling = lambda: order.append("after")
         assert client.post("/api/v1/requests/refresh").status_code == 200
         assert order == ["refresh", "after"]
+
+
+def test_skipped_titles_are_never_requested_until_unticked(root):
+    with tmdb_client(root, []) as client:
+        wait_for_flags(client)
+        requests_on(client)
+        calls = record_requests(client)
+        db = client.app.state.db
+
+        preview = client.post("/api/v1/builder/sources/preview", json={"library": "Movies", "sources": [DUNE_SOURCE]}).json()
+        assert [(m["id"], m["requested"]) for m in preview["missing"]] == [("tmdb-movie:693134", False)]
+
+        made = client.post("/api/v1/collections", json=dune(download_missing=True, skip_requests=["tmdb-movie:693134"]))
+        assert made.status_code == 201, made.text
+        built = made.json()
+        assert built["skip_requests"] == ["tmdb-movie:693134"] and calls == []
+        wait_for_run(client, built["run_id"])
+
+        # An edit that doesn't send the list keeps it; Kometa's report after a run is filtered too.
+        kept = client.put(f"/api/v1/collections/{built['id']}", json=dune(download_missing=True, summary="Spice")).json()
+        assert kept["skip_requests"] == ["tmdb-movie:693134"] and calls == []
+        wait_for_run(client, kept["run_id"])
+        _wanted(db, "Dune", "tmdb-movie:693134", "tmdb-movie:7")
+        hook = cr.MissingRequester(db, client.app.state.writer, client.app.state.requests)
+
+        async def run():
+            after = await hook.before_run(RunRequest(mode="collections", libraries=["Movies"], collections=["Dune"]), lambda line: None)
+            await after()
+
+        asyncio.run(run())
+        assert calls == [{"items": ["tmdb-movie:7"], "library": "Movies", "collection_id": built["id"], "cap": None}]
+
+        # Unticking it requests it on the next save that builds.
+        again = client.put(f"/api/v1/collections/{built['id']}", json=dune(download_missing=True, skip_requests=[]))
+        assert again.status_code == 200, again.text
+        assert again.json()["skip_requests"] == [] and calls[-1]["items"] == ["tmdb-movie:693134"]
+        wait_for_run(client, again.json()["run_id"])
+
+        # Once asked for, the preview says so.
+        with db:
+            db.execute(
+                "INSERT INTO requests (item, media, library, collection_id, via, status, requested_at, updated_at) VALUES ('tmdb-movie:693134', 'movie', 'Movies', ?, 'radarr', 'requested', 't', 't')",
+                (built["id"],),
+            )
+        preview = client.post("/api/v1/builder/sources/preview", json={"library": "Movies", "sources": [DUNE_SOURCE]}).json()
+        assert preview["missing"][0]["requested"] is True
