@@ -254,7 +254,7 @@ def test_skipped_titles_are_never_requested_until_unticked(root):
         preview = client.post("/api/v1/builder/sources/preview", json={"library": "Movies", "sources": [DUNE_SOURCE]}).json()
         assert [(m["id"], m["requested"]) for m in preview["missing"]] == [("tmdb-movie:693134", False)]
 
-        made = client.post("/api/v1/collections", json=dune(download_missing=True, skip_requests=["tmdb-movie:693134"]))
+        made = client.post("/api/v1/collections", json=dune(download_missing=True, skip_requests=[" tmdb-movie:693134", ""]))
         assert made.status_code == 201, made.text
         built = made.json()
         assert built["skip_requests"] == ["tmdb-movie:693134"] and calls == []

@@ -26,7 +26,7 @@ from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from ruamel.yaml import YAML
 
 from . import collections as col
@@ -130,6 +130,11 @@ class CollectionIn(BaseModel):
     # Missing titles never to request (keys as list_sources.missing_key names them), until they're taken off this list
     skip_requests: list[str] | None = Field(default=None, max_length=5000)  # None on an update keeps the saved list
     build: bool = True  # False = save without running Kometa; the collection gets changed_at instead
+
+    @field_validator("skip_requests")
+    @classmethod
+    def _clean_skips(cls, keys: list[str] | None) -> list[str] | None:
+        return None if keys is None else sorted({key.strip() for key in keys if key.strip()})
 
 
 class DownloadMissingIn(BaseModel):
@@ -337,7 +342,7 @@ def _definition(body: CollectionIn) -> dict:
         "summary": (body.summary or "").strip() or None,
         "sort_title": (body.sort_title or "").strip() or None,
         "poster": _poster_dict(body.poster),
-        "skip_requests": sorted({key.strip() for key in body.skip_requests or [] if key.strip()}),
+        "skip_requests": body.skip_requests or [],
     }
 
 
