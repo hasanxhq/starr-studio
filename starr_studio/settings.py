@@ -5,6 +5,7 @@ user changes in the UI lives in SQLite instead.
 """
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -25,6 +26,8 @@ class Settings(BaseSettings):
 
     # The timezone new schedules use. Unset: the TZ environment variable, else UTC.
     timezone: str | None = None
+    # Overrides Settings → General's log level (info, debug or trace), for problems before the database opens.
+    log_level: Literal["info", "debug", "trace"] | None = None
 
     # Whether loopback/private/link-local addresses count as local for sign-in. Off on a shared
     # server (seedbox), where those addresses belong to other customers.

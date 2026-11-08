@@ -7,6 +7,7 @@ exited after ``kill_after`` seconds.
 
 import asyncio
 import json
+import logging
 import os
 import re
 import signal
@@ -22,6 +23,8 @@ from . import kometa_command
 from .kometa_command import RunRequest
 from .kometa_config import ensure_studio_webhooks
 from .settings import Settings
+
+logger = logging.getLogger(__name__)  # `log` is each run's own log file below
 
 FINISHED = ("succeeded", "failed", "cancelled", "interrupted", "timed_out")
 # What makes a log line an error or a warning: the same words as the log's colours and filter (frontend's RunLog.tsx).
@@ -205,7 +208,15 @@ class Runner:
                 self._wake.clear()
                 await self._wake.wait()
                 continue
-            await self._run(row[0], RunRequest.model_validate_json(row[1]))
+            try:
+                await self._run(row[0], RunRequest.model_validate_json(row[1]))
+            except Exception:  # never let one run end the loop: every later run would sit queued
+                logger.exception("Run %s failed unexpectedly", row[0])
+                with self.db:
+                    self.db.execute(
+                        "UPDATE runs SET status = 'failed', finished_at = ?, error = ? WHERE id = ? AND status IN ('queued', 'running')",
+                        (now(), "Studio hit an unexpected error; Studio's log has the details", row[0]),
+                    )
 
     def _finish(self, run_id: int, status: str, *, exit_code: int | None = None, error: str | None = None) -> None:
         warnings = self._active.warnings if self._active else 0
@@ -265,10 +276,13 @@ class Runner:
                         start_new_session=True,  # its own process group, so cancelling reaches Kometa's worker too
                         limit=LINE_LIMIT,
                     )
-                except (RunHeld, ValueError, OSError) as error:  # UnsupportedFlag is a ValueError
+                except Exception as error:  # RunHeld, ValueError (UnsupportedFlag), OSError, or a hook's surprise
+                    if not isinstance(error, (RunHeld, ValueError, OSError)):
+                        logger.exception("Run %s: a run hook failed", run_id)  # anything else would end the runner loop
+                    message = str(error) or type(error).__name__
                     await self._afters(active, log, afters)
-                    self._emit(active, log, f"Starr Studio: {error}")
-                    self._finish(run_id, "failed", error=str(error))
+                    self._emit(active, log, f"Starr Studio: {message}")
+                    self._finish(run_id, "failed", error=message)
                     return
 
                 try:
