@@ -339,7 +339,7 @@ export function SystemBackup() {
   const switchOver = useQuery({ queryKey: ["import", "switch-over"], queryFn: importApi.switchOver });
   return (
     <div className="flex max-w-5xl flex-col gap-4">
-      <PendingChanges runs={runs.data?.runs} />
+      <PendingChanges runs={runs.data} />
       {switchOver.isPending ? null : switchOver.isError ? (
         <Card title="Move over from Kometa">
           <p role="alert" className="text-err">
