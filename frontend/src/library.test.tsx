@@ -5,8 +5,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mockApi } from "./test-utils";
 import { ReadyMadePicksProvider } from "./readyMadePicks";
-import { Collections } from "./pages/Collections";
-import { ReadyMade } from "./pages/ReadyMade";
+import { useLibrary } from "./library";
+
+// The sidebar's picker in miniature: pages read useLibrary() and no longer have pickers of their own.
+function Probe() {
+  const { library, libraries, setLibrary } = useLibrary();
+  if (library === null) return null;
+  return (
+    <label>
+      Apply to
+      <select value={library} onChange={(event) => setLibrary(event.target.value)}>
+        {libraries.map((name) => (
+          <option key={name}>{name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const twoLibraries = {
   "GET /config": () => ({
@@ -46,8 +61,8 @@ function renderLibraryTest(initialPath: string, routes: Record<string, (body: un
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
-      { path: "/ready-made", element: <ReadyMade /> },
-      { path: "/collections", element: <Collections /> },
+      { path: "/ready-made", element: <Probe /> },
+      { path: "/collections", element: <Probe /> },
     ],
     { initialEntries: [initialPath] },
   );
@@ -116,7 +131,7 @@ describe("useLibrary", () => {
 
   it("keeps other search params when setLibrary runs", async () => {
     const router = renderLibraryTest("/collections?kept=done&library=Movies", { ...twoLibraries, ...collectionsEmpty });
-    await screen.findByRole("heading", { name: "Collections", level: 2 });
+    await screen.findByRole("combobox", { name: /Apply to/i });
     fireEvent.change(screen.getByRole("combobox", { name: /Apply to/i }), { target: { value: "TV Shows" } });
     await waitFor(() => expect(router.state.location.search).toContain("kept=done"));
     expect(router.state.location.search).toContain("library=TV+Shows");
@@ -149,8 +164,8 @@ describe("useLibrary", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const router = createMemoryRouter(
       [
-        { path: "/ready-made", element: <ReadyMade /> },
-        { path: "/collections", element: <Collections /> },
+        { path: "/ready-made", element: <Probe /> },
+        { path: "/collections", element: <Probe /> },
       ],
       { initialEntries: ["/ready-made"] },
     );

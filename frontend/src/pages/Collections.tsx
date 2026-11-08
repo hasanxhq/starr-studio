@@ -363,7 +363,7 @@ export function Collections() {
   const [search, setSearch] = useState("");
   const { pathname } = useLocation();
   const readyMadeTab = pathname.startsWith("/collections/ready-made");
-  const { library, libraries: names, setLibrary, overview } = useLibrary();
+  const { library, libraries: names, overview } = useLibrary();
 
   const setShow = (next: ShowFilter) => {
     setSearchParams(
@@ -422,18 +422,6 @@ export function Collections() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-[13px] text-muted">
-            Apply to
-            <select
-              className="min-h-11 rounded-control border border-border-strong bg-surface-2 px-3 text-sm text-text focus:border-accent focus:outline-none"
-              value={library}
-              onChange={(event) => setLibrary(event.target.value)}
-            >
-              {names.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-            </select>
-          </label>
           <label className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-control border border-border-strong bg-surface-2 px-3 text-sm sm:min-w-[16rem] sm:flex-none">
             <SearchIcon className="size-4 text-muted" />
             <span className="sr-only">Search collections</span>
