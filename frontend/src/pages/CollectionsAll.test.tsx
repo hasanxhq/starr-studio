@@ -29,6 +29,7 @@ const collection = (partial: Partial<BuiltCollection> & Pick<BuiltCollection, "i
   last_error: null,
   run_id: null,
   requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+  last_change: null,
   ...partial,
 });
 
@@ -38,6 +39,7 @@ const other = (partial: Partial<OtherCollection> & Pick<OtherCollection, "title"
   thumb: null,
   smart: false,
   category: null,
+  last_change: null,
   ...partial,
 });
 

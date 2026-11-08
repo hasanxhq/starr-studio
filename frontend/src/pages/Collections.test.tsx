@@ -30,6 +30,7 @@ const collection = (partial: Partial<BuiltCollection> & Pick<BuiltCollection, "i
   last_error: null,
   run_id: null,
   requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+  last_change: null,
   ...partial,
 });
 
