@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { BuiltinTask } from "../api";
+import type { Backup, BuiltinTask, Run, RunRequest } from "../api";
 import type { SwitchOver } from "../importApi";
 import { mockApi, renderAt } from "../test-utils";
+import { savedSince } from "./home/savedSince";
 
 const backupTask: BuiltinTask = {
   name: "full_backup",
@@ -32,6 +33,67 @@ const active: SwitchOver = {
   libraries: ["Movies"],
   run_id: 7,
 };
+
+const everything: RunRequest = {
+  mode: "all",
+  libraries: [],
+  collections: [],
+  files: [],
+  ignore_schedules: false,
+  no_missing: false,
+  tests: false,
+  timings: false,
+  low_priority: true,
+};
+
+const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString().replace(/\.\d+Z$/, "Z");
+
+function run(overrides: Partial<Run>): Run {
+  return {
+    id: 1,
+    status: "succeeded",
+    trigger: "manual",
+    schedule_id: null,
+    request: everything,
+    command: null,
+    queued_at: hoursAgo(5),
+    started_at: hoursAgo(5),
+    finished_at: hoursAgo(4.9),
+    exit_code: 0,
+    error: null,
+    summary: null,
+    error_events: 0,
+    warnings: 0,
+    ...overrides,
+  };
+}
+
+const backup = (id: string, hours: number, reason: string): Backup => ({ id, created: hoursAgo(hours), reason, files: ["config.yml"], new_files: [] });
+
+describe("Saved since the last run", () => {
+  it("counts saves after the run started, and every save when nothing has run", () => {
+    const backups = [backup("b2", 1, "new"), backup("b1", 3, "old")];
+    expect(savedSince(backups, run({ started_at: hoursAgo(2) })).map((b) => b.id)).toEqual(["b2"]);
+    expect(savedSince(backups, undefined).map((b) => b.id)).toEqual(["b2", "b1"]);
+  });
+
+  it("lists what was saved since the last successful run started", async () => {
+    const lastGood = run({ id: 7, started_at: hoursAgo(3), finished_at: hoursAgo(2.9) });
+    mockApi({
+      "GET /import/switch-over": () => ({ active: null }),
+      "GET /runs": () => ({ runs: [lastGood], current: null }),
+      "GET /backups": () => ({ backups: [backup("b2", 1, "Added the Pixar collection"), backup("b1", 26, "Turned on the basic default")], keep: 30 }),
+      "GET /tasks": () => ({ tasks: [backupTask, checkTask] }),
+      "GET /backups/full": () => ({ backups: [] }),
+    });
+    renderAt("/system/backup");
+    const card = (await screen.findByRole("heading", { name: "Saved since the last run" })).closest("section")!;
+    await waitFor(() => expect(card).toHaveTextContent("Saved after"));
+    expect(card).toHaveTextContent("run #7");
+    expect(card).toHaveTextContent("The next run applies these.");
+    expect(card).not.toHaveTextContent("Turned on the basic default");
+  });
+});
 
 describe("Full backups", () => {
   it("backs up now, and lists the new zip with a download link", async () => {

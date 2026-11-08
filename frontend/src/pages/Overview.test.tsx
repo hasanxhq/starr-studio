@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { Backup, LibraryCounts, Run, RunDetail, RunRequest, Status } from "../api";
+import type { LibraryCounts, Run, RunDetail, RunRequest, Status } from "../api";
+import type { BuiltCollection } from "../builderApi";
+import type { RequestRow, RequestsList } from "../requestsApi";
 import { mockApi, renderAt } from "../test-utils";
-import { savedSince } from "./Overview";
 
 const everything: RunRequest = {
   mode: "all",
@@ -68,29 +69,97 @@ const counts: LibraryCounts = {
   problems: [],
 };
 
-const backup = (id: string, hours: number, reason: string): Backup => ({ id, created: hoursAgo(hours), reason, files: ["config.yml"], new_files: [] });
+const collection = (partial: Partial<BuiltCollection> & Pick<BuiltCollection, "id" | "title" | "state">): BuiltCollection => ({
+  library: "Movies",
+  source: { kind: "filters" },
+  filters: { match: "all", rules: [] },
+  sort_by: null,
+  limit: null,
+  visible: { library: true, home: false, shared: false },
+  minimum_items: 1,
+  summary: null,
+  sort_title: null,
+  poster: null,
+  download_missing: false,
+  request_cap: null,
+  request_profile: null,
+  plex_items: 5,
+  thumb: null,
+  last_built_at: hoursAgo(1),
+  last_error: null,
+  run_id: 7,
+  requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+  last_change: { added: 27, removed: 3, run_id: 7 },
+  ...partial,
+});
 
-function routes(overrides: Record<string, (body: unknown) => unknown> = {}) {
+const requestsSettings = {
+  settings: {
+    enabled: true,
+    via: "auto" as const,
+    radarr: { quality_profile: null, root_folder: null, minimum_availability: "released" as const, search: true },
+    sonarr: { quality_profile: null, root_folder: null, monitor: "all" as const, search: true, series_type: "standard" as const },
+    daily_cap: null,
+    confirm_over: 25,
+  },
+  seerr: null,
+  connected: { radarr: true, sonarr: false, seerr: false },
+};
+
+const requestRow = (partial: Partial<RequestRow> & Pick<RequestRow, "id" | "status" | "title">): RequestRow => ({
+  item: `tmdb-movie:${partial.id}`,
+  media: "movie",
+  year: 1995,
+  library: "Movies",
+  collection_id: 1,
+  via: "radarr",
+  external_id: "10",
+  error: null,
+  requested_at: hoursAgo(0.1),
+  updated_at: new Date().toISOString(),
+  imported_at: null,
+  labelled_at: null,
+  ...partial,
+});
+
+const requestList = (requests: RequestRow[]): RequestsList => ({
+  requests,
+  counts: {
+    requested: requests.filter((r) => r.status === "requested").length,
+    downloading: requests.filter((r) => r.status === "downloading").length,
+    imported: requests.filter((r) => r.status === "imported").length,
+    failed: requests.filter((r) => r.status === "failed").length,
+    cancelled: requests.filter((r) => r.status === "cancelled").length,
+    exists: requests.filter((r) => r.status === "exists").length,
+  },
+});
+
+function baseRoutes(overrides: Record<string, (body: unknown) => unknown> = {}) {
   return {
+    "GET /config/setup": () => ({ plex: true, tmdb: true, library: true, done: true }),
     "GET /status": () => status,
-    "GET /runs": () => ({ runs: [lastNight, run({ id: 6, status: "failed", started_at: hoursAgo(30), finished_at: hoursAgo(29) })], current: null }),
+    "GET /runs": () => ({ runs: [lastNight], current: null }),
     "GET /runs/7": (): RunDetail => ({
       ...lastNight,
       events: [
         { event: "changes", received_at: hoursAgo(2.9), library_name: "Movies", collection: "Marvel", created: false, additions: 3, removals: 1 } as never,
-        { event: "changes", received_at: hoursAgo(2.9), library_name: "Movies", collection: "Trending", created: true, additions: 11, removals: 0 } as never,
-      ],
-    }),
-    "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_ups: [] }),
-    "GET /kometa": () => ({ flags: [], flags_error: null, problem: null }),
-    "GET /backups": () => ({ backups: [backup("b2", 1, "Added the Pixar collection"), backup("b1", 26, "Turned on the basic default for Movies")], keep: 30 }),
-    "GET /plex/libraries": () => ({
-      libraries: [
-        { key: "1", title: "Movies", type: "movie", items: 1234, collections: 3, managed: 2 },
-        { key: "2", title: "TV Shows", type: "show", items: 64, collections: 0, managed: 0 },
+        { event: "delete", received_at: hoursAgo(2.9), message: "Old picks", created: false } as never,
       ],
     }),
     "GET /config": () => ({ path: "/config/config.yml", libraries: [counts], playlist_files: [] }),
+    "GET /plex/libraries": () => ({
+      libraries: [{ key: "1", title: "Movies", type: "movie", items: 1234, collections: 3, managed: 2 }],
+    }),
+    "GET /collections?library=Movies": () => ({
+      collections: [
+        collection({ id: 2, title: "Queued", state: "queued", last_change: null }),
+        collection({ id: 1, title: "Broken", state: "failed", last_error: "source timeout" }),
+        collection({ id: 3, title: "Recent", state: "in_plex", last_change: { added: 2, removed: 0, run_id: 6 }, last_built_at: hoursAgo(0.5) }),
+      ],
+    }),
+    "GET /libraries/Movies/other-collections": () => ({ others: [], plex_error: null }),
+    "GET /requests/settings": () => requestsSettings,
+    "GET /requests?limit=200": () => requestList([]),
     "GET /kometa/full-check": () => ({
       last: { ok: true, errors: [], warnings: [], existing_errors: [], checked_by_kometa: true, crashed: false, output: "", at: hoursAgo(1) },
     }),
@@ -98,95 +167,108 @@ function routes(overrides: Record<string, (body: unknown) => unknown> = {}) {
   };
 }
 
-describe("The Overview", () => {
-  it("shows the last and next run, health, libraries and connections at a glance", async () => {
-    mockApi(routes());
-    renderAt("/");
+describe("Home", () => {
+  it("shows the library, shelf captions, Plex changes, and connections", async () => {
+    mockApi(baseRoutes());
+    renderAt("/?library=Movies");
 
-    const glance = await screen.findByRole("list", { name: "At a glance" });
-    await waitFor(() => expect(glance).toHaveTextContent("Nightly"));
-    expect(within(glance).getByRole("link", { name: /Now/ })).toHaveTextContent("Nothing running");
-    const last = within(glance).getByRole("link", { name: /Last run/ });
-    expect(last).toHaveAttribute("href", "/activity/queue/7");
-    expect(last).toHaveTextContent("Succeeded Everything");
-    expect(last).toHaveTextContent("Scheduled");
-    expect(last).toHaveTextContent("+14 −3 items");
-    expect(within(glance).getByRole("link", { name: /Next run/ })).toHaveTextContent("in 5 h");
-    expect(within(glance).getByRole("link", { name: /Health/ })).toHaveTextContent("No problems");
+    expect(await screen.findByRole("heading", { name: "Movies", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText(/1,234 movies/)).toBeInTheDocument();
+    expect(screen.getByText(/next run/)).toBeInTheDocument();
+
+    const broken = await screen.findByRole("listitem", { name: "Broken" });
+    expect(within(broken).getByText("+27 −3 last run")).toBeInTheDocument();
+    expect(broken.compareDocumentPosition(screen.getAllByRole("listitem", { name: "Queued" })[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const changed = await screen.findByRole("list", { name: "Collections changed" });
-    expect(changed).toHaveTextContent("Movies · Marvel+3 −1");
-    expect(changed).toHaveTextContent("New");
-
-    const movies = (await screen.findByRole("link", { name: /^Movies/ })).closest("li")!;
-    expect(movies).toHaveTextContent("1,234 movies");
-    expect(movies).toHaveTextContent("3 collections · 2 by Kometa");
-    expect(movies).toHaveTextContent("2 collection files, 1 overlay file, 3 defaults");
-    expect(screen.getByRole("link", { name: /^TV Shows/ })).toHaveTextContent("Not in Kometa's config.yml");
-
-    expect(await screen.findByText(/^Passed/)).toBeInTheDocument();
+    expect(changed).toHaveTextContent("Movies · Marvel");
+    expect(changed).toHaveTextContent("Gone");
+    expect(screen.getByText("Kometa 2.5.3")).toBeInTheDocument();
+    expect(screen.queryByText(/run #/)).toBeNull();
+    expect(screen.queryByText(/YAML/)).toBeNull();
   });
 
-  it("lists what was saved since the last successful run started", async () => {
-    mockApi(routes());
-    renderAt("/");
-    const card = (await screen.findByText("Added the Pixar collection")).closest("section")!;
-    expect(card).toHaveTextContent("Saved after run #7 started");
-    expect(card).toHaveTextContent("The next run applies these.");
-    expect(card).not.toHaveTextContent("Turned on the basic default");
-  });
-
-  it("says when a scoped run may have left changes unapplied", async () => {
-    const scoped = run({ id: 8, request: { ...everything, mode: "collections", libraries: ["Movies"] }, started_at: hoursAgo(0.5), finished_at: hoursAgo(0.4) });
-    mockApi(routes({ "GET /runs": () => ({ runs: [scoped], current: null }), "GET /runs/8": () => ({ ...scoped, events: [] }) }));
-    renderAt("/");
-    const card = (await screen.findByText(/Nothing has been saved since/)).closest("section")!;
-    expect(card).toHaveTextContent("That run was Collections only · Movies, so it may not have applied everything saved before it.");
-  });
-
-  it("shows a running run, problems and a catch-up", async () => {
-    const running = run({ id: 9, status: "running", trigger: "catch_up", started_at: hoursAgo(0.1), finished_at: null });
+  it("hides Needs you when nothing is wrong", async () => {
     mockApi(
-      routes({
-        "GET /status": () => ({
-          ...status,
-          health: [
-            { source: "plex", level: "error", message: "Can't reach Plex.", link: "/settings/plex" },
-            { source: "sign_in", level: "warning", message: "Sign-in isn't set up.", link: "/settings/general" },
-          ],
-          runs: { current: 9, queued: 1, next_scheduled: null },
+      baseRoutes({
+        "GET /collections?library=Movies": () => ({
+          collections: [collection({ id: 1, title: "Fine", state: "in_plex", last_change: null })],
         }),
-        "GET /runs": () => ({ runs: [run({ id: 10, status: "queued", started_at: null, finished_at: null }), running, lastNight], current: 9 }),
-        "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_ups: [{ id: 9, status: "running", queued_at: hoursAgo(0.1), name: "Nightly" }] }),
       }),
     );
-    renderAt("/");
-    const glance = await screen.findByRole("list", { name: "At a glance" });
-    await waitFor(() => expect(within(glance).getByRole("link", { name: /Now/ })).toHaveTextContent("Running Everything"));
-    expect(within(glance).getByRole("link", { name: /Now/ })).toHaveTextContent("Run #9");
-    expect(within(glance).getByRole("link", { name: /Now/ })).toHaveTextContent("1 waiting");
-    expect(within(glance).getByRole("link", { name: /Now/ })).toHaveAttribute("href", "/activity/queue/9");
-    await waitFor(() => expect(within(glance).getByRole("link", { name: /Health/ })).toHaveTextContent("1 error, 1 warning"));
-    expect(within(glance).getByRole("link", { name: /Health/ })).toHaveTextContent("Can't reach Plex.");
-    expect(within(glance).getByRole("link", { name: /Next run/ })).toHaveTextContent("No schedule");
-    expect(screen.getByText("Studio caught up on missed runs")).toBeInTheDocument();
+    renderAt("/?library=Movies");
+    await screen.findByRole("heading", { name: "Movies", level: 2 });
+    expect(screen.queryByRole("heading", { name: "Needs you" })).toBeNull();
   });
 
-  it("starts a run", async () => {
-    const calls = mockApi(routes({ "POST /runs": () => run({ id: 11, status: "queued" }) }));
-    renderAt("/");
-    const button = await screen.findByRole("button", { name: "Run now" });
-    await waitFor(() => expect(button).toBeEnabled());
-    fireEvent.click(button);
-    expect(await screen.findByRole("link", { name: "run #11" })).toHaveAttribute("href", "/activity/queue/11");
-    expect(calls.find((call) => call.route === "POST /runs")?.body).toMatchObject({ mode: "all" });
+  it("puts a failed collection first in Needs you with Retry and Edit", async () => {
+    const calls = mockApi(
+      baseRoutes({
+        "POST /collections/1/retry": () => ({ run_id: 12 }),
+      }),
+    );
+    renderAt("/?library=Movies");
+
+    const card = (await screen.findByRole("heading", { name: "Needs you" })).closest("section")!;
+    expect(within(card).getAllByText("Broken").length).toBeGreaterThan(0);
+    expect(within(card).getByText("source timeout")).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: /Retry Broken/ }));
+    await waitFor(() => expect(calls.some((c) => c.route === "POST /collections/1/retry")).toBe(true));
+    expect(within(card).getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/collections/1");
+    const shelf = (await screen.findByRole("heading", { name: "Your collections" })).closest("section")!;
+    const tiles = within(shelf).getAllByRole("listitem");
+    expect(within(tiles[0]!).getByRole("link", { name: /Broken/ })).toBeInTheDocument();
+  });
+
+  it("lists failed requests and health errors with links", async () => {
+    mockApi(
+      baseRoutes({
+        "GET /status": () => ({
+          ...status,
+          health: [{ source: "plex", level: "error", message: "Can't reach Plex.", link: "/settings/plex" }],
+        }),
+        "GET /requests?limit=200": () => requestList([requestRow({ id: 9, title: "X", status: "failed" }), requestRow({ id: 8, title: "Y", status: "failed" })]),
+      }),
+    );
+    renderAt("/?library=Movies");
+    const card = (await screen.findByRole("heading", { name: "Needs you" })).closest("section")!;
+    expect(within(card).getByText("2 requests failed")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Open requests" })).toHaveAttribute("href", "/requests?status=failed");
+    expect(within(card).getByText("Can't reach Plex.")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Fix" })).toHaveAttribute("href", "/settings/plex");
+  });
+
+  it("truncates Needs you after five rows", async () => {
+    const failed = Array.from({ length: 6 }, (_, i) =>
+      collection({ id: i + 10, title: `Fail ${i}`, state: "failed", last_error: "err", last_change: null }),
+    );
+    mockApi(
+      baseRoutes({
+        "GET /collections?library=Movies": () => ({ collections: failed }),
+      }),
+    );
+    renderAt("/?library=Movies");
+    const card = (await screen.findByRole("heading", { name: "Needs you" })).closest("section")!;
+    expect(within(card).getByText("And 1 more")).toBeInTheDocument();
+  });
+
+  it("hides Coming in when requests are off and empty", async () => {
+    mockApi(
+      baseRoutes({
+        "GET /requests/settings": () => ({ ...requestsSettings, settings: { ...requestsSettings.settings, enabled: false } }),
+        "GET /requests?limit=200": () => requestList([]),
+      }),
+    );
+    renderAt("/?library=Movies");
+    await screen.findByRole("heading", { name: "Movies", level: 2 });
+    expect(screen.queryByRole("heading", { name: "Coming in" })).toBeNull();
   });
 });
 
-describe("Saves waiting for a run", () => {
-  it("counts saves after the run started, and every save when nothing has run", () => {
-    const backups = [backup("b2", 1, "new"), backup("b1", 3, "old")];
-    expect(savedSince(backups, run({ started_at: hoursAgo(2) })).map((b) => b.id)).toEqual(["b2"]);
-    expect(savedSince(backups, undefined).map((b) => b.id)).toEqual(["b2", "b1"]);
+describe("Overview on a new install", () => {
+  it("goes to setup until Kometa has what it needs", async () => {
+    mockApi({ "GET /config/setup": () => ({ plex: false, tmdb: false, library: false, done: false }) });
+    renderAt("/");
+    expect(await screen.findByText(/Kometa needs three things/)).toBeInTheDocument();
   });
 });
