@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Overlays** is one studio page per library: turn overlays on or off and set their schedule from the header, reorder layers (top draws last), hide one in the preview, compare **Now in Plex** with **With your changes** (drawn on Kometa's untouched poster, so badges no longer show twice), style backgrounds, read a one-line summary of what changes, and choose **Save for tonight** or **Apply now** with an estimate of how many posters Kometa redraws. The old designer link redirects.
 - **Activity, System and Settings** show their pages as a row of tabs at the top, and `/activity`, `/system` and `/settings` open the first one. Page titles name the section too ("Settings · Plex").
 - **Settings → UI → Fonts**: try your device's own fonts instead of Studio's, for text only or everywhere. Remembered in this browser; Studio's fonts stay the default.
 - Collection and Ready-made tiles show their state as a badge on the poster (shared `PosterTile` / `StatusBadge`).
