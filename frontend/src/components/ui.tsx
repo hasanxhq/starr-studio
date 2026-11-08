@@ -83,6 +83,10 @@ export function Checkbox({ checked, onChange, children, disabled }: { checked: b
 export const inputClass =
   "min-h-11 w-full rounded-control border border-border-strong bg-bg px-3 text-sm text-text placeholder:text-muted/60 focus:border-accent focus:outline-none";
 
+export function Spinner({ className = "size-5" }: { className?: string }) {
+  return <span aria-hidden className={`inline-block animate-spin rounded-full border-2 border-border-strong border-t-accent ${className}`} />;
+}
+
 /** A button that asks once more before doing something hard to undo. */
 export function ConfirmButton({
   label,
@@ -92,6 +96,7 @@ export function ConfirmButton({
   busy,
   open = false,
   onKeep,
+  busyLabel = "Working…",
 }: {
   label: string;
   confirm: string;
@@ -100,16 +105,24 @@ export function ConfirmButton({
   busy: boolean;
   open?: boolean; // already asking: something else was the first click
   onKeep?: () => void;
+  busyLabel?: string;
 }) {
   const [asking, setAsking] = useState(open);
   if (!asking) return <Button onClick={() => setAsking(true)}>{label}</Button>;
   return (
     <span className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-warn">{warning}</span>
-      <Button className="border-err/60 text-err" onClick={onConfirm} disabled={busy}>
-        {confirm}
+      <Button
+        className="gap-2 border-err/60 text-err"
+        onClick={onConfirm}
+        disabled={busy}
+        aria-busy={busy ? "true" : undefined}
+      >
+        {busy && <Spinner className="size-4" />}
+        {busy ? busyLabel : confirm}
       </Button>
       <Button
+        disabled={busy}
         onClick={() => {
           setAsking(false);
           onKeep?.();

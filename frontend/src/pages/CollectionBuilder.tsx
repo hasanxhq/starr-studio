@@ -327,6 +327,7 @@ function BuilderForm({
                   warning="Deletes it from Plex too. Only collections Studio made are ever deleted."
                   onConfirm={() => remove.mutate()}
                   busy={remove.isPending}
+                  busyLabel="Deleting…"
                 />
               )}
             </div>

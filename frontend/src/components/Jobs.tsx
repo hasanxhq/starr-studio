@@ -7,7 +7,7 @@ import { Link } from "react-router";
 
 import { api, type Job, type JobStatus } from "../api";
 import { formatRelative, formatTime } from "../runs";
-import { Button } from "./ui";
+import { Button, Spinner } from "./ui";
 
 const CLEARED_KEY = "studio.jobs.clearedAt"; // finished jobs before this are hidden, in this browser
 
@@ -58,10 +58,6 @@ function Ring({ value, max }: { value: number; max: number }) {
       </text>
     </svg>
   );
-}
-
-function Spinner({ className = "size-5" }: { className?: string }) {
-  return <span aria-hidden className={`inline-block animate-spin rounded-full border-2 border-border-strong border-t-accent ${className}`} />;
 }
 
 function StatusIcon({ job }: { job: Job }) {
