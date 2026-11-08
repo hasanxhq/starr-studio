@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
-from . import auth, reverse_proxy
+from . import auth, reverse_proxy, studio_log
 from .auth import Caller
 from .db import set_setting
 from .scheduler import utc_text
@@ -100,6 +100,7 @@ def general(request: Request, db: sqlite3.Connection) -> dict:
         },
         "api_key": auth.api_key(db),
         "timezone": request.app.state.timezone,
+        "log_level": studio_log.current(db, settings.log_level),
         "host": settings.host,
         "port": settings.port,
         "reverse_proxy": reverse_proxy.load(db).model_dump(),
@@ -175,6 +176,19 @@ class TimezoneIn(BaseModel):
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError(f"Unknown timezone: {value}") from None
         return value
+
+
+class LogLevelIn(BaseModel):
+    level: Literal["info", "debug", "trace"]
+
+
+@router.put("/settings/log-level")
+async def put_log_level(body: LogLevelIn, request: Request, db: Db) -> dict:
+    """Studio's own log level. STUDIO_LOG_LEVEL, when set, wins: then this is refused."""
+    if request.app.state.settings.log_level:
+        raise HTTPException(409, "STUDIO_LOG_LEVEL sets the log level, so it can't be changed here")
+    studio_log.choose(db, body.level)
+    return general(request, db)
 
 
 class ReverseProxyIn(BaseModel):
