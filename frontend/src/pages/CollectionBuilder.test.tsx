@@ -90,6 +90,7 @@ const sample: BuiltCollection = {
   last_error: null,
   run_id: 3,
   requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+  last_change: null,
 };
 
 const listSample: BuiltCollection = {
@@ -115,6 +116,7 @@ const listSample: BuiltCollection = {
   last_error: null,
   run_id: 4,
   requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+  last_change: null,
 };
 
 const sourceKinds: SourceKind[] = [
