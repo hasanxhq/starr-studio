@@ -118,12 +118,12 @@ describe("Overview on a new install", () => {
   it("stays put once it has, or if Studio can't tell", async () => {
     mockApi({ "GET /config/setup": () => ({ plex: true, tmdb: true, library: true, done: true }) });
     const { unmount } = renderAt("/");
-    expect(await screen.findByText("Now")).toBeInTheDocument();
+    expect(await screen.findByText(/no libraries yet|Can't read the config/)).toBeInTheDocument();
     expect(screen.queryByText(/Kometa needs three things/)).toBeNull();
     unmount();
 
     mockApi({});
     renderAt("/");
-    expect(await screen.findByText("Now")).toBeInTheDocument();
+    expect(await screen.findByText(/no libraries yet|Can't read the config/)).toBeInTheDocument();
   });
 });

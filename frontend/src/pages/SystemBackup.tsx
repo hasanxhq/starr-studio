@@ -1,6 +1,7 @@
 // System → Backup: every save's previous versions, compared with today's files, and restore (handoff v2 §8).
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PendingChanges } from "./home/PendingChanges";
 import { useState } from "react";
 import { Link } from "react-router";
 
@@ -334,9 +335,11 @@ function MoveOverSection({ active }: { active: SwitchOver | null }) {
 
 export function SystemBackup() {
   const list = useQuery({ queryKey: ["backups"], queryFn: api.backups.list });
+  const runs = useQuery({ queryKey: ["runs"], queryFn: api.runs.list });
   const switchOver = useQuery({ queryKey: ["import", "switch-over"], queryFn: importApi.switchOver });
   return (
     <div className="flex max-w-5xl flex-col gap-4">
+      <PendingChanges runs={runs.data?.runs} />
       {switchOver.isPending ? null : switchOver.isError ? (
         <Card title="Move over from Kometa">
           <p role="alert" className="text-err">
