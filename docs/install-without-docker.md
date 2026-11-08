@@ -16,7 +16,7 @@ If building Studio from source instead of using a release wheel, Node.js 20 or n
 
 Studio manages Kometa as a subprocess. Kometa runs in its own Python virtual environment so its dependencies remain separate from Studio.
 
-The pinned Kometa release is **v2.5.4** (as defined in `Dockerfile`).
+The pinned Kometa release is **v2.5.4** (as defined in `starr_studio/kometa_pin.py` and the `Dockerfile`).
 
 Clone Kometa and check out the pinned tag:
 
@@ -162,17 +162,7 @@ Then put `STUDIO_ALLOW_LOCAL=false` in `~/.config/starr-studio/studio.env` and s
 
 ## Updating
 
-### Updating Kometa
-
-To update Kometa to a newer tag:
-
-```bash
-cd ~/kometa
-git fetch --tags
-git checkout <tag>
-~/kometa/.venv/bin/pip install --upgrade -r requirements.txt
-systemctl --user restart starr-studio
-```
+Updating Studio (re-run the install steps below for the new release) installs the Kometa version that release is tested with.
 
 ### Updating Starr Studio
 

@@ -50,7 +50,7 @@ const lastNight = run({
 
 const status: Status = {
   version: "0.1.0",
-  kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", checked_at: null, latest: null, notes: null, available: false } },
+  kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", pinned: "2.5.4", matches: false, checked_at: null, latest: null, notes: null, available: false } },
   database: { schema_version: 8 },
   health: [],
   runs: { current: null, queued: 0, next_scheduled: { at: new Date(Date.now() + 5 * 3600_000).toISOString(), schedule_id: 1, name: "Nightly" } },

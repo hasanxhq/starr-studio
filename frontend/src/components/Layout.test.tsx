@@ -7,7 +7,7 @@ function mockCommon(extra: Record<string, (body: unknown) => unknown> = {}) {
   return mockApi({
     "GET /status": () => ({
       version: "0.0.0",
-      kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", checked_at: null, latest: null, notes: null, available: false } },
+      kometa: { version: "2.5.3", config: "/config/config.yml", updates: { installed: "2.5.3", pinned: "2.5.4", matches: false, checked_at: null, latest: null, notes: null, available: false } },
       database: { schema_version: 1 },
       health: [],
     }),

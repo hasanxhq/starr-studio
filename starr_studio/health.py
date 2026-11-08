@@ -22,6 +22,7 @@ from .config_routes import FULL_CHECK
 from .config_sections import read_document
 from .db import get_setting
 from .kometa_command import installed_version
+from .kometa_pin import KOMETA_VERSION
 from .kometa_config import read_plex
 from .kometa_files import setup_steps
 from .requesting import REQUESTS_SEERR, SEERR_CARRY
@@ -56,7 +57,15 @@ def kometa_updates(db: sqlite3.Connection, installed: str | None) -> dict:
     """
     started = db.execute("SELECT id, received_at FROM run_events WHERE event = 'run_start' ORDER BY id DESC LIMIT 1").fetchone()
     event = db.execute("SELECT id, payload FROM run_events WHERE event = 'version' ORDER BY id DESC LIMIT 1").fetchone()
-    result = {"installed": installed, "checked_at": started["received_at"] if started else None, "latest": None, "notes": None, "available": False}
+    result = {
+        "installed": installed,
+        "pinned": KOMETA_VERSION,
+        "matches": installed == KOMETA_VERSION,
+        "checked_at": started["received_at"] if started else None,
+        "latest": None,
+        "notes": None,
+        "available": False,
+    }
     # Kometa sends run_start, then version: a version event older than the last run_start is old news.
     if event is None or started is None or event["id"] < started["id"]:
         return result
@@ -260,8 +269,15 @@ async def health(
     checks += _disk_check(settings)
     if auth_settings(db) is None:
         checks.append(Check("sign_in", "warning", "Sign-in isn't set up, so anyone on your local network can use Studio.", "/settings/general"))
-    updates = kometa_updates(db, kometa_version(settings))
-    if updates["available"]:
-        checks.append(Check("updates", "info", f"Kometa {updates['latest']} is out (you have {updates['installed']}).", "/system/updates"))
+    installed = kometa_version(settings)
+    if installed and installed != KOMETA_VERSION:
+        checks.append(
+            Check(
+                "kometa_version",
+                "warning",
+                f"Studio is tested with Kometa {KOMETA_VERSION}; this install has {installed}. Ready-made lists and filters may not match it.",
+                "/system/updates",
+            )
+        )
     order = {"error": 0, "warning": 1, "info": 2}
     return [asdict(check) for check in sorted(checks, key=lambda check: order[check.level])]
