@@ -126,6 +126,17 @@ Choices to settle when it's built:
       - Check it again after the rework (P3.2 Collections page, P4 builder) in case delete moves.
     - **If we skip it:** Deletes feel broken, and people who leave mid-delete come back unsure whether the collection is gone from Plex.
 
+11. **Bug check: Build stays disabled after restoring a draft** (Must check, reported by the user 2026-11-08 in their container; `frontend/src/pages/builder/draft.ts:106-110`, `frontend/src/pages/builder/useLocalDraft.ts:72-75`, `frontend/src/pages/builder/BuildBar.tsx:45-48`, `frontend/src/pages/CollectionBuilder.tsx:377`)
+    - **What this is:** The builder (P4.1, #110) keeps an unsaved draft in the browser and offers to restore it. Build and Save for later are enabled only when `canSave(draft, mode)` holds: a title, and in list mode at least one source with every source ready.
+    - **Problem:** In the user's container, opening Collections → New and restoring the draft leaves Build disabled. Not yet looked into.
+    - **Check:** Reproduce it in the running container (Collections → New, restore). Then find which part of `canSave` fails. Leads to rule out:
+      - the restored draft's title is empty or isn't applied;
+      - the start mode isn't restored with the draft, so a filters draft is judged as a list;
+      - a restored source isn't "ready" (`sourceReady`), e.g. a list URL or ID that needs a re-check after restore;
+      - `saving` is stuck true.
+    - **Fix:** The smallest change at the cause, plus a test in `CollectionBuilder.draft.test.tsx`: restore a stored draft on `/collections/new` and expect Build to be enabled.
+    - **If we skip it:** A restored draft can't be built, so the draft feature loses work instead of saving it.
+
 ## Summary
 
 **Verdict:** Fix 1 first, together with finding 8, so the next problem leaves a log: it can quietly stop every Kometa run. Then fix 2, before the Collections page (P3.2) makes builder collections and ready-made picks easy to mix. Fix 9 before the next Studio release, so no update notice sends users to an untested Kometa. Sign-in, the API key, cross-site protection, proxy trust, file paths, uploads, backups and restore are careful and well guarded.
