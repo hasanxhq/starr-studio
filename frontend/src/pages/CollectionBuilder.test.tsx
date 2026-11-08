@@ -1150,6 +1150,79 @@ describe("CollectionBuilder", () => {
     expect(sent.visible).toEqual({ library: true, home: null, shared: null });
   });
 
+  it("A24 list: three unticked missing ids in skip_requests; already-requested is disabled", async () => {
+    const missing = [
+      { id: "imdb-a24-1", title: "Moonlight", year: 2016, poster: null, requested: true },
+      { id: "imdb-a24-2", title: "Lady Bird", year: 2017, poster: null },
+      { id: "imdb-a24-3", title: "Eighth Grade", year: 2018, poster: null },
+      { id: "imdb-a24-4", title: "Hereditary", year: 2018, poster: null },
+      { id: "imdb-a24-5", title: "Midsommar", year: 2019, poster: null },
+      { id: "imdb-a24-6", title: "The Farewell", year: 2019, poster: null },
+      { id: "imdb-a24-7", title: "Minari", year: 2020, poster: null },
+    ];
+    const calls = mockApi(
+      baseRoutes({
+        "GET /requests/settings": () => ({
+          settings: {
+            enabled: true,
+            via: "arr",
+            radarr: { quality_profile: null, root_folder: null, minimum_availability: "released", search: true },
+            sonarr: { quality_profile: null, root_folder: null, monitor: "all", search: true, series_type: "standard" },
+            daily_cap: null,
+            confirm_over: 25,
+          },
+          seerr: null,
+          connected: { radarr: true, sonarr: false, seerr: false },
+        }),
+        "POST /builder/sources/link": () => ({ builder: "tmdb_list", value: "a24", label: "A24" }),
+        "POST /builder/sources/preview": () => ({
+          previewable: true,
+          why: null,
+          total: 10,
+          in_library: [{ rating_key: "1", title: "Ex Machina", year: 2014, thumb: "/library/metadata/1/thumb" }],
+          in_library_count: 3,
+          missing,
+          missing_count: 7,
+          problems: [],
+        }),
+        "POST /collections": (body) => ({
+          ...(body as CollectionInput),
+          id: 56,
+          state: "queued",
+          plex_items: null,
+          thumb: null,
+          last_built_at: null,
+          last_error: null,
+          run_id: 8,
+          requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+          last_change: null,
+        }),
+      }),
+    );
+    renderBuilder("/collections/new?library=Movies");
+    await pickList();
+    fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/list/a24" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use link" }));
+    await screen.findByRole("button", { name: /Missing · 7/ });
+    fireEvent.click(screen.getByRole("button", { name: /Missing · 7/ }));
+    const downloads = await screen.findAllByRole("checkbox", { name: /Download.*missing/i });
+    fireEvent.click(downloads[downloads.length - 1]!);
+    const list = await screen.findByLabelText("Missing titles");
+    await waitFor(() => expect(within(list).getAllByText("Moonlight").length).toBeGreaterThan(0));
+    const moonlightRow = within(list).getAllByText("Moonlight")[1]!.closest("li") as HTMLElement;
+    expect(within(moonlightRow).getByRole("checkbox")).toBeDisabled();
+    expect(within(moonlightRow).getByText(/Already requested/)).toBeInTheDocument();
+    for (const title of ["Lady Bird", "Eighth Grade", "Hereditary"]) {
+      const row = within(list).getAllByRole("listitem").find((li) => within(li).queryByText(title, { selector: "p" })) as HTMLElement;
+      fireEvent.click(within(row).getByRole("checkbox"));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
+    const body = calls.find((c) => c.route === "POST /collections")!.body as CollectionInput & { skip_requests?: string[] };
+    expect(body.download_missing).toBe(true);
+    expect(body.skip_requests?.sort()).toEqual(["imdb-a24-2", "imdb-a24-3", "imdb-a24-4"].sort());
+  });
+
   it("puts unticked missing titles in skip_requests", async () => {
     const calls = mockApi(
       baseRoutes({

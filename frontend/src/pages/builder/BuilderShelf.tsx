@@ -1,8 +1,7 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { builderApi, canDownloadMissing, posterPreviewSrc, type BuilderPreview, type Source, type SourcePreview } from "../../builderApi";
-import { requestsApi } from "../../requestsApi";
+import { canDownloadMissing, posterPreviewSrc, type BuilderPreview, type Source, type SourcePreview } from "../../builderApi";
 import { PlexPoster } from "../../components/PlexPoster";
 import { MissingTabControls } from "./MissingTabControls";
 import type { Draft, StartMode } from "./draft";
@@ -53,6 +52,14 @@ function previewableSources(sources: Source[]): Source[] {
   return sources.filter((source) => source.kind === "list" || source.kind === "titles" || source.kind === "search");
 }
 
+export function readySourcesForPreview(sources: Source[]): Source[] {
+  return previewableSources(sources).filter((source) => {
+    if (source.kind === "list") return Boolean(source.builder && source.value);
+    if (source.kind === "titles") return source.ids.length > 0;
+    return source.kind === "search";
+  });
+}
+
 function FilterPreviewBody({ preview, updating }: { preview: BuilderPreview | undefined; updating: boolean }) {
   if (!preview) {
     return <p className="text-sm text-muted">{updating ? "Updating…" : "Loading preview…"}</p>;
@@ -94,6 +101,8 @@ export function BuilderShelf({
   onDraft,
   filterPreview,
   filterPreviewUpdating,
+  sourcePreview,
+  requestsEnabled,
 }: {
   library: string;
   libraryType: "movie" | "show";
@@ -103,26 +112,12 @@ export function BuilderShelf({
   onDraft: (patch: Partial<Draft> | ((current: Draft) => Draft)) => void;
   filterPreview: BuilderPreview | undefined;
   filterPreviewUpdating: boolean;
+  sourcePreview: Pick<UseQueryResult<SourcePreview>, "data" | "isPending" | "isError" | "isFetching" | "error">;
+  requestsEnabled: boolean;
 }) {
   const isList = mode === "list";
   const canMissing = isList && canDownloadMissing(sources);
-  const ready = useMemo(() => {
-    return previewableSources(sources).filter((source) => {
-      if (source.kind === "list") return Boolean(source.builder && source.value);
-      if (source.kind === "titles") return source.ids.length > 0;
-      return source.kind === "search";
-    });
-  }, [sources]);
-
-  const sourcePreview = useQuery({
-    queryKey: ["builder", "sources", "preview", library, ready],
-    queryFn: () => builderApi.previewSource({ library, sources: ready }),
-    enabled: isList && ready.length > 0,
-    placeholderData: keepPreviousData,
-  });
-
-  const settings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
-  const requestsEnabled = settings.data?.settings.enabled === true;
+  const ready = readySourcesForPreview(sources);
 
   const [tab, setTab] = useState<"in" | "missing">("in");
   const showMissingTab = isList && canMissing;
@@ -199,7 +194,7 @@ export function BuilderShelf({
                 <p className="text-sm text-muted">Loading preview…</p>
               ) : sourcePreview.isError ? (
                 <p role="alert" className="text-sm text-err">
-                  {sourcePreview.error.message}
+                  {sourcePreview.error?.message ?? "Couldn't load preview."}
                 </p>
               ) : sourcePreview.data ? (
                 <ListShelfInLibrary preview={sourcePreview.data} updating={sourcePreview.isFetching} />

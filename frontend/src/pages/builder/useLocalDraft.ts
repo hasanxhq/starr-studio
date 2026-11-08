@@ -30,6 +30,8 @@ export function useLocalDraft({
 }) {
   const key = draftStorageKey(library, id);
   const [restoreOffer, setRestoreOffer] = useState<StoredBuilderDraft | null>(null);
+  const restoreOfferRef = useRef(restoreOffer);
+  restoreOfferRef.current = restoreOffer;
   const [draftSaved, setDraftSaved] = useState(false);
   const checked = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,8 +49,10 @@ export function useLocalDraft({
     if (mode === null) return;
     if (!draftsDiffer(draft, baseline, mode, baselineMode)) {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (!restoreOfferRef.current) clearStoredDraft(key);
       return;
     }
+    setDraftSaved(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       writeStoredDraft(key, { mode, draft });

@@ -22,11 +22,12 @@ import { LeaveGuard } from "../components/LeaveGuard";
 import { ConfirmButton, inputClass } from "../components/ui";
 import { needsConfirm, requestsApi, type NeedsConfirm } from "../requestsApi";
 import { BuildBar } from "./builder/BuildBar";
-import { BuilderShelf } from "./builder/BuilderShelf";
+import { BuilderShelf, readySourcesForPreview } from "./builder/BuilderShelf";
 import { BuilderSteps } from "./builder/BuilderSteps";
 import {
   blankDraft,
   canSave,
+  draftsDiffer,
   fromInput,
   skipRequestsChanged,
   startModeOf,
@@ -88,9 +89,7 @@ function BuilderForm({
   const [saveAction, setSaveAction] = useState<"build" | "later" | null>(null);
 
   const baselineMode: StartMode = initialMode ?? mode ?? "list";
-  const dirty =
-    mode !== null &&
-    JSON.stringify(toInput(draft, mode)) !== JSON.stringify(toInput(baselineSnap, baselineMode));
+  const dirty = mode !== null && draftsDiffer(draft, baselineSnap, mode, baselineMode);
 
   const kometaUrl = useMemo(() => {
     const b = baselineSnap.poster;
@@ -160,6 +159,7 @@ function BuilderForm({
     },
     onSuccess: (saved) => {
       setConfirmMore(null);
+      setSaveAction(null);
       released.current = true;
       clearDraft();
       queryClient.invalidateQueries({ queryKey: ["collections"] });
@@ -169,8 +169,8 @@ function BuilderForm({
     onError: (error) => {
       const confirm = needsConfirm(error);
       if (confirm) setConfirmMore(confirm);
+      else setSaveAction(null);
     },
-    onSettled: () => setSaveAction(null),
   });
 
   const remove = useMutation({
@@ -197,10 +197,11 @@ function BuilderForm({
   const requestSettings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
   const requestsEnabled = requestSettings.data?.settings.enabled === true;
 
+  const previewSources = useMemo(() => readySourcesForPreview(apiSources), [apiSources]);
   const previewSource = useQuery({
-    queryKey: ["builder", "sources", "preview", library, apiSources],
-    queryFn: () => builderApi.previewSource({ library, sources: apiSources }),
-    enabled: isList && canDownloadMissing(apiSources) && apiSources.length > 0,
+    queryKey: ["builder", "sources", "preview", library, previewSources],
+    queryFn: () => builderApi.previewSource({ library, sources: previewSources }),
+    enabled: isList && previewSources.length > 0,
     placeholderData: keepPreviousData,
   });
 
@@ -358,6 +359,8 @@ function BuilderForm({
               onDraft={(patch) => setDraftPatch(setDraft, patch)}
               filterPreview={filterPreview.data}
               filterPreviewUpdating={filterPreview.isFetching}
+              sourcePreview={previewSource}
+              requestsEnabled={requestsEnabled}
             />
           </div>
 
@@ -402,6 +405,7 @@ function BuilderForm({
           onConfirm={() => save.mutate({ confirm_requests: true, build: saveAction === "later" ? false : undefined })}
           onCancel={() => {
             setConfirmMore(null);
+            setSaveAction(null);
             save.reset();
           }}
         >

@@ -52,7 +52,7 @@ export function toInput(draft: Draft, mode: StartMode, opts?: { includeSkipReque
     request_cap: canMissing && draft.download_missing ? draft.request_cap : null,
     request_profile: canMissing && draft.download_missing ? draft.request_profile : null,
   };
-  if (opts?.includeSkipRequests && canMissing && draft.download_missing && draft.skip_requests.length > 0) {
+  if (opts?.includeSkipRequests && canMissing && draft.download_missing) {
     body.skip_requests = [...draft.skip_requests];
   }
   return body;
@@ -126,11 +126,24 @@ export function draftStorageKey(library: string, id: number | null): string {
   return `studio:builder-draft:${library}:${id ?? "new"}`;
 }
 
+function storedDraftValid(value: unknown): value is StoredBuilderDraft {
+  if (!value || typeof value !== "object") return false;
+  const o = value as Record<string, unknown>;
+  if (o.mode !== "filters" && o.mode !== "list") return false;
+  if (!o.draft || typeof o.draft !== "object") return false;
+  return true;
+}
+
 export function readStoredDraft(key: string): StoredBuilderDraft | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    return JSON.parse(raw) as StoredBuilderDraft;
+    const parsed: unknown = JSON.parse(raw);
+    if (!storedDraftValid(parsed)) {
+      clearStoredDraft(key);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -153,5 +166,9 @@ export function clearStoredDraft(key: string): void {
 }
 
 export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode): boolean {
+  const skipA = [...a.skip_requests].sort().join("\0");
+  const skipB = [...b.skip_requests].sort().join("\0");
+  if (skipA !== skipB) return true;
   return JSON.stringify(toInput(a, modeA)) !== JSON.stringify(toInput(b, modeB));
 }
+
