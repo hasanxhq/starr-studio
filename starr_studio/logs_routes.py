@@ -1,4 +1,4 @@
-"""/api/v1/logs: Kometa's own log files (meta.log, and per library and collection), for System → Logs.
+"""/api/v1/logs: Kometa's own log files (meta.log, and per library and collection) and Studio's (studio.log), for System → Logs.
 
 Kometa writes lines like ``[2026-10-30 04:00:01,123] kometa.py   INFO       | message |``; lines that
 continue an entry (wrapped tables, tracebacks) start with spaces and belong to the entry above,
@@ -7,7 +7,7 @@ so they take its level when filtering. Only the end of a big file is read.
 
 import re
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -22,8 +22,13 @@ LOG_NAME = re.compile(r"\.log(\.\d+)?$")
 TAIL_BYTES = 2 * 1024 * 1024
 
 
-def logs_dir(request: Request) -> Path:
+Source = Literal["kometa", "studio"]
+
+
+def logs_dir(request: Request, source: Source = "kometa") -> Path:
     settings: Settings = request.app.state.settings
+    if source == "studio":
+        return settings.data_dir / "logs"
     if settings.kometa_config is None:
         raise HTTPException(409, "Studio doesn't know where Kometa's config folder is. Set STUDIO_KOMETA_CONFIG.")
     return settings.kometa_config.parent / "logs"
@@ -37,8 +42,8 @@ def _resolve(folder: Path, path: str) -> Path:
 
 
 @router.get("")
-async def list_logs(request: Request) -> dict:
-    folder = logs_dir(request)
+async def list_logs(request: Request, source: Source = "kometa") -> dict:
+    folder = logs_dir(request, source)
     if not folder.is_dir():
         return {"files": []}
     found = []
@@ -46,8 +51,8 @@ async def list_logs(request: Request) -> dict:
         if path.is_file() and not path.is_symlink() and LOG_NAME.search(path.name):
             stat = path.stat()
             found.append({"path": path.relative_to(folder).as_posix(), "size": stat.st_size, "modified": stat.st_mtime})
-    # meta.log first (it's the one people want), then the rest, newest first.
-    found.sort(key=lambda f: (f["path"] != "meta.log", -f["modified"]))
+    # meta.log or studio.log first (the one people want), then the rest, newest first.
+    found.sort(key=lambda f: (f["path"] not in ("meta.log", "studio.log"), -f["modified"]))
     return {"files": found}
 
 
@@ -75,10 +80,11 @@ async def read_log(
     level: str = "INFO",
     q: str = "",
     limit: Annotated[int, Query(ge=1, le=20_000)] = 2000,
+    source: Source = "kometa",
 ) -> dict:
     if level not in LEVELS:
         raise HTTPException(422, f"level is one of {', '.join(LEVELS)}")
-    target = _resolve(logs_dir(request), path)
+    target = _resolve(logs_dir(request, source), path)
     entries, truncated = read_entries(target)
     floor = LEVELS.index(level)
     needle = q.lower()
@@ -87,6 +93,6 @@ async def read_log(
 
 
 @router.get("/download")
-async def download_log(request: Request, path: str) -> FileResponse:
-    target = _resolve(logs_dir(request), path)
+async def download_log(request: Request, path: str, source: Source = "kometa") -> FileResponse:
+    target = _resolve(logs_dir(request, source), path)
     return FileResponse(target, media_type="text/plain; charset=utf-8", filename=target.name)

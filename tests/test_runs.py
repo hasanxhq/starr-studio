@@ -137,6 +137,20 @@ def test_runs_queue_one_at_a_time_without_duplicates(tmp_path, config):
         assert wait_for(client, second)["status"] == "succeeded"
 
 
+def test_the_list_names_the_last_good_run_even_off_the_page(tmp_path, config):
+    plan(config, lines=["working"])
+    with make_client(tmp_path) as client:
+        good = client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"]
+        assert wait_for(client, good)["status"] == "succeeded"
+        db = client.app.state.db
+        with db:
+            for _ in range(3):
+                db.execute("INSERT INTO runs (request, status) VALUES ('{}', 'failed')")
+        listed = client.get("/api/v1/runs", params={"limit": 2}).json()
+    assert [r["status"] for r in listed["runs"]] == ["failed", "failed"]
+    assert listed["last_succeeded"]["id"] == good
+
+
 def test_cancelling_a_queued_run(tmp_path, config):
     release = tmp_path / "release"
     plan(config, wait_for=str(release))
