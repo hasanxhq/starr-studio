@@ -101,7 +101,7 @@ export const BUILDER_STEP_LABELS = ["What goes in", "Order and size", "How it lo
 export function stepForSaveProblem(problem: string): number {
   const lower = problem.toLowerCase();
   if (lower.includes("poster") || lower.includes("visible") || lower.includes("recommended") || lower.includes("home")) return 3;
-  if (lower.includes("limit") || lower.includes("sort") || lower.includes("order") || lower.includes("minimum")) return 2;
   if (lower.includes("summary") || lower.includes("sort title")) return 4;
+  if (lower.includes("limit") || lower.includes("sort") || lower.includes("order") || lower.includes("minimum")) return 2;
   return 1;
 }

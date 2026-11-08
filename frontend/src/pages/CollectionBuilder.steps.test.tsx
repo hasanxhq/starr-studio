@@ -96,6 +96,27 @@ describe("CollectionBuilder steps", () => {
     expect(screen.queryByLabelText("Sort")).not.toBeInTheDocument();
   });
 
+  it("does not re-open the error step on every render after the user opens another step", async () => {
+    mockApi(
+      baseRoutes({
+        "POST /collections": () =>
+          new Response(JSON.stringify({ detail: { message: "Invalid filters", problems: ["Genre is required"] } }), {
+            status: 422,
+            headers: { "Content-Type": "application/json" },
+          }),
+      }),
+    );
+    renderBuilder("/collections/new?library=Movies");
+    fireEvent.click(await screen.findByRole("radio", { name: "Organise what I have" }));
+    fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    expect(await screen.findByText("Genre is required")).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Filter rule" })).toHaveLength(1);
+    editStep("Order and size");
+    expect(screen.getByLabelText("Sort")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filter rule" })).not.toBeInTheDocument();
+  });
+
   it("a save error opens the step that holds the field", async () => {
     mockApi(
       baseRoutes({

@@ -7,7 +7,7 @@ import type { BuilderFields, BuiltCollection, CollectionInput } from "../builder
 import { HeaderTitleProvider } from "../components/HeaderTitle";
 import { mockApi } from "../test-utils";
 import { CollectionBuilder } from "./CollectionBuilder";
-import { draftStorageKey } from "./builder/draft";
+import { blankDraft, draftStorageKey, shapeForMode, writeStoredDraft } from "./builder/draft";
 
 const fields: BuilderFields = { library: "Movies", library_type: "movie", fields: [], sorts: [] };
 
@@ -65,6 +65,43 @@ afterEach(() => {
 });
 
 describe("CollectionBuilder draft", () => {
+  it("does not autosave when only a start mode is picked on a new collection", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi(routes);
+    const key = draftStorageKey("Movies", null);
+    renderBuilder("/collections/new?library=Movies");
+    fireEvent.click(await screen.findByRole("radio", { name: "Get something new" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(screen.queryByText("Draft saved")).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it("does not overwrite a stored new-collection draft while the restore offer is open", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi(routes);
+    const key = draftStorageKey("Movies", null);
+    const stored = {
+      mode: "list" as const,
+      draft: shapeForMode({ ...blankDraft("Movies", fields.fields), title: "TEST A24" }, "list", fields.fields),
+    };
+    writeStoredDraft(key, stored);
+    renderBuilder("/collections/new?library=Movies");
+    expect(await screen.findByText("Restore your unsaved draft?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Get something new" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    const raw = localStorage.getItem(key);
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!).draft.title).toBe("TEST A24");
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByLabelText("Title")).toHaveValue("TEST A24");
+    vi.useRealTimers();
+  });
+
   it("autosaves, offers restore, and clears on discard or save", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockApi({
@@ -149,6 +186,17 @@ describe("CollectionBuilder draft", () => {
 });
 
 describe("CollectionBuilder build bar", () => {
+  it("explains what is missing before Build is enabled", async () => {
+    mockApi(routes);
+    renderBuilder("/collections/new?library=Movies");
+    fireEvent.click(await screen.findByRole("radio", { name: "Organise what I have" }));
+    expect(screen.getByText("Add a title")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Named" } });
+    expect(screen.queryByText("Add a title")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build" })).toBeEnabled();
+  });
+
   it("Cancel links back to Collections", async () => {
     mockApi(routes);
     renderBuilder("/collections/new?library=Movies");

@@ -48,6 +48,10 @@ export function useLocalDraft({
 
   useEffect(() => {
     if (mode === null) return;
+    if (restoreOfferRef.current) {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      return;
+    }
     if (!draftsDiffer(draft, baseline, mode, baselineMode)) {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       if (!restoreOfferRef.current) clearStoredDraft(key);

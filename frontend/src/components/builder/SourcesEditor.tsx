@@ -43,6 +43,10 @@ export function blankSearchSource(fields: BuilderField[]): DraftSource {
   return { uid: uid(), kind: "search", filters: { match: "all", rules: [blankRule(fields)] } };
 }
 
+export function withFreshUids(sources: DraftSource[]): DraftSource[] {
+  return sources.map((source) => ({ ...source, uid: uid() }));
+}
+
 export function draftSourcesFrom(sources: Source[]): DraftSource[] {
   const out: DraftSource[] = [];
   for (const source of sources) {
