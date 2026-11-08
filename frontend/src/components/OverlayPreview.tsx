@@ -65,6 +65,7 @@ export function OverlayPoster({
   label,
   className = "w-full max-w-[340px]",
   fontSize = "3.6cqw",
+  imageUrl,
 }: {
   item: PlexItem | null;
   boxes: Box[];
@@ -73,13 +74,16 @@ export function OverlayPoster({
   label: string;
   className?: string;
   fontSize?: string; // relative to the poster, so a thumbnail can use a bigger share of it
+  imageUrl?: string | null; // Kometa's untouched poster when set; falls back to Plex's thumb on error
 }) {
-  const [failed, setFailed] = useState<string | null>(null);
-  const thumb = item?.thumb && failed !== item.thumb ? item.thumb : null;
+  const [failed, setFailed] = useState<string[]>([]); // every URL that didn't load, so two failures can't swap back and forth
+  const thumb = item?.thumb && !failed.includes(item.thumb) ? item.thumb : null;
+  const showingOriginal = imageUrl && !failed.includes(imageUrl);
+  const src = showingOriginal ? imageUrl : thumb ? api.plexLibraries.imageUrl(thumb, 680, 1020) : null;
   return (
     <div role="group" aria-label={label} className={`relative aspect-[2/3] overflow-hidden rounded-[10px] bg-surface-2 ${className}`} style={{ containerType: "inline-size" }}>
-      {thumb ? (
-        <img src={api.plexLibraries.imageUrl(thumb, 680, 1020)} alt="" className="absolute inset-0 size-full object-cover" onError={() => setFailed(thumb)} />
+      {src ? (
+        <img src={src} alt="" className="absolute inset-0 size-full object-cover" onError={() => setFailed((urls) => [...urls, showingOriginal ? imageUrl : thumb!])} />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center p-4 text-center font-display text-sm text-muted">{item?.title}</div>
       )}

@@ -13,7 +13,6 @@ const tv: OverlayLibrary = {
   last_pass: { run_id: 7, status: "failed", started_at: "2026-10-30T19:43:08Z", finished_at: new Date().toISOString() },
   maintainerr: { collections: ["Unwatched - Leaving in 30 Days"], on_top: true },
 };
-const movies: OverlayLibrary = { ...tv, library: "Movies", plex_name: "Movies", files: [], backup: null, last_pass: null, maintainerr: null };
 
 const schedule: Schedule = {
   id: 3,
@@ -28,66 +27,91 @@ const schedule: Schedule = {
   last_run: null,
 };
 
-const runs = { enabled: true, trigger: "relevant" as const, mode: "all" as const, wait_minutes: 10, libraries: ["TV Shows"] };
-const arr = { settings: { radarr: { ...runs, enabled: false }, sonarr: runs } } as unknown as ArrState;
+const arr = { settings: { radarr: { enabled: false }, sonarr: { enabled: true, trigger: "relevant", mode: "all", libraries: ["TV Shows"] } } } as unknown as ArrState;
+
+const studioRoutes = {
+  "GET /config": () => ({ path: "/config/config.yml", libraries: [{ name: "TV Shows", plex_name: "TV Shows" }], playlist_files: [] }),
+  "GET /config/libraries/TV%20Shows": () => ({
+    name: "TV Shows",
+    collection_files: [],
+    overlay_files: [{ kind: "default", value: "resolution", template_variables: {}, options: {}, files: [], error: null }],
+    metadata_files: [],
+    operations: {},
+    template_variables: {},
+    settings: {},
+    counts: {},
+  }),
+  "GET /config/defaults": () => ({ collections: [], overlays: [] }),
+  "GET /config/schemas/config": () => ({ type: "object", definitions: { "template-variables-overlays": { type: "object", properties: {} } } }),
+  "GET /plex/libraries": () => ({ libraries: [{ key: "2", title: "TV Shows", type: "show", collections: 0, managed: 0 }] }),
+  "GET /plex/libraries/2/items": () => ({ items: [], start: 0, total: 0 }),
+};
 
 function routes(extra: Record<string, (body: unknown) => unknown> = {}) {
   return mockApi({
-    "GET /overlays": () => ({ libraries: [movies, tv] }),
+    "GET /overlays": () => ({ libraries: [tv] }),
     "GET /schedules": () => ({ schedules: [schedule], timezone: "Asia/Kolkata", catch_up: null }),
-    "GET /settings/arr": () => arr,
+    "GET /arr": () => arr,
+    ...studioRoutes,
     ...extra,
   });
 }
 
 describe("Overlays", () => {
-  it("says per library what draws overlays, when, and how its backup is", async () => {
+  it("shows the studio header with backup, Maintainerr and last pass", async () => {
     routes();
-    renderAt("/overlays");
-
-    const card = (await screen.findByRole("heading", { name: "TV Shows" })).closest("section")!;
-    expect(within(card).getByRole("link", { name: "Resolution/Edition Overlays" })).toHaveAttribute("href", "https://kometa.wiki/en/latest/defaults/overlays/resolution");
-    expect(within(card).getByText("230 posters backed up (45.0 MB)")).toBeInTheDocument();
-    expect(within(card).getByText(/Its overlays go on top of Kometa's \(Unwatched - Leaving in 30 Days\)/)).toBeInTheDocument();
-    expect(within(card).getByText("Nightly")).toBeInTheDocument();
-    expect(within(card).getByText(/Also drawn after Sonarr imports \(those that matter\)/)).toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: /Failed/ })).toHaveAttribute("href", "/activity/queue/7");
-
-    const empty = screen.getByRole("heading", { name: "Movies" }).closest("section")!;
-    expect(within(empty).getByText(/No overlay files/)).toBeInTheDocument();
-    expect(within(empty).queryByRole("button", { name: "Turn overlays off" })).toBeNull();
+    renderAt("/overlays?library=TV%20Shows");
+    expect(await screen.findByRole("heading", { name: "Overlays · TV Shows" })).toBeInTheDocument();
+    expect(screen.getByText(/230 original posters backed up/)).toBeInTheDocument();
+    expect(screen.getByText(/Maintainerr on top/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Failed/ })).toHaveAttribute("href", "/activity/queue/7");
+    expect(screen.getByRole("button", { name: /Schedule/ })).toBeInTheDocument();
   });
 
-  it("applies now, adds a daily pass, and turns overlays off only after asking", async () => {
+  it("opens the schedule dialog and turns overlays off only after asking", async () => {
     const calls = routes({
-      "POST /overlays/TV%20Shows/apply": () => ({ run_id: 8 }),
       "POST /overlays/TV%20Shows/off": () => ({ run_id: 9 }),
       "POST /schedules": () => schedule,
     });
-    renderAt("/overlays");
-    const card = (await screen.findByRole("heading", { name: "TV Shows" })).closest("section")!;
+    renderAt("/overlays?library=TV%20Shows");
+    await screen.findByRole("heading", { name: "Overlays · TV Shows" });
+    fireEvent.click(screen.getByRole("button", { name: /Schedule/ }));
+    const dialog = await screen.findByRole("dialog", { name: /Schedule · TV Shows/ });
+    fireEvent.change(within(dialog).getByLabelText("Daily overlay pass at"), { target: { value: "05:30" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.route === "POST /schedules")?.body).toMatchObject({ name: "Overlays · TV Shows", time: "05:30", request: { mode: "overlays", libraries: ["TV Shows"] } }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
-    fireEvent.click(within(card).getByRole("button", { name: "Apply now" }));
-    expect(await within(card).findByRole("link", { name: "run #8" })).toHaveAttribute("href", "/activity/queue/8");
-
-    fireEvent.change(within(card).getByLabelText("Daily overlay pass at"), { target: { value: "05:30" } });
-    fireEvent.click(within(card).getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(calls.find((c) => c.route === "POST /schedules")?.body).toMatchObject({ name: "Overlays · TV Shows", time: "05:30", days: [0, 1, 2, 3, 4, 5, 6], request: { mode: "overlays", libraries: ["TV Shows"] } }));
-
-    fireEvent.click(within(card).getByRole("button", { name: "Turn overlays off" }));
+    fireEvent.click(screen.getByRole("switch", { name: /Overlays on/ }));
     expect(calls.some((c) => c.route === "POST /overlays/TV%20Shows/off")).toBe(false);
-    expect(within(card).getByText(/Maintainerr's go back on top after/)).toBeInTheDocument();
-    fireEvent.click(within(card).getByRole("button", { name: "Take them off TV Shows" }));
+    expect(screen.getByText(/Maintainerr's go back on top after/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Take them off TV Shows" }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /overlays/TV%20Shows/off")).toBe(true));
   });
 
-  it("turns them back on", async () => {
-    const calls = routes({ "GET /overlays": () => ({ libraries: [{ ...tv, off: true }] }), "POST /overlays/TV%20Shows/on": () => ({ run_id: 10 }) });
-    renderAt("/overlays");
-    const card = (await screen.findByRole("heading", { name: "TV Shows" })).closest("section")!;
-    expect(within(card).getByText(/Turned off: Kometa keeps the original posters here/)).toBeInTheDocument();
-    expect(within(card).queryByRole("button", { name: "Apply now" })).toBeNull();
-    fireEvent.click(within(card).getByRole("button", { name: "Turn overlays on" }));
+  it("turns overlays back on when they were off", async () => {
+    const calls = routes({
+      "GET /overlays": () => ({ libraries: [{ ...tv, off: true }] }),
+      "POST /overlays/TV%20Shows/on": () => ({ run_id: 10 }),
+    });
+    renderAt("/overlays?library=TV%20Shows");
+    await screen.findByRole("heading", { name: "Overlays · TV Shows" });
+    expect(screen.getByText(/Kometa keeps the original posters here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: /Overlays off/ }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /overlays/TV%20Shows/on")).toBe(true));
+  });
+
+  it("refuses turning off without a backup", async () => {
+    routes({
+      "GET /overlays": () => ({ libraries: [{ ...tv, backup: null }] }),
+      "POST /overlays/TV%20Shows/off": () => new Response(JSON.stringify({ detail: "no backup" }), { status: 409 }),
+    });
+    renderAt("/overlays?library=TV%20Shows");
+    await screen.findByRole("heading", { name: "Overlays · TV Shows" });
+    fireEvent.click(screen.getByRole("switch", { name: /Overlays on/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Take them off TV Shows" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no backup/i);
   });
 });

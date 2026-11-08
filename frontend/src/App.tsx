@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense, lazy, type ComponentType } from "react";
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 
 import { AdvancedProvider } from "./advanced";
 import { AuthGate } from "./components/AuthGate";
@@ -23,7 +23,6 @@ import { Overview } from "./pages/Overview";
 import { LibraryDetail } from "./pages/LibraryDetail";
 import { Placeholder } from "./pages/Placeholder";
 import { Playlists } from "./pages/Playlists";
-import { ReadyMade } from "./pages/ReadyMade";
 import { ReadyMadeCategory } from "./pages/ReadyMadeCategory";
 import { RunDetail } from "./pages/RunDetail";
 import { Requests } from "./pages/Requests";
@@ -43,11 +42,22 @@ import { SystemStatus } from "./pages/SystemStatus";
 import { SystemTasks } from "./pages/SystemTasks";
 import { SystemUpdates } from "./pages/SystemUpdates";
 
+function ReadyMadeRedirect() {
+  const { search } = useLocation();
+  return <Navigate replace to={`/collections/ready-made${search}`} />;
+}
+
+function ReadyMadeCategoryRedirect() {
+  const { category } = useParams();
+  const { search } = useLocation();
+  return <Navigate replace to={`/collections/ready-made/${category}${search}`} />;
+}
+
 // Pages that exist so far; every other nav entry shows a placeholder.
 const built: Record<string, ComponentType> = {
   "/": Overview,
   "/libraries": Libraries,
-  "/ready-made": ReadyMade,
+  "/ready-made": ReadyMadeRedirect,
   "/collections": Collections,
   "/requests": Requests,
   "/overlays": Overlays,
@@ -89,7 +99,9 @@ export function App({ queryClient = new QueryClient() }: { queryClient?: QueryCl
                 <Route path="/activity/queue/:id" element={<RunDetail />} />
                 <Route path="/libraries/:name" element={<LibraryDetail />} />
                 <Route path="/libraries/:name/collections/:key" element={<CollectionDetail />} />
-                <Route path="/ready-made/:category" element={<ReadyMadeCategory />} />
+                <Route path="/collections/ready-made/:category" element={<ReadyMadeCategory />} />
+                <Route path="/collections/ready-made" element={<Collections />} />
+                <Route path="/ready-made/:category" element={<ReadyMadeCategoryRedirect />} />
                 <Route path="/collections/new" element={<CollectionBuilder />} />
                 <Route path="/collections/:id" element={<CollectionBuilder />} />
                 <Route path="/overlays/designer" element={<OverlayDesigner />} />
