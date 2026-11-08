@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BuilderFields, CollectionInput } from "../builderApi";
+import type { BuilderFields, BuiltCollection, CollectionInput } from "../builderApi";
 import { HeaderTitleProvider } from "../components/HeaderTitle";
 import { mockApi } from "../test-utils";
 import { CollectionBuilder } from "./CollectionBuilder";
@@ -13,7 +13,13 @@ const fields: BuilderFields = { library: "Movies", library_type: "movie", fields
 
 function renderBuilder(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createMemoryRouter([{ path: "/collections/new", element: <CollectionBuilder /> }], { initialEntries: [path] });
+  const router = createMemoryRouter(
+    [
+      { path: "/collections/new", element: <CollectionBuilder /> },
+      { path: "/collections/:id", element: <CollectionBuilder /> },
+    ],
+    { initialEntries: [path] },
+  );
   return render(
     <QueryClientProvider client={queryClient}>
       <HeaderTitleProvider>
@@ -92,6 +98,36 @@ describe("CollectionBuilder draft", () => {
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Built" } });
     fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+  });
+
+  it("keeps an existing collection's stored draft while the restore offer is open", async () => {
+    const saved = {
+      id: 7, library: "Movies", title: "Saved title", source: { kind: "filters" }, filters: { match: "all", rules: [] },
+      sort_by: null, limit: null, visible: { library: true, home: false, shared: false }, minimum_items: 1, summary: null,
+      sort_title: null, poster: null, download_missing: false, request_cap: null, request_profile: null, state: "in_plex",
+      plex_items: 3, thumb: null, last_built_at: null, last_error: null, run_id: null,
+      requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 }, last_change: null,
+    } as BuiltCollection;
+    mockApi({ ...routes, "GET /collections/7": () => saved });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const key = draftStorageKey("Movies", 7);
+    localStorage.removeItem(key);
+    const first = renderBuilder("/collections/7");
+    fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Edited title" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(localStorage.getItem(key)).toContain("Edited title");
+    first.unmount();
+    cleanup();
+
+    renderBuilder("/collections/7");
+    expect(await screen.findByText("Restore your unsaved draft?")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(localStorage.getItem(key)).toContain("Edited title");
+    localStorage.removeItem(key);
   });
 
   it("survives throwing localStorage", async () => {

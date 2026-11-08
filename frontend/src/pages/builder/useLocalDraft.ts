@@ -41,6 +41,7 @@ export function useLocalDraft({
     checked.current = true;
     const stored = readStoredDraft(key);
     if (stored && draftsDiffer(stored.draft, baseline, stored.mode, baselineMode)) {
+      restoreOfferRef.current = stored; // the autosave effect below runs before the state update lands
       setRestoreOffer(stored);
     }
   }, [key, baseline, baselineMode]);
