@@ -124,7 +124,11 @@ describe("The overlay studio", () => {
     fireEvent.click(screen.getByRole("button", { name: "With your changes" }));
     const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
     expect(await within(poster).findByRole("button", { name: "Select 4K" })).toBeInTheDocument();
-    expect(poster.querySelector("img")?.getAttribute("src")).toContain("/overlays/Movies/original/5");
+    const img = poster.querySelector("img")!;
+    expect(img.getAttribute("src")).toContain("/overlays/Movies/original/5");
+    fireEvent.error(img);
+    await waitFor(() => expect(img.getAttribute("src")).toContain("/plex/image"));
+    expect(img.getAttribute("src")).toContain(encodeURIComponent("/library/metadata/5/thumb/1"));
     fireEvent.click(screen.getByRole("button", { name: "Hide Resolution in the preview" }));
     expect(within(poster).queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
   });
@@ -184,14 +188,17 @@ describe("The overlay studio", () => {
     expect(screen.queryByRole("button", { name: "Select 4K" })).not.toBeInTheDocument();
   });
 
-  it("asks before unsaved changes are lost when picking another layer", async () => {
+  it("keeps layer drafts when switching layers without asking", async () => {
     mockApi(routes);
     renderAt("/overlays?library=Movies");
     await layers();
     fireEvent.click(screen.getByRole("button", { name: "Bottom left" }));
     fireEvent.click(pressed("Status"));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Stay here" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Show when" })).toBeInTheDocument();
+    fireEvent.click(pressed("Resolution"));
     expect(screen.getByRole("tab", { name: "Place" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bottom left", pressed: true })).toBeInTheDocument();
   });
 
   it("adds a layer and removes one after asking", async () => {

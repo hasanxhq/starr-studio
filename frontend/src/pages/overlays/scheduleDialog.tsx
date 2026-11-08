@@ -29,7 +29,7 @@ export function overlayScheduleLabel(library: string, schedules: Schedule[]): st
   const mine = schedules.filter((schedule) => schedule.enabled && drawsOverlays(schedule.request, library));
   if (!mine.length) return null;
   const pick = mine.find((schedule) => schedule.next_run) ?? mine[0];
-  return `${pick.name} · ${describeDays(pick.days).toLowerCase()} ${pick.time}`;
+  return `${describeDays(pick.days).toLowerCase()} ${pick.time}`;
 }
 
 export function ScheduleDialog({ library, schedules, arr, onClose }: { library: string; schedules: Schedule[]; arr: ArrState | undefined; onClose: () => void }) {

@@ -77,12 +77,13 @@ export function OverlayPoster({
   imageUrl?: string | null; // Kometa's untouched poster when set; falls back to Plex's thumb on error
 }) {
   const [failed, setFailed] = useState<string | null>(null);
-  const thumb = item?.thumb && failed !== item.thumb && !imageUrl ? item.thumb : null;
-  const src = imageUrl && failed !== imageUrl ? imageUrl : thumb ? api.plexLibraries.imageUrl(thumb, 680, 1020) : null;
+  const thumb = item?.thumb && failed !== item.thumb ? item.thumb : null;
+  const showingOriginal = imageUrl && failed !== imageUrl;
+  const src = showingOriginal ? imageUrl : thumb ? api.plexLibraries.imageUrl(thumb, 680, 1020) : null;
   return (
     <div role="group" aria-label={label} className={`relative aspect-[2/3] overflow-hidden rounded-[10px] bg-surface-2 ${className}`} style={{ containerType: "inline-size" }}>
       {src ? (
-        <img src={src} alt="" className="absolute inset-0 size-full object-cover" onError={() => setFailed(imageUrl ?? thumb)} />
+        <img src={src} alt="" className="absolute inset-0 size-full object-cover" onError={() => setFailed(showingOriginal ? imageUrl : thumb!)} />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center p-4 text-center font-display text-sm text-muted">{item?.title}</div>
       )}

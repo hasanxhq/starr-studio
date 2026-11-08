@@ -168,7 +168,10 @@ export function LayerSettings({
                     type="button"
                     aria-pressed={(values.rating_alignment ?? starting.rating_alignment ?? "horizontal") === value}
                     className={`min-h-11 flex-1 rounded-control border text-sm ${(values.rating_alignment ?? starting.rating_alignment ?? "horizontal") === value ? "border-accent bg-surface-2" : "border-border-strong hover:bg-surface-2"}`}
-                    onClick={() => set("rating_alignment", value === starting.rating_alignment ? undefined : value)}
+                    onClick={() => {
+                      const defaultAlign = String(starting.rating_alignment ?? "horizontal");
+                      set("rating_alignment", value === defaultAlign ? undefined : value);
+                    }}
                   >
                     {label}
                   </button>

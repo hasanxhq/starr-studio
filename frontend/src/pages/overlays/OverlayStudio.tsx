@@ -74,7 +74,7 @@ export function OverlayStudio({
     visibleLayers.flatMap((layer) => layerBoxes(layer.name, layerText(layer.name, layer.title, item), layer.entry?.layout, variablesOf(layer)));
 
   const select = (name: string) => {
-    if (name !== selected?.name) leave(() => setSelectedName(name));
+    if (name !== selected?.name) setSelectedName(name);
   };
 
   const kometaOrder = () => kometaLayers.map((layer) => layer.name);
