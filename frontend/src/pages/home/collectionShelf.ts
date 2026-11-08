@@ -10,11 +10,6 @@ function priority(state: BuiltCollection["state"] | null): number {
   return 2;
 }
 
-function changeKey(last: LastChange, builtAt: string | null): number {
-  const run = last?.run_id ?? 0;
-  const built = builtAt ? Date.parse(builtAt) : 0;
-  return run * 1e15 + built;
-}
 
 export function shelfItems(collections: BuiltCollection[], others: OtherCollection[]): ShelfItem[] {
   const ready = others.filter((row) => row.made_by === "ready_made");
@@ -26,12 +21,13 @@ export function shelfItems(collections: BuiltCollection[], others: OtherCollecti
     const pa = a.kind === "studio" ? priority(a.row.state) : 2;
     const pb = b.kind === "studio" ? priority(b.row.state) : 2;
     if (pa !== pb) return pa - pb;
-    const ca = a.kind === "studio" ? changeKey(a.row.last_change, a.row.last_built_at) : changeKey(a.row.last_change, null);
-    const cb = b.kind === "studio" ? changeKey(b.row.last_change, b.row.last_built_at) : changeKey(b.row.last_change, null);
-    if (ca !== cb) return cb - ca;
-    const ta = a.kind === "studio" ? a.row.title : a.row.title;
-    const tb = b.kind === "studio" ? b.row.title : b.row.title;
-    return ta.localeCompare(tb, undefined, { sensitivity: "base" });
+    const runA = a.row.last_change?.run_id ?? 0;
+    const runB = b.row.last_change?.run_id ?? 0;
+    if (runA !== runB) return runB - runA;
+    const builtA = a.kind === "studio" && a.row.last_built_at ? Date.parse(a.row.last_built_at) : 0;
+    const builtB = b.kind === "studio" && b.row.last_built_at ? Date.parse(b.row.last_built_at) : 0;
+    if (builtA !== builtB) return builtB - builtA;
+    return a.row.title.localeCompare(b.row.title, undefined, { sensitivity: "base" });
   });
   return items;
 }

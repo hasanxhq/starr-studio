@@ -34,7 +34,7 @@ function isToday(iso: string, now = Date.now()): boolean {
 }
 
 function arrivedToday(requests: RequestRow[]): number {
-  return requests.filter((row) => row.status === "imported" && isToday(row.updated_at)).length;
+  return requests.filter((row) => row.imported_at !== null && isToday(row.imported_at)).length;
 }
 
 function countsAny(counts: Record<string, number> | undefined): boolean {

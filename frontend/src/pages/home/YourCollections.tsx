@@ -51,17 +51,17 @@ function ShelfTile({ library, item }: { library: string; item: ShelfItem }) {
       {row.title}
     </span>
   );
-  const changeCaption = row.last_change ? (lastChangeCaption(row.last_change) ?? "Ready-made") : "Ready-made";
+  const caption = lastChangeCaption(row.last_change) ?? "Ready-made";
   return (
     <PosterTile
       title={row.title}
-      to={readyMadeLink(library, row.category)}
+      to={row.rating_key ? `/libraries/${encodeURIComponent(library)}/collections/${encodeURIComponent(row.rating_key)}` : readyMadeLink(library, row.category)}
       art={art}
       liClassName="overflow-hidden rounded-card border border-border bg-surface"
       controlClassName="hover:bg-surface-2/40"
     >
       <span className="px-3.5 pt-3 font-display text-base leading-snug font-semibold">{row.title}</span>
-      <span className="px-3.5 pt-1 pb-3.5 text-[13px] text-muted">{row.last_change ? changeCaption : "Ready-made"}</span>
+      <span className="px-3.5 pt-1 pb-3.5 text-[13px] text-muted">{caption}</span>
     </PosterTile>
   );
 }
@@ -71,7 +71,7 @@ function NewTile({ library }: { library: string }) {
     <li className="overflow-hidden rounded-card border border-dashed border-border bg-surface">
       <Link
         to={`/collections/new${libraryQs(library)}`}
-        className="flex min-h-11 w-full flex-col items-center justify-center gap-2 p-6 text-center hover:bg-surface-2/40"
+        className="flex h-full min-h-11 w-full flex-col items-center justify-center gap-2 p-6 text-center hover:bg-surface-2/40"
       >
         <PlusIcon className="size-8 text-muted" />
         <span className="font-display text-base font-semibold">New</span>

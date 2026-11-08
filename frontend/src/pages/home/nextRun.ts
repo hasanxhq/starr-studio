@@ -10,8 +10,11 @@ export function phraseNextRun(at: string, now = Date.now()): string {
   startOfDayAfter.setDate(startOfDayAfter.getDate() + 1);
   const t = when.getTime();
   const hour = when.getHours();
-  const dayPart = hour >= 18 || hour < 6 ? "tonight" : "today";
-  if (t >= startOfToday.getTime() && t < startOfTomorrow.getTime()) return `${dayPart} ${time}`;
+  // Evening and small hours up to tomorrow 06:00 are "tonight": a 03:00 run seen at 20:00 runs tonight.
+  const tonightEnds = new Date(startOfTomorrow);
+  tonightEnds.setHours(6);
+  if (t >= startOfToday.getTime() && t < tonightEnds.getTime() && (hour >= 18 || hour < 6)) return `tonight ${time}`;
+  if (t >= startOfToday.getTime() && t < startOfTomorrow.getTime()) return `today ${time}`;
   if (t >= startOfTomorrow.getTime() && t < startOfDayAfter.getTime()) return `tomorrow ${time}`;
   const weekday = when.toLocaleDateString(undefined, { weekday: "long" });
   return `${weekday} ${time}`;

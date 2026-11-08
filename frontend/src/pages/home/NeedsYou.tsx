@@ -38,7 +38,7 @@ export function NeedsYou({
     <Card title="Needs you">
       <ul className="flex flex-col text-sm">
         {shown.map((row, i) => (
-          <li key={i} className="flex flex-col gap-2 border-b border-border py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">
+          <li key={row.kind === "collection" ? `c${row.collection.id}` : row.kind === "health" ? `h${i}` : "requests"} className="flex flex-col gap-2 border-b border-border py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">
             {row.kind === "collection" && (
               <>
                 <div className="min-w-0 flex-1">
