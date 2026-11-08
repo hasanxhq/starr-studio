@@ -16,7 +16,8 @@ import {
   SystemIcon,
 } from "./icons";
 import { HeaderTitleProvider, useHeaderTitleValue } from "./HeaderTitle";
-import { JobsButton, JobsDrawer } from "./Jobs";
+import { JobsDrawer } from "./Jobs";
+import { RunCard } from "./RunCard";
 import { useLibrary } from "../library";
 import { PosterMark, Wordmark } from "./Logo";
 import { SectionTabs } from "./SectionTabs";
@@ -228,6 +229,12 @@ function LayoutFrame() {
           <Wordmark />
         </div>
         <Sidebar onNavigate={() => setMenuOpen(false)} />
+        <RunCard
+          onOpen={() => {
+            setMenuOpen(false);
+            setJobsOpen(true);
+          }}
+        />
         {/* On phones the header has no room for it. */}
         {auth.data?.signed_in && <SignOut className="mx-3 mb-3 shrink-0 sm:hidden" />}
       </aside>
@@ -245,7 +252,6 @@ function LayoutFrame() {
             ☰
           </button>
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">{pageName ?? pageTitle(pathname)}</h1>
-          <JobsButton onOpen={() => setJobsOpen(true)} />
           <AdvancedToggle />
           {auth.data?.signed_in && <SignOut className="hidden sm:block" />}
         </header>
