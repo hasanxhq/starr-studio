@@ -155,6 +155,48 @@ def set_run_scope(db: sqlite3.Connection, library: str, category: str, scope: st
     )
 
 
+def last_change(db: sqlite3.Connection, row: sqlite3.Row | dict[str, Any]) -> dict[str, Any] | None:
+    # shortcut: one SQL query per call is fine; a page lists tens of collections, not thousands.
+    try:
+        last_run_id = row["last_run_id"]
+    except (KeyError, IndexError):
+        return None
+    if not last_run_id:
+        return None
+    try:
+        title = row["title"]
+    except (KeyError, IndexError):
+        return None
+    if not title:
+        return None
+    rows = db.execute(
+        """
+        SELECT payload FROM run_events
+        WHERE run_id = ? AND event = 'changes' AND lower(json_extract(payload, '$.collection')) = lower(?)
+        """,
+        (int(last_run_id), str(title)),
+    ).fetchall()
+    if not rows:
+        return None
+    added = 0
+    removed = 0
+    for (payload_raw,) in rows:
+        data = json.loads(payload_raw) if isinstance(payload_raw, str) else payload_raw
+        if not isinstance(data, dict):
+            continue
+        adds = data.get("additions")
+        if isinstance(adds, list):
+            added += len(adds)
+        elif isinstance(adds, int):
+            added += adds
+        rems = data.get("removals")
+        if isinstance(rems, list):
+            removed += len(rems)
+        elif isinstance(rems, int):
+            removed += rems
+    return {"added": added, "removed": removed, "run_id": int(last_run_id)}
+
+
 def save_counts(db: sqlite3.Connection, library: str, category: str, data: dict, error: str | None) -> None:
     stamp = now()
     db.execute(

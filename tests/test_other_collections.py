@@ -84,6 +84,7 @@ def test_ready_made_row_in_plex_shows_once_with_category_and_rating_key(root):
             "thumb": "/library/collections/201/thumb/1700000000",
             "smart": False,
             "category": "franchise",
+            "last_change": None,
         }
 
 
@@ -113,6 +114,7 @@ def test_picked_ready_made_not_yet_in_plex_shows_with_rating_key_null(root):
             "thumb": None,
             "smart": False,
             "category": "oscars",
+            "last_change": None,
         }
 
 
@@ -140,6 +142,7 @@ def test_kometa_and_plex_unlabelled_collections(root):
             "thumb": None,
             "smart": False,
             "category": None,
+            "last_change": None,
         }
         assert by_title["Handmade Favorites"] == {
             "made_by": "plex",
@@ -149,6 +152,7 @@ def test_kometa_and_plex_unlabelled_collections(root):
             "thumb": None,
             "smart": False,
             "category": None,
+            "last_change": None,
         }
 
 
@@ -177,6 +181,7 @@ def test_maintainerr_collection_wins_over_kometa_label(root):
             "thumb": None,
             "smart": False,
             "category": None,
+            "last_change": None,
         }
 
 
@@ -305,6 +310,7 @@ def test_ready_made_matched_by_title_casefold(root):
             "thumb": "/library/collections/202/thumb/1700000000",
             "smart": False,
             "category": "genre",
+            "last_change": None,
         }
 
 
@@ -363,5 +369,40 @@ def test_plex_unreachable_preserves_stored_state_for_existing_row(root):
             "thumb": "/thumb/drama",
             "smart": False,
             "category": "genre",
+            "last_change": None,
         }
+
+
+def test_other_collections_last_change_on_ready_made_and_none_on_plex(root):
+    client, plex, _ = make_client(root)
+    with client:
+        db = client.app.state.db
+        plex.COLLECTIONS["1"] = []
+
+        # 1. Ready-made pick with a run and changes event
+        row_id = col.mark_present(
+            db,
+            "Movies",
+            [col.Pick(col.Ref("franchise", "Marvel", "mcu"), "Marvel", "Marvel Cinematic Universe")],
+        )[0]
+        col.set_run(db, [row_id], 1)
+        with db:
+            db.execute("INSERT INTO runs (id, request) VALUES (1, '{}')")
+            db.execute(
+                "INSERT INTO run_events (run_id, event, payload) VALUES (1, 'changes', ?)",
+                (json.dumps({"collection": "Marvel Cinematic Universe", "additions": [{"title": "Iron Man"}], "removals": []}),),
+            )
+
+        # 2. Plain Plex collection (no Studio label, not in db)
+        plex.add_collection("1", "Family Favorites", labels=[], items=10)
+
+        resp = client.get("/api/v1/libraries/Movies/other-collections")
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        by_title = {c["title"]: c for c in data["others"]}
+        assert by_title["Marvel Cinematic Universe"]["made_by"] == "ready_made"
+        assert by_title["Marvel Cinematic Universe"]["last_change"] == {"added": 1, "removed": 0, "run_id": 1}
+        assert by_title["Family Favorites"]["made_by"] == "plex"
+        assert by_title["Family Favorites"]["last_change"] is None
+
 
