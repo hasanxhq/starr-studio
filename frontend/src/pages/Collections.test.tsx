@@ -5,6 +5,7 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BuiltCollection } from "../builderApi";
+import { ReadyMadePicksProvider } from "../readyMadePicks";
 import { mockApi } from "../test-utils";
 import { CollectionBuilder } from "./CollectionBuilder";
 import { Collections } from "./Collections";
@@ -36,6 +37,7 @@ function renderCollections(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
+      { path: "/collections/ready-made", element: <Collections /> },
       { path: "/collections", element: <Collections /> },
       { path: "/collections/new", element: <CollectionBuilder /> },
       { path: "/collections/:id", element: <CollectionBuilder /> },
@@ -44,7 +46,9 @@ function renderCollections(path: string) {
   );
   return render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <ReadyMadePicksProvider>
+        <RouterProvider router={router} />
+      </ReadyMadePicksProvider>
     </QueryClientProvider>,
   );
 }
@@ -86,7 +90,7 @@ describe("Collections list", () => {
     expect(within(screen.getByRole("listitem", { name: "Broken" })).getByText("no titles")).toBeInTheDocument();
     expect(within(screen.getByRole("listitem", { name: "Missing One" })).getByTitle("Not built")).toBeInTheDocument();
 
-    const newLinks = screen.getAllByRole("link", { name: "New collection" });
+    const newLinks = screen.getAllByRole("link", { name: /New collection/i });
     expect(newLinks[0]).toHaveAttribute("href", "/collections/new?library=Movies");
   });
 
@@ -228,16 +232,42 @@ describe("Collections list", () => {
     expect(calls).toBe(after);
   });
 
-  it("changes library from Apply to", async () => {
+  it("filters Yours with chips in the URL and search by title", async () => {
+    mockApi({
+      ...config,
+      "GET /collections?library=Movies": () => ({
+        collections: [
+          collection({ id: 1, title: "Action Picks", state: "in_plex", plex_items: 5 }),
+          collection({ id: 2, title: "Draft Horror", state: "missing", changed: true }),
+        ],
+      }),
+    });
+    renderCollections("/collections?library=Movies&show=changed");
+    expect(await screen.findByRole("link", { name: "Changed (1)" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("listitem", { name: "Draft Horror" })).toBeInTheDocument();
+    expect(screen.queryByRole("listitem", { name: "Action Picks" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("Search collections"), { target: { value: "horror" } });
+    expect(screen.getByRole("listitem", { name: "Draft Horror" })).toBeInTheDocument();
+  });
+
+  it("keeps the library when switching tabs", async () => {
     mockApi({
       ...config,
       "GET /collections?library=Movies": () => ({ collections: [collection({ id: 1, title: "Movies One", state: "missing" })] }),
-      "GET /collections?library=TV%20Shows": () => ({ collections: [collection({ id: 2, title: "Shows One", state: "missing", library: "TV Shows" })] }),
+      "GET /ready-made/libraries/Movies": () => ({
+        library: "Movies",
+        library_type: "movie",
+        counted_at: null,
+        counting: false,
+        categories: [],
+      }),
     });
     renderCollections("/collections?library=Movies");
     expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Apply to"), { target: { value: "TV Shows" } });
-    expect(await screen.findByRole("listitem", { name: "Shows One" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Ready-made" }));
+    expect(screen.getByRole("tab", { name: "Ready-made" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(screen.getByRole("tab", { name: "Yours" }));
+    expect(await screen.findByRole("listitem", { name: "Movies One" })).toBeInTheDocument();
   });
 
   it("uploads a collection file with X-Filename, shows the landing, and Adds with confirm", async () => {
@@ -286,7 +316,7 @@ describe("Collections list", () => {
     });
 
     renderCollections("/collections?library=Movies");
-    fireEvent.click(await screen.findByRole("button", { name: "Upload a collection file" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Upload a file" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByRole("heading", { name: "Upload a collection file" })).toBeInTheDocument();
 
@@ -327,7 +357,7 @@ describe("Collections list", () => {
     });
 
     renderCollections("/collections?library=Movies");
-    fireEvent.click(await screen.findByRole("button", { name: "Upload a collection file" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Upload a file" }));
     const dialog = await screen.findByRole("dialog");
     const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["- just a list\n"], "bad.yml", { type: "application/x-yaml" })] } });
