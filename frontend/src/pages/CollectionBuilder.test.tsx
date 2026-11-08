@@ -190,6 +190,14 @@ async function pickList() {
   fireEvent.click(await screen.findByRole("radio", { name: "Get something new" }));
 }
 
+function editStep(label: string) {
+  const heading = screen.getByRole("heading", { name: new RegExp(label) });
+  const section = heading.closest("section");
+  if (!section) throw new Error(`Step section for ${label}`);
+  const btn = within(section as HTMLElement).queryByRole("button", { name: "Edit" });
+  if (btn) fireEvent.click(btn);
+}
+
 function renderBuilder(path: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
@@ -255,7 +263,7 @@ describe("CollectionBuilder", () => {
   it("shows the start choice for a new collection", async () => {
     mockApi(baseRoutes());
     renderBuilder("/collections/new?library=Movies");
-    expect(await screen.findByRole("heading", { name: "How to start", level: 3 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "How to start", level: 2 })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Organise what I have" })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: "Get something new" })).not.toBeChecked();
     expect(screen.queryByRole("group", { name: "Filter rule" })).not.toBeInTheDocument();
@@ -270,7 +278,7 @@ describe("CollectionBuilder", () => {
     renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
 
-    expect(await screen.findByRole("heading", { name: "New collection", level: 2 })).toBeInTheDocument();
+    await screen.findByPlaceholderText("New collection");
     expect(screen.getAllByRole("group", { name: "Filter rule" })).toHaveLength(1);
 
     // Listable tag values load from /builder/values
@@ -307,7 +315,7 @@ describe("CollectionBuilder", () => {
     const calls = mockApi(baseRoutes());
     renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
-    await screen.findByRole("heading", { name: "New collection", level: 2 });
+    await screen.findByPlaceholderText("New collection");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
@@ -340,7 +348,7 @@ describe("CollectionBuilder", () => {
       sort_by: null,
     });
 
-    expect(await screen.findByText("2 titles")).toBeInTheDocument();
+    expect(await screen.findByText(/2 titles now/)).toBeInTheDocument();
     expect(screen.getByText("Die Hard")).toBeInTheDocument();
   });
 
@@ -379,16 +387,18 @@ describe("CollectionBuilder", () => {
     );
     const { router } = renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
-    await screen.findByRole("heading", { name: "New collection", level: 2 });
+    await screen.findByPlaceholderText("New collection");
 
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "My Action" } });
     await screen.findByRole("checkbox", { name: "Action" });
     fireEvent.click(screen.getByRole("checkbox", { name: "Action" }));
+    editStep("Order and size");
     fireEvent.change(screen.getByLabelText("Sort"), { target: { value: "year.desc" } });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "25" } });
+    editStep("How it looks");
     fireEvent.click(screen.getByRole("checkbox", { name: "My home" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     const body = calls.find((c) => c.route === "POST /collections")!.body as CollectionInput;
@@ -427,7 +437,7 @@ describe("CollectionBuilder", () => {
     renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
     fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Bad" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     expect(await screen.findByText("Genre is required")).toBeInTheDocument();
     expect(screen.getByText("Limit too high")).toBeInTheDocument();
   });
@@ -439,14 +449,17 @@ describe("CollectionBuilder", () => {
         "PUT /collections/7": (body) => ({ ...sample, ...(body as CollectionInput) }),
       }),
     );
-    const { router } = renderBuilder("/collections/7");
+    const { router } =     renderBuilder("/collections/7");
     expect(await screen.findByLabelText("Title")).toHaveValue("Action Picks");
-    expect(screen.getByLabelText("Sort")).toHaveValue("title.asc");
-    expect(screen.getByRole("checkbox", { name: "My home" })).toBeChecked();
+    editStep("What goes in");
     expect(await screen.findByRole("checkbox", { name: "Action" })).toBeChecked();
+    editStep("Order and size");
+    expect(screen.getByLabelText("Sort")).toHaveValue("title.asc");
+    editStep("How it looks");
+    expect(screen.getByRole("checkbox", { name: "My home" })).toBeChecked();
 
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Action Remix" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await waitFor(() => expect(calls.some((c) => c.route === "PUT /collections/7")).toBe(true));
     expect((calls.find((c) => c.route === "PUT /collections/7")!.body as CollectionInput).title).toBe("Action Remix");
@@ -495,8 +508,10 @@ describe("CollectionBuilder", () => {
     );
     renderBuilder("/collections/new?library=Movies&category=genre&block=dynamic_collections&key=Action");
     expect(await screen.findByLabelText("Title")).toHaveValue("Action Movies");
-    expect(screen.getByLabelText("Summary")).toHaveValue("From ready-made");
     expect(await screen.findByRole("checkbox", { name: "Action" })).toBeChecked();
+    editStep("Details");
+    expect(screen.getByLabelText("Summary")).toHaveValue("From ready-made");
+    editStep("How it looks");
     expect(screen.getByRole("radio", { name: "Kometa's artwork" })).toBeChecked();
   });
 
@@ -534,7 +549,7 @@ describe("CollectionBuilder", () => {
 
     renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
-    expect(await screen.findByRole("heading", { name: "Poster", level: 3 })).toBeInTheDocument();
+    editStep("How it looks");
     expect(screen.getByRole("radio", { name: "Plex's own" })).toBeChecked();
     expect(screen.queryByRole("radio", { name: "Kometa's artwork" })).not.toBeInTheDocument();
 
@@ -549,7 +564,7 @@ describe("CollectionBuilder", () => {
     expect(screen.getByLabelText("Poster preview").querySelector("img")).toHaveAttribute("src", "https://example.com/p.jpg");
 
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "With Poster" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     expect((calls.find((c) => c.route === "POST /collections")!.body as CollectionInput).poster).toEqual({
       kind: "url",
@@ -649,10 +664,11 @@ describe("CollectionBuilder", () => {
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
 
-    expect(await screen.findByRole("heading", { name: "In your library (1)", level: 4 })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Missing (2)", level: 4 })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /In Movies · 1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Missing · 2/ })).toBeInTheDocument();
     expect(within(screen.getByLabelText("In your library")).getByText("Die Hard")).toBeInTheDocument();
-    const missing = screen.getByLabelText("Missing");
+    fireEvent.click(screen.getByRole("button", { name: /Missing · 2/ }));
+    const missing = screen.getByLabelText("Missing titles");
     expect(within(missing).getAllByText("Die Hard 2").length).toBeGreaterThan(0);
     expect(within(missing).getAllByText("Die Hard with a Vengeance").length).toBeGreaterThan(0);
   });
@@ -710,8 +726,9 @@ describe("CollectionBuilder", () => {
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
     await screen.findByLabelText("Chosen source");
+    editStep("Order and size");
     fireEvent.change(screen.getByLabelText("Order"), { target: { value: "release" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
 
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     expect(calls.find((c) => c.route === "POST /collections")!.body).toEqual({
@@ -755,12 +772,13 @@ describe("CollectionBuilder", () => {
     );
     renderBuilder("/collections/new?library=Movies");
     await pickOrganise();
-    expect(screen.queryByRole("heading", { name: "Missing titles" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Missing ·/ })).not.toBeInTheDocument();
     await pickList();
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
-    expect(await screen.findByRole("heading", { name: "Missing titles" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /Download missing/ })).toBeDisabled();
+    fireEvent.click(await screen.findByRole("button", { name: /Missing ·/ }));
+    expect(screen.getAllByText(/Requests are off in Settings → Requests/).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("checkbox", { name: /Download.*missing/i })[0]).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Why Download missing is off" }));
     expect(screen.getByRole("link", { name: "Settings → Requests" })).toHaveAttribute("href", "/settings/requests");
   });
@@ -810,8 +828,9 @@ describe("CollectionBuilder", () => {
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
     await screen.findByLabelText("Chosen source");
-    fireEvent.click(screen.getByRole("checkbox", { name: /Download missing/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    const downloads = await screen.findAllByRole("checkbox", { name: /Download.*missing/i });
+    fireEvent.click(downloads[downloads.length - 1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent(/Request 40 titles now/);
     fireEvent.click(screen.getByRole("button", { name: "Request 40" }));
     await waitFor(() => expect(calls_n).toBe(2));
@@ -860,13 +879,14 @@ describe("CollectionBuilder", () => {
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
     await screen.findByLabelText("Chosen source");
+    fireEvent.click(await screen.findByRole("button", { name: /Missing ·/ }));
     expect(screen.queryByRole("combobox", { name: "Quality profile" })).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: /Download missing/ }));
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /Download.*missing/i })[0]!);
     const profile = await screen.findByRole("combobox", { name: "Quality profile" });
     expect(within(profile).getAllByRole("option")[0]).toHaveTextContent("Default (HD-1080p)");
     await within(profile).findByRole("option", { name: "Ultra-HD" });
     fireEvent.change(profile, { target: { value: "Ultra-HD" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     const sent = calls.find((c) => c.route === "POST /collections")?.body as CollectionInput;
     expect(sent.request_profile).toBe("Ultra-HD");
@@ -912,7 +932,8 @@ describe("CollectionBuilder", () => {
     fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
     fireEvent.click(screen.getByRole("button", { name: "Use link" }));
     await screen.findByLabelText("Chosen source");
-    fireEvent.click(screen.getByRole("checkbox", { name: /Download missing/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Missing ·/ }));
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /Download.*missing/i })[0]!);
     expect(await screen.findByText("Requests go through Seerr.")).toBeInTheDocument();
     expect(screen.queryByText(/which picks the quality/)).toBeNull();
     const profile = await screen.findByRole("combobox", { name: "Quality profile" });
@@ -920,7 +941,7 @@ describe("CollectionBuilder", () => {
     await within(profile).findByRole("option", { name: "Remux-2160p" });
     expect(within(profile).queryByRole("option", { name: "Any" })).toBeNull(); // Radarr's own aren't offered through Seerr
     fireEvent.change(profile, { target: { value: "Remux-2160p" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     const sent = calls.find((c) => c.route === "POST /collections")?.body as CollectionInput;
     expect(sent.request_profile).toBe("Remux-2160p");
@@ -934,8 +955,10 @@ describe("CollectionBuilder", () => {
     );
     renderBuilder("/collections/8");
     expect(await screen.findByRole("radio", { name: "Get something new" })).toBeChecked();
+    editStep("What goes in");
     expect(screen.getByLabelText("Chosen source")).toHaveTextContent("Die Hard Collection");
     expect(screen.getByLabelText("Title")).toHaveValue("Die Hard Collection");
+    editStep("Order and size");
     expect(screen.getByLabelText("Order")).toHaveValue("alpha");
     expect(screen.queryByRole("group", { name: "Filter rule" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Limit")).not.toBeInTheDocument();
@@ -945,6 +968,8 @@ describe("CollectionBuilder", () => {
     // How the Harry Potter collection never got built (2026-11-06): Kometa only refuses this when it builds.
     mockApi(baseRoutes({ "GET /collections/8": () => listSample }));
     renderBuilder("/collections/8");
+    await screen.findByLabelText("Title");
+    editStep("Order and size");
     const order = await screen.findByLabelText("Order");
     await waitFor(() => expect(order).toHaveValue("release"));
     expect(within(order).getByRole("option", { name: "List order" })).toBeDisabled();
@@ -961,6 +986,8 @@ describe("CollectionBuilder", () => {
       }),
     );
     renderBuilder("/collections/8");
+    await screen.findByLabelText("Title");
+    editStep("Order and size");
     const order = await screen.findByLabelText("Order");
     expect(order).toHaveValue("custom");
     expect(within(order).getByRole("option", { name: "List order" })).toBeEnabled();
@@ -995,7 +1022,7 @@ describe("CollectionBuilder", () => {
     });
     expect(screen.getByText("Read 2 ids.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
     const sent = calls.find((c) => c.route === "POST /collections")!.body as CollectionInput;
     expect(sent.sources).toEqual([
@@ -1058,6 +1085,7 @@ describe("CollectionBuilder", () => {
     );
     renderBuilder("/collections/8");
     expect(await screen.findByRole("radio", { name: "Get something new" })).toBeChecked();
+    editStep("What goes in");
     expect(screen.getByLabelText("Chosen source")).toHaveTextContent("Die Hard Collection");
     expect(screen.getByLabelText("Title")).toHaveValue("Die Hard Collection");
   });
@@ -1088,9 +1116,11 @@ describe("CollectionBuilder", () => {
       }),
     );
     renderBuilder("/collections/42");
+    await screen.findByLabelText("Title");
+    editStep("How it looks");
     expect(await screen.findAllByText("Plex's setting")).toHaveLength(3);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "PUT /collections/42")).toBe(true));
     const sent = calls.find((c) => c.route === "PUT /collections/42")!.body as CollectionInput;
     expect(sent.visible).toEqual({ library: null, home: null, shared: null });
@@ -1109,12 +1139,77 @@ describe("CollectionBuilder", () => {
       }),
     );
     renderBuilder("/collections/43");
+    await screen.findByLabelText("Title");
+    editStep("How it looks");
     await screen.findAllByText("Plex's setting");
     fireEvent.click(screen.getByRole("checkbox", { name: /Library recommended/ }));
     expect(screen.getAllByText("Plex's setting")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
     await waitFor(() => expect(calls.some((c) => c.route === "PUT /collections/43")).toBe(true));
     const sent = calls.find((c) => c.route === "PUT /collections/43")!.body as CollectionInput;
     expect(sent.visible).toEqual({ library: true, home: null, shared: null });
+  });
+
+  it("puts unticked missing titles in skip_requests", async () => {
+    const calls = mockApi(
+      baseRoutes({
+        "GET /requests/settings": () => ({
+          settings: {
+            enabled: true,
+            via: "arr",
+            radarr: { quality_profile: null, root_folder: null, minimum_availability: "released", search: true },
+            sonarr: { quality_profile: null, root_folder: null, monitor: "all", search: true, series_type: "standard" },
+            daily_cap: null,
+            confirm_over: 25,
+          },
+          seerr: null,
+          connected: { radarr: true, sonarr: false, seerr: false },
+        }),
+        "POST /builder/sources/link": () => ({ builder: "tmdb_collection", value: "1570", label: "Die Hard Collection" }),
+        "POST /builder/sources/preview": () => ({
+          previewable: true,
+          why: null,
+          total: 3,
+          in_library: [{ rating_key: "1", title: "Die Hard", year: 1988, thumb: "/library/metadata/1/thumb" }],
+          in_library_count: 1,
+          missing: [
+            { id: "tt0095016", title: "Die Hard 2", year: 1990, poster: "https://image.tmdb.org/t/p/w185/x.jpg" },
+            { id: "tt0112864", title: "Die Hard with a Vengeance", year: 1995, poster: null, requested: true },
+          ],
+          missing_count: 2,
+          problems: [],
+        }),
+        "POST /collections": (body) => ({
+          ...(body as CollectionInput),
+          id: 55,
+          state: "queued",
+          plex_items: null,
+          thumb: null,
+          last_built_at: null,
+          last_error: null,
+          run_id: 8,
+          requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+          last_change: null,
+        }),
+      }),
+    );
+    renderBuilder("/collections/new?library=Movies");
+    await pickList();
+    fireEvent.change(await screen.findByLabelText("Paste a link"), { target: { value: "https://www.themoviedb.org/collection/1570" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use link" }));
+    await screen.findByRole("button", { name: /Missing · 2/ });
+    fireEvent.click(screen.getByRole("button", { name: /Missing · 2/ }));
+    const downloads = await screen.findAllByRole("checkbox", { name: /Download.*missing/i });
+    fireEvent.click(downloads[downloads.length - 1]!);
+    const list = await screen.findByLabelText("Missing titles");
+    await waitFor(() => expect(within(list).getByText("Die Hard 2")).toBeInTheDocument());
+    expect(within(list).getByText(/Already requested/)).toBeInTheDocument();
+    const untick = within(within(list).getByText("Die Hard 2").closest("li") as HTMLElement).getByRole("checkbox");
+    fireEvent.click(untick);
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
+    const body = calls.find((c) => c.route === "POST /collections")!.body as CollectionInput & { skip_requests?: string[] };
+    expect(body.download_missing).toBe(true);
+    expect(body.skip_requests).toEqual(["tt0095016"]);
   });
 });
