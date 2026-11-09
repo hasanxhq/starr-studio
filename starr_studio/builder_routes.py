@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 from ruamel.yaml import YAML
 
 from . import collections as col
-from . import collection_requests, list_sources, ready_made, ready_made_lists, ready_made_posters, smart_filters, studio_files
+from . import collection_requests, list_sources, ready_made, ready_made_lists, ready_made_posters, smart_filters, studio_files, switch_over
 from .config_sections import read_section
 from .config_write import SaveRefused
 from .default_covers import DEFAULT_IMAGES
@@ -541,6 +541,9 @@ async def _title_taken(db: sqlite3.Connection, request: Request, context: Contex
     except PlexUnavailable as error:
         return f"Plex can't be checked ({error}), so Studio can't tell whether the name is free"
     if key in everyone and key not in studio:
+        own = col.built_row(db, own_id) if own_id is not None else None
+        if own is not None and own["kometa_name"].casefold() == key and switch_over.adopting(db, own_id):
+            return None  # moved over from Kometa: its first good run adopts that collection, even after a failed one
         return f"A collection called {title} that Studio didn't make is already in Plex"
     return None
 

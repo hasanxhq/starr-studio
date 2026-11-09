@@ -85,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A collection moved over from Kometa whose first run failed** can be fixed and built again. Studio used to refuse it because the Plex collection it's meant to take over didn't have the Studio label yet (the failed run never added it), so it said "A collection called … that Studio didn't make is already in Plex". After Undo, the name counts as taken again.
 - **A list collection Kometa won't order** no longer fails silently. Kometa keeps a list's own order ("List order") only when a collection has one source and that source is a ranked list (IMDb, TMDb charts and lists, Letterboxd, MDBList) or a Plex search; for a TMDb collection, individual titles or several sources it refuses the collection when it builds it, after Studio's check had passed. The builder now greys out List order for those, explains why and switches to release date, and saving refuses it.
 - **When Kometa refuses a collection, Studio says why**: Kometa still exits without an error and sends no webhook, so Studio used to say only that Plex had no such collection. It now shows Kometa's own reason from the run's summary (for example "collection_order: custom cannot be used with tmdb_collection").
 - **Seerr requests that Radarr or Sonarr refused**: Seerr marks such a request failed and stops, and Studio kept showing it as requested. Studio now asks Seerr to retry it once, and shows it as Failed with the reason if that fails too.
