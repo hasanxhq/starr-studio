@@ -8,7 +8,20 @@ export const POSTER_HEIGHT = 1500;
 
 type Vars = Record<string, unknown>;
 
-export type Box = { key: string; label: string; x: number; y: number; width: number; height: number; color: string; radius: number; textColor?: string };
+export type Box = {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  radius: number;
+  textColor?: string;
+  badge?: string; // ratings: which rating this box shows (critic, audience, user)
+  image?: string; // Kometa's badge image, under defaults/overlays/images/
+  text?: string; // what Kometa writes in it
+};
 
 /** One of Kometa's template conditions: every key must match. A list means any of these, `.exists` and `.not` as in Kometa. */
 function matches(condition: Record<string, unknown>, vars: Vars): boolean {
@@ -78,6 +91,7 @@ export function layerBoxes(key: string, label: string, layout: OverlayLayout | u
   return names.map((name, index) => ({
     key: `${key}-${index}`,
     label: name,
+    badge: ratings[index],
     x: across ? x + index * (width + gap) : x,
     y: across ? y : y + index * (height + gap),
     width,
