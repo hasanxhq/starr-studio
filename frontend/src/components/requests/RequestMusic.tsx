@@ -17,7 +17,7 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
   exists: "Already there",
 };
 
-function Album({ album, onRequest, busy, error }: { album: MusicAlbum; onRequest: () => void; busy: boolean; error: string | null }) {
+function Album({ album, onRequest, busy, locked, error }: { album: MusicAlbum; onRequest: () => void; busy: boolean; locked: boolean; error: string | null }) {
   return (
     <li className="flex w-36 flex-col gap-1.5">
       {album.cover ? (
@@ -32,7 +32,7 @@ function Album({ album, onRequest, busy, error }: { album: MusicAlbum; onRequest
       ) : album.request ? (
         <span className="text-xs text-muted">{STATUS_LABEL[album.request.status]}</span>
       ) : (
-        <Button onClick={onRequest} disabled={busy} aria-label={`Request ${album.title}`}>
+        <Button onClick={onRequest} disabled={locked} aria-label={`Request ${album.title}`}>
           {busy ? "Requesting…" : "Request"}
         </Button>
       )}
@@ -66,6 +66,7 @@ export function RequestMusic() {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setErrors({});
+    request.reset();
     if (term.trim()) search.mutate(term.trim());
   };
 
@@ -97,7 +98,7 @@ export function RequestMusic() {
         ) : (
           <ul aria-label="Albums" className="mt-4 flex flex-wrap gap-4">
             {search.data.albums.map((album) => (
-              <Album key={album.item} album={album} onRequest={() => request.mutate(album)} busy={request.isPending && request.variables?.item === album.item} error={errors[album.item] || null} />
+              <Album key={album.item} album={album} onRequest={() => request.mutate(album)} busy={request.isPending && request.variables?.item === album.item} locked={request.isPending} error={errors[album.item] || null} />
             ))}
           </ul>
         ))}

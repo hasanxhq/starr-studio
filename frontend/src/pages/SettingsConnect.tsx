@@ -236,7 +236,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: AppKind; label: 
         )}
         {test.data && (test.data.ok ? <Outcome ok>{`${test.data.app} ${test.data.version} answered.`}</Outcome> : <Outcome ok={false}>{test.data.error}</Outcome>)}
         {test.isError && <Outcome ok={false}>{test.error.message}</Outcome>}
-        {save.isSuccess && <Outcome ok>Saved to config.yml</Outcome>}
+        {save.isSuccess && <Outcome ok>{lidarr ? "Saved." : "Saved to config.yml"}</Outcome>}
         {save.isError && <Outcome ok={false}>{save.error.message}</Outcome>}
         {remove.isError && <Outcome ok={false}>{remove.error.message}</Outcome>}
       </div>
@@ -377,7 +377,7 @@ function AppRunsForm({
             </label>
           </fieldset>
           )}
-          {draft.trigger === "relevant" && (
+          {!lidarr && draft.trigger === "relevant" && (
             <Relevance libraries={relevance.filter((library) => draft.libraries.length === 0 || draft.libraries.includes(library.library))} mode={draft.mode} />
           )}
           <fieldset>
