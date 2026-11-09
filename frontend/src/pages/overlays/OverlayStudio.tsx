@@ -4,11 +4,12 @@ import { Link } from "react-router";
 
 import { api, type ConfigLibrary, type DefaultEntry, type FileReference, type OverlayLibrary, type PlexItem } from "../../api";
 import { LeaveGuard } from "../../components/LeaveGuard";
-import { OverlayPoster, pickTryOnSamples, TryItOnRow, useSamples } from "../../components/OverlayPreview";
+import { OverlayPoster, pickTryOnSamples, TryItOnRow, useImageSizes, useSamples } from "../../components/OverlayPreview";
 import { ChevronDownIcon, ChevronUpIcon, CloseIcon, EyeIcon, EyeOffIcon, GripIcon, LockIcon } from "../../components/icons";
 import { ActionBar, Button, ConfirmButton } from "../../components/ui";
 import { SaveError } from "../../components/ValidationReport";
 import { shortTitle } from "../../defaults";
+import { layerArt } from "../../overlayArt";
 import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, whereItIs, type Box, resolveLayout } from "../../overlayLayout";
 import { loadSchema } from "../../yaml/schema";
 import { useSave, type Values } from "../../components/DefaultVariables";
@@ -76,10 +77,23 @@ export function OverlayStudio({
 
   const variablesOf = (layer: Layer) => ({ ...libraryVariables, ...draftValues(layer) });
   const visibleLayers = kometaLayers.filter((layer) => !hidden.has(layer.name));
-  const boxes = (item: PlexItem | null): Box[] =>
-  item ? visibleLayers.flatMap((layer) => layerBoxes(layer.name, layerText(layer.name, layer.title, item), layer.entry?.layout, variablesOf(layer))) : [];
-
   const tryOnPicks = useMemo(() => pickTryOnSamples(samples.found, libraryType === "show"), [samples.found, libraryType]);
+  // Ribbon is the one default with no back box: it's just its image, at the image's own size, and placing it needs that size.
+  const bareImage = (layer: Layer, item: PlexItem) =>
+    layer.name === "ribbon" ? layerArt(layer.name, item, resolveLayout(layer.entry?.layout, variablesOf(layer))).image : undefined;
+  const imageSizes = useImageSizes([samples.sample, ...tryOnPicks].flatMap((item) => (item ? visibleLayers.map((layer) => bareImage(layer, item) ?? "") : [])));
+
+  const boxes = (item: PlexItem | null): Box[] =>
+    item
+      ? visibleLayers.flatMap((layer) => {
+          const own = variablesOf(layer);
+          const vars = resolveLayout(layer.entry?.layout, own);
+          const bare = bareImage(layer, item);
+          const size = bare ? imageSizes[bare] : undefined;
+          const placed = layerBoxes(layer.name, layerText(layer.name, layer.title, item), layer.entry?.layout, size ? { ...own, back_width: size[0], back_height: size[1] } : own);
+          return placed.map((box) => ({ ...box, ...layerArt(layer.name, item, vars, box.badge), ...(bare ? { color: "transparent", radius: 0 } : {}) }));
+        })
+      : [];
 
   const applyPlacement = (layerName: string, patch: Record<string, unknown>) => {
     select(layerName);
