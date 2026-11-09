@@ -91,7 +91,7 @@ function BuilderForm({
     return baselineSnap;
   }, [id, mode, library, fields.fields, baselineSnap]);
   const compareBaselineMode: StartMode = id === null && mode !== null ? mode : baselineMode;
-  const dirty = mode !== null && draftsDiffer(draft, compareBaseline, mode, compareBaselineMode, isMusic);
+  const dirty = mode !== null && draftsDiffer(draft, compareBaseline, mode, compareBaselineMode);
 
   const kometaUrl = useMemo(() => {
     const b = baselineSnap.poster;

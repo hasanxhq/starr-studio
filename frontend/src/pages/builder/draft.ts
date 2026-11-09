@@ -205,9 +205,9 @@ export function clearStoredDraft(key: string): void {
   }
 }
 
-export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode, music?: boolean): boolean {
+export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode): boolean {
   if (skipRequestsChanged(a.skip_requests, b.skip_requests)) return true;
-  const opts = music ? { music: true as const } : undefined;
-  return JSON.stringify(toInput(a, modeA, opts)) !== JSON.stringify(toInput(b, modeB, opts));
+  if ((a.level ?? null) !== (b.level ?? null)) return true;
+  return JSON.stringify(toInput(a, modeA)) !== JSON.stringify(toInput(b, modeB));
 }
 
