@@ -3,7 +3,7 @@
 A plan for Starr Studio to draw poster overlays itself, instead of through Kometa, with an editor that responds like a photo editing app.
 
 - **Where things stand:** `dev` at `2d22c26` (PR #133), 2026-11-10. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** planned; nothing built. Decisions D1–D4 accepted on 2026-11-10 (see the end); styles are YAML files (3.6). Phase 0 (a spike, no Plex writes) is next.
+- **Status:** planned; nothing built. Decisions D1–D4 accepted on 2026-11-10 (see the end); styles are YAML files (3.6). Phase 0 done on 2026-11-10: the gate passed, SVG + resvg confirmed (see "Phase 0 results"). Phase 1 is next.
 - **Why now:** the maintainer finds the overlay studio slow and clunky, and the look stale. Mock-ups on real posters (2026-11-10: glassy, modern streaming and minimal, each in two free versions and one Kometa-drawable version) showed that Kometa can draw most of the shapes, but:
   - **its rules can't keep a style off some titles**, so two overlay sets overlap on the same poster;
   - **every change is a whole Kometa run**: 3 of the 3.2 minutes of run 25 were overlays (90 s choosing titles, 86 s drawing 185 posters, 32 s uploading);
@@ -221,6 +221,24 @@ Each step is one branch and one PR.
 2. Compare the browser's drawing of the same SVG with resvg's, pixel by pixel, at 1000×1500. Measure the time per poster.
 
 **Gate:** text spacing differs by no more than 1–2 px, and a poster renders in under about 200 ms. If not, take the D2 fallback.
+
+**Phase 0 results (2026-11-10).** Spike code is in `scripts/spike_overlay/` (throwaway; see its docstrings). It drew Modern streaming C, and a version with a gradient, a drop shadow and frosted glass, on the three posters, at 1000×1500, in two text modes:
+- **Text placement, browser vs resvg** (each text element measured alone, 41 per mode):
+  - live SVG `<text>`: at most 2 px apart, median 1 px;
+  - **text as glyph outlines** (shaped with HarfBuzz, outlines from fontTools): **at most 1 px, median 0**. The 1 px is anti-aliasing at an edge.
+  - **Decision:** the engine writes text as outlines, so the browser and resvg draw the same shapes and fonts never depend on the renderer.
+- **Whole posters, browser vs resvg:** mean difference 0.12–0.55 out of 255 with outlines (0.3–0.7 with live text); under 0.04% of pixels differ by more than 24.
+- **Speed:**
+  - resvg-py returns PNG bytes only, so drawing the whole poster inside the SVG is slow (about 0.9–1.2 s, almost all JPEG decoding and encoding a 2 MB photo PNG).
+  - **The production path:** resvg draws only the overlay on a transparent canvas, and Pillow lays it on the original and writes the JPEG. Frosted glass gets only the crop of the poster under it (crop margin 40 px, beyond 3σ of a 12 px blur). It matches the full render up to JPEG noise.
+  - That path takes **143–193 ms per poster** for Modern streaming C and 237–267 ms with the extras, reading and writing the poster included.
+  - With **4 processes: 17.7 posters a second** (185 posters ≈ 10 s, against Kometa's 86 s). Threads give only 6.2 a second (the binding holds Python's lock), so the engine uses processes.
+- **Dependencies for Phase 1**, all with wheels for x86_64, aarch64 and musl:
+  - `resvg-py` 0.5 (MIT; resvg is Apache-2.0)
+  - `uharfbuzz` 0.57 (Apache-2.0)
+  - `fonttools` 4.68 (MIT)
+  - Fonts: Inter (OFL-1.1) ships with Studio.
+- **Not measured yet:** dragging in the editor. That's Phase 4, and the editor moves SVG nodes, which browsers handle at full frame rate.
 
 ### Phase 1: engine core (nothing written to Plex)
 1. Scene format and SVG writer; fonts shipped with Studio.
