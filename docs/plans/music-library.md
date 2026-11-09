@@ -3,7 +3,7 @@
 A plan to add Plex music library management to Starr Studio. Starr Studio owns Kometa's configuration and uses Kometa as its run engine. Today Studio handles movie and TV show libraries; this plan extends management to music libraries.
 
 - **Where things stand:** `dev` at `4a7c2f6` (PR #122), 2026-11-09. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** a plan only. Nothing here is built yet. The open questions at the end need the maintainer's answers before Phase 3.
+- **Status:** a plan only. Nothing here is built yet. The maintainer answered the open questions on 2026-11-09 (section 6): Phase 1 can start.
 
 ## Working rules
 
@@ -86,7 +86,7 @@ Lidarr is the music management tool in the *arr suite. Kometa has no Lidarr supp
 - **Requesting**: Requests for missing music (`POST /api/v1/artist` or `album`) must target Lidarr directly via MusicBrainz IDs (`mbid`). Seerr (Overseerr/Jellyseerr) has no music support and cannot be used for music requesting (`starr_studio/requesting.py:753-782`).
 
 ### Decisions needing maintainer confirmation
-- Storing Lidarr credentials in Studio SQLite rather than `config.yml` (since Kometa ignores or rejects unknown top-level blocks).
+- ~~Storing Lidarr credentials in Studio SQLite rather than `config.yml`~~: decided, SQLite (section 6).
 - Monitoring behavior when filing missing music to Lidarr (monitor artist vs monitor specific missing album).
 - Whether to support Lidarr import runs in Phase 1 or defer to a dedicated Phase 3.
 
@@ -101,10 +101,10 @@ Lidarr is the music management tool in the *arr suite. Kometa has no Lidarr supp
 
 ### Collections (All / Ready-made / Builder)
 - **All tab**: Shows built music collections. Cards display artist/album counts (`frontend/src/pages/Collections.tsx`).
-- **Ready-made tab**: Kometa provides no ready-made defaults for music. Show an informative empty state banner: "Kometa has no ready-made defaults for music libraries. Use the Collection Builder to create rule-based or smart collections."
+- **Ready-made tab**: Kometa provides no ready-made defaults for music. The tab stays and shows a "Coming soon" state that points to the builder in the meantime, for example: "Ready-made collections for music are coming soon. Until then, make your own in the builder." Studio-made ready-mades for music are a later idea (section 6).
 - **Collection Builder**:
   - Mode: Default to "Organise what I have" (filters). Hide "Get something new" (external lists) because Kometa does not support external music list builders.
-  - Level selector: **Artist** (default) or **Album** in Phase 1 (sets `builder_level`); **Track** comes in Phase 2 (see open question 4).
+  - Level selector: **Artist** (default) or **Album** in Phase 1 (sets `builder_level`); **Track** comes in Phase 2 (decision 4, section 6).
   - Fields & filters: Provide music attributes (`artist_genre`, `album_genre`, `artist_mood`, `album_mood`, `artist_style`, `album_style`, `artist_country`, `album_decade`, `album_year`, `album_record_label`, `track_plays`) in `smart_filters.py`.
   - Sorts: Provide `artist_sorts`, `album_sorts`, and `track_sorts` (`kometa/modules/plex.py:718-779`).
   - Artwork: Support collection square artwork (`file_square_art`, `url_square_art`) in addition to posters.
@@ -201,7 +201,7 @@ Enables music library discovery, Home display, and collection building with Plex
 - **Acceptance list**:
   - Selecting a music library updates the sidebar and stores the selection.
   - Home header displays "X artists · Y collections".
-  - Collections "Ready-made" tab shows the empty state banner explaining Kometa's lack of music defaults.
+  - Collections "Ready-made" tab shows "Coming soon" with a link to the builder.
   - Collections "All" tab lists built music collections.
   - Collection Builder defaults to "Organise what I have" and allows selecting Artist or Album level.
   - Overlays page displays "Overlays are not supported for music libraries" instead of broken controls.
@@ -269,20 +269,19 @@ Connects Studio to Lidarr for automated post-import Kometa runs and missing albu
 
 ---
 
-## 6. Open questions for the maintainer
+## 6. Decisions (2026-11-09)
 
-1. **What item level should represent library size on Home?**
-   - *Options*: Count of artists (top level), count of albums, or count of tracks.
-   - *Recommended default*: **Count of artists**, matching how movie libraries show movie count and TV libraries show show count (top level of the section).
+The maintainer accepted the recommended defaults, with one change to the Ready-made tab.
 
-2. **Where should Lidarr connection details be stored?**
-   - *Options*: Encrypted in Studio's SQLite settings table (`lidarr.connection`), or in `config.yml` under a custom `lidarr:` key.
-   - *Recommended default*: **Encrypted in Studio's SQLite settings table**. Kometa does not recognise `lidarr:` and may log warnings or reject config validation if unknown keys are placed in `config.yml`.
+1. **Library size on Home:** the count of artists, the top level of the section, as movies and shows do.
+2. **Lidarr connection details:** encrypted in Studio's SQLite settings (`SecretBox`), never in `config.yml`.
+3. **Ready-made tab:** keep the tab, showing **"Coming soon"** with a pointer to the builder. Not hidden, and no "Kometa has none" wording.
+4. **Levels:** Artist and Album in Phase 1; Track waits for Phase 2.
 
-3. **Should Ready-made tab be completely hidden or show an explanatory banner?**
-   - *Options*: Hide the tab entirely, or keep the tab visible with an informative note.
-   - *Recommended default*: **Keep the tab with an informative note** ("Kometa has no ready-made defaults for music libraries; use the collection builder instead"). Keeping the tab structure consistent prevents confusing layout shifts when switching between movie, show, and music libraries.
+### Later: ready-made collections for music
 
-4. **Should music collection builder support track-level collections in Phase 1?**
-   - *Options*: Support Artist, Album, and Track levels in Phase 1; or support Artist level first.
-   - *Recommended default*: **Support Artist and Album levels in Phase 1; defer Track level to Phase 2**. Artist and album collections cover the vast majority of Plex music collections and have standard poster art, whereas track collections in Plex have subtle UI differences and require special search qualifiers.
+Kometa has no music defaults, so music ready-mades would be Studio's own. They'd be built from Plex searches that Kometa can run. Ideas to discuss before any work starts:
+- **Rating-based:** for example, top-rated albums or artists by the user's star rating or the critic rating.
+- **Award categories:** collections Studio creates for music awards. Where the award data comes from is unsettled: Kometa has no external music builders, so it would be a list Studio keeps or fetches itself.
+
+Not in any phase yet.
