@@ -72,6 +72,7 @@ describe("CollectionBuilder steps", () => {
     renderBuilder("/collections/new?library=Movies");
     fireEvent.click(await screen.findByRole("radio", { name: "Organise what I have" }));
     editStep("How it looks");
+    expect(screen.queryByRole("heading", { name: "Square art", level: 3 })).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: /My home/ }));
     editStep("Details");
     fireEvent.change(screen.getByLabelText("Summary"), { target: { value: "A short blurb about action" } });

@@ -45,6 +45,14 @@ const musicFields: BuilderFields = {
         { key: "year.desc", label: "Year (newest)" },
       ],
     },
+    {
+      key: "track",
+      label: "Tracks",
+      sorts: [
+        { key: "track.title.asc", label: "Track title A–Z" },
+        { key: "album.title.asc", label: "Album title A–Z" },
+      ],
+    },
   ],
 };
 
@@ -111,6 +119,7 @@ function renderBuilder(path: string) {
     [
       { path: "/collections", element: <Collections /> },
       { path: "/collections/new", element: <CollectionBuilder /> },
+      { path: "/collections/:id", element: <CollectionBuilder /> },
     ],
     { initialEntries: [path] },
   );
@@ -210,5 +219,87 @@ describe("Music library UI", () => {
     const saveBody = calls.find((c) => c.route === "POST /collections")?.body as { level?: string; title?: string };
     expect(saveBody.title).toBe("Rock picks");
     expect(saveBody.level).toBe("album");
+  });
+
+  it("Collection builder: tracks level preview, tile subtitle, square art save and restore", async () => {
+    const savedSquare = { kind: "url" as const, url: "https://example.com/square.webp" };
+    const calls = mockApi({
+      ...musicConfig(),
+      "POST /builder/preview": (body) => {
+        const level = (body as { level?: string }).level;
+        if (level === "track") {
+          return {
+            count: 1,
+            items: [{ rating_key: "77", title: "Paranoid Android", year: 1997, thumb: null, artist: "Radiohead", album: "OK Computer" }],
+            problems: [],
+          };
+        }
+        return { count: 0, items: [], problems: [] };
+      },
+      "GET /collections/42": () => ({
+        id: 42,
+        library: musicLib,
+        title: "Favourites",
+        source: { kind: "filters" },
+        filters: { match: "all", rules: [] },
+        sort_by: null,
+        level: "track",
+        limit: null,
+        visible: { library: true, home: false, shared: false },
+        minimum_items: 1,
+        summary: null,
+        sort_title: null,
+        poster: null,
+        square_art: savedSquare,
+        download_missing: false,
+        request_cap: null,
+        request_profile: null,
+        state: "in_plex",
+        plex_items: 1,
+        thumb: null,
+        last_built_at: null,
+        last_error: null,
+        run_id: null,
+        requests: { waiting: 0, requested: 0, downloading: 0, imported: 0, failed: 0 },
+        last_change: null,
+      }),
+    });
+    const { unmount: unmountNew } = renderBuilder(`/collections/new?library=${encodedLib}`);
+
+    await screen.findByRole("heading", { name: "Collect" });
+    fireEvent.click(screen.getByRole("radio", { name: "Tracks" }));
+    expect(screen.getByRole("radio", { name: "Tracks" })).toBeChecked();
+
+    const sortStep = screen.getByRole("heading", { name: /2\. Order and size/ }).closest("section")!;
+    fireEvent.click(within(sortStep).getByRole("button", { name: "Edit" }));
+    const sortSelect = within(sortStep).getByLabelText("Sort");
+    expect(within(sortSelect).getByRole("option", { name: "Track title A–Z" })).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    await waitFor(() => expect(calls.filter((c) => c.route === "POST /builder/preview" && (c.body as { level?: string }).level === "track").length).toBeGreaterThan(0));
+
+    const shelf = screen.getByRole("complementary", { name: "Shelf" });
+    expect(within(shelf).getByText("Radiohead · OK Computer")).toBeInTheDocument();
+
+    const looksStep = screen.getByRole("heading", { name: /3\. How it looks/ }).closest("section")!;
+    fireEvent.click(within(looksStep).getByRole("button", { name: "Edit" }));
+    const squareRoot = screen.getByRole("heading", { name: "Square art", level: 3 }).parentElement!.parentElement as HTMLElement;
+    fireEvent.click(within(squareRoot).getByRole("radio", { name: "Image link" }));
+    fireEvent.change(screen.getByLabelText("Square art URL"), { target: { value: "https://example.com/new-square.png" } });
+
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Track picks" } });
+    fireEvent.click(screen.getByRole("button", { name: "Build" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "POST /collections")).toBe(true));
+    const saveBody = calls.find((c) => c.route === "POST /collections")?.body as { level?: string; square_art?: { url?: string } };
+    expect(saveBody.level).toBe("track");
+    expect(saveBody.square_art).toEqual({ kind: "url", url: "https://example.com/new-square.png" });
+
+    unmountNew();
+    renderBuilder(`/collections/42?library=${encodedLib}`);
+    await screen.findByDisplayValue("Favourites");
+    fireEvent.click(within(screen.getByRole("heading", { name: /3\. How it looks/ }).closest("section")!).getByRole("button", { name: "Edit" }));
+    expect(screen.getByDisplayValue("https://example.com/square.webp")).toBeInTheDocument();
   });
 });

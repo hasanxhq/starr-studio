@@ -47,10 +47,18 @@ export function PosterSection({
   poster,
   kometaUrl,
   onChange,
+  heading,
+  help,
+  radioName = "poster",
+  squarePreview = false,
 }: {
   poster: Poster;
   kometaUrl: string | null;
   onChange: (poster: Poster) => void;
+  heading?: string;
+  help?: string;
+  radioName?: string;
+  squarePreview?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -83,25 +91,36 @@ export function PosterSection({
     }
   };
 
+  const legend = heading ?? "Poster source";
+  const uploadLabel = heading ? `Upload ${heading.toLowerCase()}` : "Upload poster";
+  const urlLabel = heading ? `${heading} URL` : "Poster URL";
+  const previewLabel = heading ? `${heading} preview` : "Poster preview";
+
   return (
     <div className="flex flex-col gap-3">
+      {heading && (
+        <div className="flex flex-col gap-1">
+          <h3 className="text-sm font-medium">{heading}</h3>
+          {help && <p className="text-sm text-muted">{help}</p>}
+        </div>
+      )}
       <fieldset className="flex flex-col gap-2">
-        <legend className="sr-only">Poster source</legend>
+        <legend className="sr-only">{legend}</legend>
         <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="radio" name="poster" className="size-4 accent-accent" checked={mode === "plex"} onChange={() => setMode("plex")} />
+          <input type="radio" name={radioName} className="size-4 accent-accent" checked={mode === "plex"} onChange={() => setMode("plex")} />
           Plex&apos;s own
         </label>
         <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="radio" name="poster" className="size-4 accent-accent" checked={mode === "upload"} onChange={() => setMode("upload")} />
+          <input type="radio" name={radioName} className="size-4 accent-accent" checked={mode === "upload"} onChange={() => setMode("upload")} />
           Upload an image
         </label>
         <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="radio" name="poster" className="size-4 accent-accent" checked={mode === "url"} onChange={() => setMode("url")} />
+          <input type="radio" name={radioName} className="size-4 accent-accent" checked={mode === "url"} onChange={() => setMode("url")} />
           Image link
         </label>
         {kometaUrl && (
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="radio" name="poster" className="size-4 accent-accent" checked={mode === "kometa"} onChange={() => setMode("kometa")} />
+            <input type="radio" name={radioName} className="size-4 accent-accent" checked={mode === "kometa"} onChange={() => setMode("kometa")} />
             Kometa&apos;s artwork
           </label>
         )}
@@ -117,7 +136,7 @@ export function PosterSection({
               void onFile(event.target.files?.[0]);
               event.target.value = "";
             }}
-            aria-label="Upload poster"
+            aria-label={uploadLabel}
           />
         </Field>
       )}
@@ -129,7 +148,7 @@ export function PosterSection({
             value={poster?.kind === "url" ? poster.url : ""}
             onChange={(event) => onChange({ kind: "url", url: event.target.value })}
             placeholder="https://"
-            aria-label="Poster URL"
+            aria-label={urlLabel}
           />
         </Field>
       )}
@@ -139,7 +158,10 @@ export function PosterSection({
         </p>
       )}
       {uploading && <p className="text-sm text-muted">Uploading…</p>}
-      <div className="w-28 overflow-hidden rounded-control border border-border bg-surface-2 aspect-[2/3]" aria-label="Poster preview">
+      <div
+        className={`w-28 overflow-hidden rounded-control border border-border bg-surface-2 ${squarePreview ? "aspect-square" : "aspect-[2/3]"}`}
+        aria-label={previewLabel}
+      >
         {preview ? (
           <img src={preview} alt="" className="size-full object-cover" />
         ) : (

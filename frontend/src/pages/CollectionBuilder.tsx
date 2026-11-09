@@ -122,11 +122,11 @@ function BuilderForm({
 
   const effectiveSorts = useMemo(() => {
     if (!isMusic || !fields.levels?.length) return fields.sorts;
-    const key = draft.level === "album" ? "album" : "artist";
+    const key = draft.level === "album" ? "album" : draft.level === "track" ? "track" : "artist";
     return fields.levels.find((level) => level.key === key)?.sorts ?? fields.sorts;
   }, [isMusic, fields.levels, fields.sorts, draft.level]);
 
-  const [previewArgs, setPreviewArgs] = useState<{ filters: FilterSpec; sort_by: string | null; level: "album" | null } | null>(null);
+  const [previewArgs, setPreviewArgs] = useState<{ filters: FilterSpec; sort_by: string | null; level: "album" | "track" | null } | null>(null);
   useEffect(() => {
     if (mode !== "filters") {
       setPreviewArgs(null);
@@ -152,7 +152,7 @@ function BuilderForm({
         library,
         filters: previewArgs!.filters,
         sort_by: previewArgs!.sort_by,
-        ...(isMusic ? { level: previewArgs!.level === "album" ? "album" : null } : {}),
+        ...(isMusic ? { level: previewArgs!.level ?? null } : {}),
       }),
     enabled: mode === "filters" && previewArgs !== null,
     placeholderData: keepPreviousData,
@@ -236,10 +236,9 @@ function BuilderForm({
     setDraft((current) => shapeForMode(current, next, fields.fields));
   };
 
-  const switchCollectLevel = (album: boolean) => {
-    const nextLevel = album ? ("album" as const) : null;
-    const key = album ? "album" : "artist";
-    const levelSorts = fields.levels?.find((level) => level.key === key)?.sorts ?? fields.sorts;
+  const switchCollectLevel = (levelKey: "artist" | "album" | "track") => {
+    const nextLevel: typeof draft.level = levelKey === "artist" ? null : levelKey;
+    const levelSorts = fields.levels?.find((level) => level.key === levelKey)?.sorts ?? fields.sorts;
     setDraft((current) => ({
       ...current,
       level: nextLevel,
@@ -331,14 +330,14 @@ function BuilderForm({
             Collect
           </h2>
           <fieldset className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
-            <legend className="sr-only">Collect: Artists or Albums</legend>
+            <legend className="sr-only">Collect: Artists, Albums or Tracks</legend>
             <label className="flex min-h-11 items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="collect-level"
                 className="size-4 accent-accent"
-                checked={draft.level !== "album"}
-                onChange={() => switchCollectLevel(false)}
+                checked={draft.level === null}
+                onChange={() => switchCollectLevel("artist")}
               />
               Artists
             </label>
@@ -348,9 +347,19 @@ function BuilderForm({
                 name="collect-level"
                 className="size-4 accent-accent"
                 checked={draft.level === "album"}
-                onChange={() => switchCollectLevel(true)}
+                onChange={() => switchCollectLevel("album")}
               />
               Albums
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="collect-level"
+                className="size-4 accent-accent"
+                checked={draft.level === "track"}
+                onChange={() => switchCollectLevel("track")}
+              />
+              Tracks
             </label>
           </fieldset>
         </section>
