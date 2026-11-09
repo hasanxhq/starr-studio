@@ -1,13 +1,23 @@
 """A fake plex.tv and Plex server behind an httpx.MockTransport, for tests that must not touch the network."""
 
 import json
+from io import BytesIO
 from pathlib import Path
 
 import httpx
+from PIL import Image
 
 _OVERLAY_FIXTURES = Path(__file__).parent / "fixtures" / "overlay_facts"
-OVERLAY_METADATA: dict = json.loads((_OVERLAY_FIXTURES / "metadata.json").read_text()) if (_OVERLAY_FIXTURES / "metadata.json").is_file() else {}
-OVERLAY_LISTING: list = json.loads((_OVERLAY_FIXTURES / "listing.json").read_text()) if (_OVERLAY_FIXTURES / "listing.json").is_file() else []
+OVERLAY_METADATA: dict = json.loads((_OVERLAY_FIXTURES / "metadata.json").read_text())
+OVERLAY_LISTING: list = json.loads((_OVERLAY_FIXTURES / "listing.json").read_text())
+
+
+def overlay_poster(colour: tuple[int, int, int] = (40, 90, 160)) -> bytes:
+    """A real (plain) poster JPEG, for the overlay engine's preview."""
+    buf = BytesIO()
+    Image.new("RGB", (200, 300), colour).save(buf, "JPEG")
+    return buf.getvalue()
+
 
 RESOURCES_XML = (Path(__file__).parent / "fixtures" / "plex_resources.xml").read_text()
 
@@ -385,6 +395,8 @@ class FakePlex:
             if what == "all" and request.url.params.get("type") == "18":
                 keys = self.LABELLED.get(request.url.params.get("label", ""), [])
                 return httpx.Response(200, json={"MediaContainer": {"Metadata": [{"ratingKey": k} for k in keys]}})
+        if len(parts) == 5 and parts[1] == "metadata" and parts[3] == "thumb" and parts[2] in self.OVERLAY_METADATA:
+            return httpx.Response(200, content=overlay_poster(), headers={"Content-Type": "image/jpeg"})
         if len(parts) == 3 and parts[1] == "metadata" and parts[2] in self.OVERLAY_METADATA:
             meta = dict(self.OVERLAY_METADATA[parts[2]])
             meta.setdefault("librarySectionID", 90)

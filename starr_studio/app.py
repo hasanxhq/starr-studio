@@ -21,6 +21,7 @@ from .arr_routes import router as arr_router
 from .network import NetworkTransport
 from .network_routes import router as network_router
 from .overlay_images import router as overlay_images_router
+from .overlay_engine_routes import router as overlay_engine_router
 from .overlays_routes import router as overlays_router
 from .import_routes import router as import_router
 from .usage import ApiCalls
@@ -223,6 +224,7 @@ def create_app(
     app.include_router(usage_router)
     app.include_router(overlay_images_router)
     app.include_router(overlays_router)
+    app.include_router(overlay_engine_router)
     app.include_router(import_router)
     app.include_router(network_router)
     app.include_router(logs_router)
