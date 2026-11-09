@@ -2,6 +2,9 @@
 
 A plan to add Plex music library management to Starr Studio. Starr Studio owns Kometa's configuration and uses Kometa as its run engine. Today Studio handles movie and TV show libraries; this plan extends management to music libraries.
 
+- **Where things stand:** `dev` at `4a7c2f6` (PR #122), 2026-11-09. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
+- **Status:** a plan only. Nothing here is built yet. The open questions at the end need the maintainer's answers before Phase 3.
+
 ## Working rules
 
 These extend `AGENTS.md` and match `docs/plans/ui-rework.md`:
@@ -10,6 +13,8 @@ These extend `AGENTS.md` and match `docs/plans/ui-rework.md`:
 3. **Keep every URL working.** No broken routes or bookmarks.
 4. **No new YAML in the UI.** Studio manages configuration through forms and builder interfaces; raw YAML stays behind disclosures.
 5. **Tests with every change.** Frontend: Vitest + Testing Library. Backend: pytest with `tests/fakeplex.py`.
+6. **Hands off:** never touch Maintainerr's collections; ask the maintainer before anything that changes what Plex or an *arr app (Lidarr included) receives. Real-Plex manual tests name collections `TEST …` and leave them.
+7. **One step = one topic branch and one draft PR into `dev`**, as in `docs/plans/ui-rework.md`.
 
 ---
 
@@ -74,10 +79,10 @@ Plex music libraries use section type `artist` (integer type 8 in Plex schema). 
 Lidarr is the music management tool in the *arr suite. Kometa has no Lidarr support, so any Lidarr integration is built directly into Studio.
 
 ### Architecture (modelled on `starr_studio/arr.py`)
-- **Polling imports**: Studio polls Lidarr's API at `GET /api/v1/history/since` with `eventType=3` (`TrackFileImported`).
+- **Polling imports**: Studio polls Lidarr's API at `GET /api/v1/history/since` for track imports (unconfirmed: check the event type id against Lidarr's API docs before building).
 - **Debounced runs**: Multiple track imports buffer into a single pending Kometa run via `arr.pending` in SQLite, respecting `wait_minutes` and `MAX_WAIT` (`starr_studio/arr.py:11-16, 44-50`).
 - **Settings**: Add `lidarr: AppRuns` to `ArrSettings` (`starr_studio/arr.py:70-75`), configured under Settings → Connect.
-- **Connection storage**: Kometa does not support `lidarr:` in `config.yml`. Lidarr URL and API key must be stored in Studio's SQLite settings table (`lidarr.connection`), encrypted via `SecretBox`, just like seedbox proxy credentials (`starr_studio/arr.py:45`).
+- **Connection storage**: Radarr and Sonarr's URL and API key come from Kometa's own `config.yml` blocks (`arr.connection` → `kometa_connection`, `starr_studio/arr.py:136`); only the seedbox proxy login lives in Studio's database (`proxy_login`, `starr_studio/arr.py:129`). Kometa has no `lidarr:` block, so Lidarr's URL and API key must live in Studio's SQLite settings, encrypted with `SecretBox` like the proxy login.
 - **Requesting**: Requests for missing music (`POST /api/v1/artist` or `album`) must target Lidarr directly via MusicBrainz IDs (`mbid`). Seerr (Overseerr/Jellyseerr) has no music support and cannot be used for music requesting (`starr_studio/requesting.py:753-782`).
 
 ### Decisions needing maintainer confirmation
@@ -94,12 +99,12 @@ Lidarr is the music management tool in the *arr suite. Kometa has no Lidarr supp
 - Navigation sidebar picker: Allow selecting music libraries.
 - Settings → Libraries: Show music libraries with "Music" badge, artist counts, and collection tallies (`frontend/src/pages/Libraries.tsx:25`).
 
-### Collections (Yours / Ready-made / Builder)
-- **Yours tab**: Shows built music collections. Cards display artist/album counts (`frontend/src/pages/Collections.tsx`).
+### Collections (All / Ready-made / Builder)
+- **All tab**: Shows built music collections. Cards display artist/album counts (`frontend/src/pages/Collections.tsx`).
 - **Ready-made tab**: Kometa provides no ready-made defaults for music. Show an informative empty state banner: "Kometa has no ready-made defaults for music libraries. Use the Collection Builder to create rule-based or smart collections."
 - **Collection Builder**:
   - Mode: Default to "Organise what I have" (filters). Hide "Get something new" (external lists) because Kometa does not support external music list builders.
-  - Level selector: Allow choosing collection level between **Artist** (default), **Album**, and **Track** (sets `builder_level`).
+  - Level selector: **Artist** (default) or **Album** in Phase 1 (sets `builder_level`); **Track** comes in Phase 2 (see open question 4).
   - Fields & filters: Provide music attributes (`artist_genre`, `album_genre`, `artist_mood`, `album_mood`, `artist_style`, `album_style`, `artist_country`, `album_decade`, `album_year`, `album_record_label`, `track_plays`) in `smart_filters.py`.
   - Sorts: Provide `artist_sorts`, `album_sorts`, and `track_sorts` (`kometa/modules/plex.py:718-779`).
   - Artwork: Support collection square artwork (`file_square_art`, `url_square_art`) in addition to posters.
@@ -179,11 +184,11 @@ Enables music library discovery, Home display, and collection building with Plex
   - `GET /api/v1/libraries/{library}/builder/fields` succeeds for music libraries.
   - Saving a built collection in a music library generates `studio/<library>/built.yml` with `smart_filter` or `plex_search`.
   - Generated YAML does not contain `radarr_add_missing` or `sonarr_add_missing`.
-  - Supports setting `builder_level: album` or `builder_level: track` when requested.
+  - Supports setting `builder_level: album` when requested (track level waits for Phase 2).
   - `POST /api/v1/libraries/{library}/builder/preview/filters` returns live item preview for music.
 
 #### Step 1.4: UI support for music libraries (`music-ui`)
-- **Delivers**: Music libraries work smoothly across sidebar picker, Home header, Collections Yours tab, and Collection Builder.
+- **Delivers**: Music libraries work smoothly across sidebar picker, Home header, Collections All tab, and the collection builder.
 - **Files touched**:
   - `frontend/src/api.ts`
   - `frontend/src/builderApi.ts`
@@ -197,8 +202,8 @@ Enables music library discovery, Home display, and collection building with Plex
   - Selecting a music library updates the sidebar and stores the selection.
   - Home header displays "X artists · Y collections".
   - Collections "Ready-made" tab shows the empty state banner explaining Kometa's lack of music defaults.
-  - Collections "Yours" tab lists built music collections.
-  - Collection Builder defaults to "Organise what I have" and allows selecting Artist, Album, or Track level.
+  - Collections "All" tab lists built music collections.
+  - Collection Builder defaults to "Organise what I have" and allows selecting Artist or Album level.
   - Overlays page displays "Overlays are not supported for music libraries" instead of broken controls.
   - Frontend typecheck (`npm run typecheck`) and tests (`npm test`) pass cleanly.
 
@@ -220,14 +225,15 @@ Enables Kometa music operations and artwork management.
   - Saves write `operations: { update_blank_track_titles: true }` under the music library in `config.yml`.
   - Video operations (like `mass_critic_rating_update`) are hidden for music.
 
-#### Step 2.2: Square artwork and album sorting (`music-details`)
-- **Delivers**: Square artwork upload (`square_art`) and `album_sorting` collection attributes.
+#### Step 2.2: Track collections, square artwork and album sorting (`music-details`)
+- **Delivers**: Track-level collections (`builder_level: track`), square artwork upload (`square_art`) and `album_sorting` collection attributes.
 - **Files touched**:
   - `starr_studio/builder_routes.py`
   - `starr_studio/studio_files.py`
-  - `frontend/src/pages/builder/StepPoster.tsx`
+  - `frontend/src/pages/builder/builderFields.tsx` (`PosterSection`)
   - Associated tests
 - **Acceptance list**:
+  - Builder allows choosing Track level; the preview lists tracks.
   - Builder allows setting square art (`file_square_art` / `url_square_art`).
   - Album collections allow setting `album_sorting` (`release.asc`, `release.desc`, etc.).
   - Generated YAML passes Kometa check.
@@ -251,7 +257,7 @@ Connects Studio to Lidarr for automated post-import Kometa runs and missing albu
   - Activity queue displays "Lidarr import" trigger.
 
 #### Step 3.2: Missing music requests (`lidarr-requests`)
-- **Delivers**: Missing album requests filed directly with Lidarr.
+- **Delivers**: Missing album requests filed directly with Lidarr. **Needs the maintainer's go-ahead first:** it changes what Lidarr receives.
 - **Files touched**:
   - `starr_studio/requesting.py`
   - `starr_studio/requests_routes.py`
