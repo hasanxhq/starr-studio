@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collection and Ready-made tiles show their state as a badge on the poster (shared `PosterTile` / `StatusBadge`).
 - The library you pick on **Collections**, **Ready-made** or the **overlay designer** is remembered for the next of those pages in this browser (URL still wins when present).
 
+- **The overlay studio's preview draws each badge the way Kometa will**: Kometa's own badge images and text instead of coloured boxes with the layer's name. Resolution, audio codec, content rating and audience score come from the sample title; streaming service, network, studio, runtime and other scores show a typical sample. Ratings follow the rating sources and logos you've set, with Fresh or Rotten art.
 - **Overlay studio layers** have a red × to turn a layer off (with a Turn off / Keep check), show where each sits under its name, and **Add a layer** suggests the most used overlays first (resolution, audio codec, ratings, streaming, ribbon …) instead of alphabetical.
 
 ### Added
