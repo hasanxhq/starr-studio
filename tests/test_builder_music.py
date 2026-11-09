@@ -8,7 +8,7 @@ from ruamel.yaml import YAML
 from fakeplex import FakePlex
 from starr_studio.ready_made_routes import _library_types
 from test_builder_routes import body
-from test_ready_made_routes import make_client, wait_for_flags
+from test_ready_made_routes import make_client, wait_for_flags, wait_for_run
 from test_ready_made_routes import root as movie_root  # noqa: F401 (a fixture)
 
 ROCK = {"match": "all", "rules": [{"field": "album_genre", "modifier": "", "value": ["Rock"]}]}
@@ -133,3 +133,17 @@ def test_a_track_collection_with_square_art(root, plex):
     assert (collection["builder_level"], collection["url_square_art"]) == ("track", art["url"])
     assert "smart_filter" not in collection and "minimum_items" not in collection
     assert on_movies.status_code == 422 and "square art" in on_movies.text
+
+
+def test_a_run_puts_a_music_librarys_built_file_back(root, plex):
+    # Fully managed: a hand edit to a music library's built.yml is undone before Kometa runs, as for movies and shows.
+    client, _, _ = make_client(root, plex)
+    with client:
+        wait_for_flags(client)
+        assert client.post("/api/v1/collections", json=music("Rock Artists", build=False)).status_code == 201
+        built = root / "config" / "studio" / "Music" / "built.yml"
+        original = built.read_text()
+        built.write_text(original + "# changed by hand\n")
+        run = wait_for_run(client, client.post("/api/v1/runs", json={"mode": "operations"}).json()["id"])
+        assert built.read_text() == original
+        assert "studio/Music/built.yml had been changed by hand" in client.get(f"/api/v1/runs/{run['id']}/log").text
