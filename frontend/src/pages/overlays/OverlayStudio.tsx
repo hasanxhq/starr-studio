@@ -78,11 +78,9 @@ export function OverlayStudio({
   const variablesOf = (layer: Layer) => ({ ...libraryVariables, ...draftValues(layer) });
   const visibleLayers = kometaLayers.filter((layer) => !hidden.has(layer.name));
   const tryOnPicks = useMemo(() => pickTryOnSamples(samples.found, libraryType === "show"), [samples.found, libraryType]);
-  // A badge with no back box (a ribbon, say) is just its image, at the image's own size: placing it needs that size.
-  const bareImage = (layer: Layer, item: PlexItem) => {
-    const vars = resolveLayout(layer.entry?.layout, variablesOf(layer));
-    return vars.back_width === undefined ? layerArt(layer.name, item, vars).image : undefined;
-  };
+  // Ribbon is the one default with no back box: it's just its image, at the image's own size, and placing it needs that size.
+  const bareImage = (layer: Layer, item: PlexItem) =>
+    layer.name === "ribbon" ? layerArt(layer.name, item, resolveLayout(layer.entry?.layout, variablesOf(layer))).image : undefined;
   const imageSizes = useImageSizes([samples.sample, ...tryOnPicks].flatMap((item) => (item ? visibleLayers.map((layer) => bareImage(layer, item) ?? "") : [])));
 
   const boxes = (item: PlexItem | null): Box[] =>
