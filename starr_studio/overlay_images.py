@@ -27,12 +27,15 @@ async def overlay_image(path: str, settings: AppSettings) -> FileResponse:
     if root is None:
         raise HTTPException(404, "Studio doesn't know where Kometa is installed")
 
-    resolved_root = root.resolve()
-    target = (root / path).resolve()
-    if not target.is_relative_to(resolved_root):
+    try:
+        target = (root / path).resolve()
+        inside = target.is_relative_to(root.resolve())
+        found = inside and target.is_file()
+    except (ValueError, OSError):  # a NUL byte or an over-long name
+        inside = found = False
+    if not inside:
         raise HTTPException(404, "That path is outside Kometa's overlay images folder")
-
-    if not target.is_file():
+    if not found:
         raise HTTPException(404, "No overlay badge image at that path")
 
     return FileResponse(target, media_type="image/png", headers=CACHE_HEADERS)

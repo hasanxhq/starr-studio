@@ -62,11 +62,15 @@ def test_missing_file_404(root: Path):
 
 def test_traversal_404(root: Path):
     write_png(root, "resolution/4k.png")
+    (root / "kometa" / "defaults" / "outside.png").write_bytes(PNG)
     client, _, _ = make_client(root)
     with client:
         for path in (
             "/api/v1/overlay-images/../../config/config.yml",
             "/api/v1/overlay-images/%2e%2e%2f%2e%2e%2fconfig%2fconfig.yml",
+            "/api/v1/overlay-images/%2e%2e%2f%2e%2e%2foutside.png",  # passes the .png check: the folder check must catch it
+            "/api/v1/overlay-images/resolution/4k%00.png",
+            "/api/v1/overlay-images/" + "a" * 300 + ".png",
         ):
             assert client.get(path).status_code == 404
 
