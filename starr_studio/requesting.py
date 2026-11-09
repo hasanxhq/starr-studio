@@ -630,8 +630,8 @@ class RequestService:
         await arr._put(self.http, conn, "/api/v1/album/monitor", json={"albumIds": [album_id], "monitored": True})
         await arr._post(self.http, conn, "/api/v1/command", json={"name": "AlbumSearch", "albumIds": [album_id]})
 
-    async def _request_lidarr(self, conn: Connection, options: LidarrOptions, mbid: str) -> tuple[str, str | None, str | None, str | None]:
-        """File one album by MusicBrainz release-group id. Returns (status, external_id, error, stored_title)."""
+    async def _request_lidarr(self, conn: Connection, options: LidarrOptions, mbid: str) -> tuple[str, str | None, str | None, str | None, int | None]:
+        """File one album by MusicBrainz release-group id. Returns (status, external_id, error, stored_title, year)."""
         try:
             existing = await arr._get(self.http, conn, "/api/v1/album", {"foreignAlbumId": mbid})
             albums = existing if isinstance(existing, list) else ([existing] if isinstance(existing, dict) and existing.get("id") else [])
@@ -639,26 +639,24 @@ class RequestService:
                 album = albums[0]
                 title = self._album_display_title(album)
                 stats = album.get("statistics") or {}
-                if (stats.get("trackFileCount") or 0) > 0:
-                    return "exists", str(album["id"]), None, title
+                # Lidarr has its files, or already wants it: Studio leaves it alone (a cancel mustn't unmonitor it).
+                if (stats.get("trackFileCount") or 0) > 0 or album.get("monitored"):
+                    return "exists", str(album["id"]), None, title, self._album_year(album)
                 album_id = int(album["id"])
-                if not album.get("monitored"):
-                    await self._monitor_and_search_album(conn, album_id)
-                else:
-                    await arr._post(self.http, conn, "/api/v1/command", json={"name": "AlbumSearch", "albumIds": [album_id]})
-                return "requested", str(album_id), None, title
+                await self._monitor_and_search_album(conn, album_id)  # e.g. a followed artist's unmonitored album
+                return "requested", str(album_id), None, title, self._album_year(album)
 
             lookup = await arr._get(self.http, conn, "/api/v1/album/lookup", {"term": f"lidarr:{mbid}"})
             album_data = lookup[0] if isinstance(lookup, list) and lookup else None
             if not album_data or not isinstance(album_data, dict):
-                return "failed", None, "Album not found in Lidarr's metadata", None
+                return "failed", None, "Album not found in Lidarr's metadata", None, None
 
             qp_id, mp_id, rf_path = await self._resolve_lidarr_options(conn, options)
             starr_tag = await self._ensure_lidarr_tag(conn)
             artist = album_data.get("artist") or {}
             foreign_artist = artist.get("foreignArtistId")
             if not foreign_artist:
-                return "failed", None, "Album lookup has no artist id", None
+                return "failed", None, "Album lookup has no artist id", None, None
 
             payload = dict(album_data)
             payload["monitored"] = True
@@ -676,11 +674,11 @@ class RequestService:
             }
             created = await arr._post(self.http, conn, "/api/v1/album", json=payload)
             external_id = str(created.get("id")) if isinstance(created, dict) and created.get("id") else None
-            return "requested", external_id, None, self._album_display_title(created if isinstance(created, dict) else album_data)
+            return "requested", external_id, None, self._album_display_title(created if isinstance(created, dict) else album_data), self._album_year(album_data)
         except ArrProblem as problem:
-            return "failed", None, str(problem), None
+            return "failed", None, str(problem), None, None
         except Exception as e:
-            return "failed", None, str(e), None
+            return "failed", None, str(e), None, None
 
     def _latest_request_for_item(self, item: str) -> dict | None:
         row = self.db.execute(
@@ -1113,16 +1111,11 @@ class RequestService:
                         outcome.failed += 1
                         outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
                         continue
-                    status, external_id, error_msg, stored_title = await self._request_lidarr(
+                    status, external_id, error_msg, stored_title, found_year = await self._request_lidarr(
                         lidarr_conn, lidarr_options(self.db), kind_id[1]
                     )
                     title = stored_title or it.title
-                    year = it.year
-                    if stored_title and year is None:
-                        with contextlib.suppress(Exception):
-                            lookup = await arr._get(self.http, lidarr_conn, "/api/v1/album/lookup", {"term": f"lidarr:{kind_id[1]}"})
-                            if isinstance(lookup, list) and lookup:
-                                year = self._album_year(lookup[0])
+                    year = it.year if it.year is not None else found_year
                     self._record(it.item, media, title, year, library, collection_id, via_record, external_id, status, error_msg, now)
                     if status == "requested":
                         outcome.requested += 1
@@ -1353,7 +1346,7 @@ class RequestService:
                     continue
                 album_id = int(album["id"])
                 track_files = (album.get("statistics") or {}).get("trackFileCount", 0)
-                if track_files > 0:
+                if track_files > 0 and album_id not in lidarr_queue_album_ids:  # still queued: more tracks to come
                     self.db.execute(
                         "UPDATE requests SET status = 'imported', imported_at = ?, updated_at = ? WHERE id = ?",
                         (utc_text(now), utc_text(now), row_id),

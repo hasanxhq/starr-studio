@@ -209,6 +209,10 @@ async def test_refresh_queue_downloading_imported_and_removed(lidarr_env):
     await service.refresh(T0)
     assert db.execute("SELECT status FROM requests WHERE id = ?", (row_id["id"],)).fetchone()[0] == "downloading"
 
+    lidarr.albums[album_id]["statistics"]["trackFileCount"] = 3  # some tracks in, the rest still queued
+    await service.refresh(T0)
+    assert db.execute("SELECT status FROM requests WHERE id = ?", (row_id["id"],)).fetchone()[0] == "downloading"
+
     lidarr.queue = []
     lidarr.albums[album_id]["statistics"]["trackFileCount"] = 5
     await service.refresh(T0)
@@ -286,3 +290,14 @@ def test_music_search_route(tmp_path: Path):
         body = client.get("/api/v1/requests/music/search", params={"term": "radiohead"}).json()
         assert len(body["albums"]) == 2
         assert body["albums"][0]["item"].startswith("mb-album:")
+
+
+@pytest.mark.anyio
+async def test_an_album_lidarr_already_wants_is_left_alone(lidarr_env):
+    # Monitored without files: Lidarr is already after it. Studio files nothing, so it has nothing to undo on cancel.
+    service, lidarr, db, _ = lidarr_env
+    album = lidarr.add_existing(OK_COMPUTER, monitored=True, track_files=0)
+    enable_requests(service)
+    outcome = await service.request([Item(item=f"mb-album:{OK_COMPUTER}", title="OK Computer")], library="Music", collection_id=None, now=T0)
+    assert outcome.exists == 1 and lidarr.commands == []
+    assert album["monitored"] is True
