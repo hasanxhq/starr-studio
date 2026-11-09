@@ -58,6 +58,29 @@ function routes(extra: Record<string, (body: unknown) => unknown> = {}) {
 }
 
 describe("Overlays", () => {
+  it("shows a plain message for a music library", async () => {
+    mockApi({
+      "GET /overlays": () => ({ libraries: [] }),
+      "GET /schedules": () => ({ schedules: [], timezone: "UTC", catch_up: null }),
+      "GET /arr": () => arr,
+      "GET /config": () => ({ path: "/config/config.yml", libraries: [{ name: "Tunes", plex_name: "Tunes" }], playlist_files: [] }),
+      "GET /plex/libraries": () => ({ libraries: [{ key: "5", title: "Tunes", type: "artist", collections: 0, managed: 0 }] }),
+      "GET /config/libraries/Tunes": () => ({
+        name: "Tunes",
+        collection_files: [],
+        overlay_files: [],
+        metadata_files: [],
+        operations: {},
+        template_variables: {},
+        settings: {},
+        counts: {},
+      }),
+    });
+    renderAt("/overlays?library=Tunes");
+    expect(await screen.findByRole("heading", { name: "Overlays · Tunes" })).toBeInTheDocument();
+    expect(screen.getByText("Overlays aren't available for music libraries.")).toBeInTheDocument();
+  });
+
   it("shows the studio header with backup, Maintainerr and last pass", async () => {
     routes();
     renderAt("/overlays?library=TV%20Shows");

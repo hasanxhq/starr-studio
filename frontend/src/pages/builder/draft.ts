@@ -22,11 +22,13 @@ export type Draft = {
   request_cap: number | null;
   request_profile: string | null;
   skip_requests: string[];
+  /** Music only: null = artists. */
+  level: "album" | null;
 };
 
 const EMPTY_FILTERS: FilterSpec = { match: "all", rules: [] };
 
-export function toInput(draft: Draft, mode: StartMode, opts?: { includeSkipRequests?: boolean }): CollectionInput {
+export function toInput(draft: Draft, mode: StartMode, opts?: { includeSkipRequests?: boolean; music?: boolean }): CollectionInput {
   const list = mode === "list";
   const sources: Source[] = list ? toApiSources(draft.sources) : [{ kind: "filters" }];
   const canMissing = list && canDownloadMissing(sources);
@@ -55,6 +57,9 @@ export function toInput(draft: Draft, mode: StartMode, opts?: { includeSkipReque
   if (opts?.includeSkipRequests && canMissing && draft.download_missing) {
     body.skip_requests = [...draft.skip_requests];
   }
+  if (opts?.music) {
+    body.level = draft.level === "album" ? "album" : null;
+  }
   return body;
 }
 
@@ -80,6 +85,7 @@ export function fromInput(input: CollectionInput): Draft {
     request_cap: input.request_cap ?? null,
     request_profile: input.request_profile ?? null,
     skip_requests: [...(input.skip_requests ?? [])],
+    level: input.level === "album" ? "album" : null,
   };
 }
 
@@ -100,6 +106,7 @@ export function blankDraft(library: string, fields: BuilderField[]): Draft {
     request_cap: null,
     request_profile: null,
     skip_requests: [],
+    level: null,
   };
 }
 
@@ -198,8 +205,9 @@ export function clearStoredDraft(key: string): void {
   }
 }
 
-export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode): boolean {
+export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode, music?: boolean): boolean {
   if (skipRequestsChanged(a.skip_requests, b.skip_requests)) return true;
-  return JSON.stringify(toInput(a, modeA)) !== JSON.stringify(toInput(b, modeB));
+  const opts = music ? { music: true as const } : undefined;
+  return JSON.stringify(toInput(a, modeA, opts)) !== JSON.stringify(toInput(b, modeB, opts));
 }
 

@@ -60,18 +60,25 @@ export type BuilderField = {
   listable: boolean;
 };
 
+export type BuilderLevel = {
+  key: "artist" | "album";
+  label: string;
+  sorts: { key: string; label: string }[];
+};
+
 export type BuilderFields = {
   library: string;
-  library_type: "movie" | "show";
+  library_type: "movie" | "show" | "artist";
   fields: BuilderField[];
   sorts: { key: string; label: string }[];
+  levels?: BuilderLevel[];
 };
 
 export type BuilderValues = { values: { key: string; title: string }[] };
 
 export type BuilderPreview = {
   count: number;
-  items: { rating_key: string; title: string; year: number | null; thumb: string | null }[];
+  items: { rating_key: string; title: string; year: number | null; thumb: string | null; artist?: string | null }[];
   problems: string[];
 };
 
@@ -97,6 +104,8 @@ export type CollectionInput = {
   request_profile: string | null;
   /** Missing titles (request keys) never to request. Omit on an update to keep the saved list. */
   skip_requests?: string[];
+  /** Music only: album collections; null or absent = artists. */
+  level?: "artist" | "album" | null;
 };
 
 /** ``build: false`` saves without running Kometa (the Changes bar builds it later). */
@@ -243,7 +252,8 @@ export const builderApi = {
   fields: (library: string) => request<BuilderFields>("GET", `/builder/fields?library=${encodeURIComponent(library)}`),
   values: (library: string, field: string) =>
     request<BuilderValues>("GET", `/builder/values?library=${encodeURIComponent(library)}&field=${encodeURIComponent(field)}`),
-  preview: (body: { library: string; filters: FilterSpec; sort_by: string | null }) => request<BuilderPreview>("POST", "/builder/preview", body),
+  preview: (body: { library: string; filters: FilterSpec; sort_by: string | null; level?: "artist" | "album" | null }) =>
+    request<BuilderPreview>("POST", "/builder/preview", body),
   sources: (library: string) => request<{ sources: SourceKind[] }>("GET", `/builder/sources?library=${encodeURIComponent(library)}`),
   sourceFromLink: (body: { library: string; url: string }) =>
     request<{ builder: string; value: string; label: string | null }>("POST", "/builder/sources/link", body),

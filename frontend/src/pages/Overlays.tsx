@@ -138,6 +138,15 @@ export function Overlays() {
     return <p className="text-muted">No libraries in config.yml yet.</p>;
   }
 
+  if (libraryType === "artist") {
+    return (
+      <div className="flex max-w-[1400px] flex-col gap-5">
+        <h2 className="text-[32px] leading-tight font-semibold">Overlays · {library}</h2>
+        <p className="text-muted">Overlays aren&apos;t available for music libraries.</p>
+      </div>
+    );
+  }
+
   const status = overlays.data.libraries.find((entry) => entry.library === library);
 
   return (

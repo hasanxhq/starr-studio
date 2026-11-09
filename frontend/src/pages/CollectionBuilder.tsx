@@ -10,7 +10,7 @@ import {
   canDownloadMissing,
   customOrderProblem,
   isKometaPosterUrl,
-  type BuilderField,
+  type BuilderFields,
   type CollectionSaveBody,
   type FilterRule,
   type FilterSpec,
@@ -65,7 +65,7 @@ function BuilderForm({
 }: {
   id: number | null;
   library: string;
-  fields: { fields: BuilderField[]; sorts: { key: string; label: string }[]; library_type?: "movie" | "show" };
+  fields: BuilderFields;
   baseline: Draft;
   templateError: string | null;
   initialMode: StartMode | null;
@@ -84,13 +84,14 @@ function BuilderForm({
   const [confirmMore, setConfirmMore] = useState<NeedsConfirm | null>(null);
   const [saveAction, setSaveAction] = useState<"build" | "later" | null>(null);
 
-  const baselineMode: StartMode = initialMode ?? mode ?? "list";
+  const isMusic = fields.library_type === "artist";
+  const baselineMode: StartMode = initialMode ?? mode ?? (isMusic ? "filters" : "list");
   const compareBaseline = useMemo(() => {
     if (id === null && mode !== null) return shapeForMode(blankDraft(library, fields.fields), mode, fields.fields);
     return baselineSnap;
   }, [id, mode, library, fields.fields, baselineSnap]);
   const compareBaselineMode: StartMode = id === null && mode !== null ? mode : baselineMode;
-  const dirty = mode !== null && draftsDiffer(draft, compareBaseline, mode, compareBaselineMode);
+  const dirty = mode !== null && draftsDiffer(draft, compareBaseline, mode, compareBaselineMode, isMusic);
 
   const kometaUrl = useMemo(() => {
     const b = baselineSnap.poster;
@@ -119,7 +120,13 @@ function BuilderForm({
     },
   });
 
-  const [previewArgs, setPreviewArgs] = useState<{ filters: FilterSpec; sort_by: string | null } | null>(null);
+  const effectiveSorts = useMemo(() => {
+    if (!isMusic || !fields.levels?.length) return fields.sorts;
+    const key = draft.level === "album" ? "album" : "artist";
+    return fields.levels.find((level) => level.key === key)?.sorts ?? fields.sorts;
+  }, [isMusic, fields.levels, fields.sorts, draft.level]);
+
+  const [previewArgs, setPreviewArgs] = useState<{ filters: FilterSpec; sort_by: string | null; level: "album" | null } | null>(null);
   useEffect(() => {
     if (mode !== "filters") {
       setPreviewArgs(null);
@@ -132,14 +139,21 @@ function BuilderForm({
           rules: draft.filters.rules.map((rule) => ({ field: rule.field, modifier: rule.modifier, value: rule.value as FilterRule["value"] })),
         },
         sort_by: draft.sort_by,
+        level: isMusic ? draft.level : null,
       });
     }, 500);
     return () => window.clearTimeout(handle);
-  }, [mode, draft.filters, draft.sort_by]);
+  }, [mode, draft.filters, draft.sort_by, draft.level, isMusic]);
 
   const filterPreview = useQuery({
     queryKey: ["builder", "preview", library, previewArgs],
-    queryFn: () => builderApi.preview({ library, filters: previewArgs!.filters, sort_by: previewArgs!.sort_by }),
+    queryFn: () =>
+      builderApi.preview({
+        library,
+        filters: previewArgs!.filters,
+        sort_by: previewArgs!.sort_by,
+        ...(isMusic ? { level: previewArgs!.level === "album" ? "album" : null } : {}),
+      }),
     enabled: mode === "filters" && previewArgs !== null,
     placeholderData: keepPreviousData,
   });
@@ -149,7 +163,10 @@ function BuilderForm({
   const includeSkip = id === null || skipRequestsChanged(draft.skip_requests, baselineSnap.skip_requests);
 
   const buildSaveBody = (confirm_requests: boolean, build?: boolean): CollectionSaveBody => {
-    const input = toInput(draft, mode!, includeSkip ? { includeSkipRequests: true } : undefined);
+    const input = toInput(draft, mode!, {
+      ...(includeSkip ? { includeSkipRequests: true } : {}),
+      ...(isMusic ? { music: true } : {}),
+    });
     return { ...input, confirm_requests, ...(build === false ? { build: false } : {}) };
   };
 
@@ -219,6 +236,17 @@ function BuilderForm({
     setDraft((current) => shapeForMode(current, next, fields.fields));
   };
 
+  const switchCollectLevel = (album: boolean) => {
+    const nextLevel = album ? ("album" as const) : null;
+    const key = album ? "album" : "artist";
+    const levelSorts = fields.levels?.find((level) => level.key === key)?.sorts ?? fields.sorts;
+    setDraft((current) => ({
+      ...current,
+      level: nextLevel,
+      sort_by: current.sort_by && levelSorts.some((sort) => sort.key === current.sort_by) ? current.sort_by : null,
+    }));
+  };
+
   const breadcrumbTitle = id === null ? "New collection" : draft.title.trim() || "Collection";
 
   return (
@@ -272,28 +300,61 @@ function BuilderForm({
         </p>
       )}
 
-      <section className="flex flex-col gap-3" aria-labelledby="start-heading">
-        <h2 id="start-heading" className="text-[15px] font-semibold">
-          How to start
-        </h2>
-        <fieldset className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
-          <legend className="sr-only">How to start</legend>
-          <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input
-              type="radio"
-              name="start"
-              className="size-4 accent-accent"
-              checked={mode === "filters"}
-              onChange={() => switchMode("filters")}
-            />
-            Organise what I have
-          </label>
-          <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="radio" name="start" className="size-4 accent-accent" checked={mode === "list"} onChange={() => switchMode("list")} />
-            Get something new
-          </label>
-        </fieldset>
-      </section>
+      {!isMusic && (
+        <section className="flex flex-col gap-3" aria-labelledby="start-heading">
+          <h2 id="start-heading" className="text-[15px] font-semibold">
+            How to start
+          </h2>
+          <fieldset className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
+            <legend className="sr-only">How to start</legend>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="start"
+                className="size-4 accent-accent"
+                checked={mode === "filters"}
+                onChange={() => switchMode("filters")}
+              />
+              Organise what I have
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input type="radio" name="start" className="size-4 accent-accent" checked={mode === "list"} onChange={() => switchMode("list")} />
+              Get something new
+            </label>
+          </fieldset>
+        </section>
+      )}
+
+      {isMusic && mode === "filters" && (
+        <section className="flex flex-col gap-3" aria-labelledby="collect-heading">
+          <h2 id="collect-heading" className="text-[15px] font-semibold">
+            Collect
+          </h2>
+          <fieldset className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-4">
+            <legend className="sr-only">Collect: Artists or Albums</legend>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="collect-level"
+                className="size-4 accent-accent"
+                checked={draft.level !== "album"}
+                onChange={() => switchCollectLevel(false)}
+              />
+              Artists
+            </label>
+            <label className="flex min-h-11 items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="collect-level"
+                className="size-4 accent-accent"
+                checked={draft.level === "album"}
+                onChange={() => switchCollectLevel(true)}
+              />
+              Albums
+            </label>
+          </fieldset>
+        </section>
+      )}
 
       {mode !== null && (
         <>
@@ -303,7 +364,7 @@ function BuilderForm({
                 library={library}
                 libraryType={fields.library_type ?? "movie"}
                 fields={fields.fields}
-                sorts={fields.sorts}
+                sorts={effectiveSorts}
                 mode={mode}
                 draft={draft}
                 openStep={openStep}
@@ -435,7 +496,8 @@ function NewBuilder({ library }: { library: string }) {
   }
   if (!ready || !baseline || !fieldData.data) return <p className="text-muted">Loading…</p>;
 
-  const initialMode: StartMode | null = wantsTemplate || template.data ? "filters" : null;
+  const isMusic = fieldData.data.library_type === "artist";
+  const initialMode: StartMode | null = isMusic ? "filters" : wantsTemplate || template.data ? "filters" : null;
 
   return (
     <BuilderForm
