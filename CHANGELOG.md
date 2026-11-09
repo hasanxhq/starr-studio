@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Studio serves Kometa's overlay badge images (`/api/v1/overlay-images/…`) for the overlay studio's preview.
 - **Studio's own log** (`logs/studio.log` in its data folder), on System → Logs next to Kometa's. Settings → General → **Log level** sets how much it says: info, debug (every call to Plex and the other apps, with secrets hidden) or trace (also what they sent back, for 24 hours). `STUDIO_LOG_LEVEL` sets it from the environment.
 - Each collection's API entry carries its **last change** (titles added and removed in its last run, from Kometa's change reports), ready for the Home page.
 - **Choose which missing titles a collection requests** (API only for now): a builder collection's `skip_requests` lists missing titles Studio never asks Radarr, Sonarr or Seerr for, before or after a build, until they're taken off it. The source preview says which missing titles were already requested.
