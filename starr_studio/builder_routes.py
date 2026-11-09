@@ -118,12 +118,13 @@ class CollectionIn(BaseModel):
     filters: FiltersIn = Field(default_factory=FiltersIn)
     sort_by: str | None = None
     limit: int | None = Field(default=None, ge=1)
-    level: Literal["artist", "album"] | None = None  # music libraries only: what the collection holds (None = artists)
+    level: Literal["artist", "album", "track"] | None = None  # music libraries only: what the collection holds (None = artists)
     visible: Visible = Field(default_factory=Visible)
     minimum_items: int = Field(default=1, ge=1)
     summary: str | None = None
     sort_title: str | None = None
     poster: PosterIn | None = None
+    square_art: PosterIn | None = None  # music libraries only; same storage as posters
     download_missing: bool = False  # request the titles a list collection lacks (Settings → Requests must be on)
     request_cap: int | None = Field(default=None, ge=1)  # most per day for this collection; None = the setting's
     request_profile: str | None = Field(default=None, max_length=200)  # Radarr/Sonarr quality profile; None = the setting's
@@ -146,7 +147,7 @@ class PreviewIn(BaseModel):
     library: str
     filters: FiltersIn
     sort_by: str | None = None
-    level: Literal["artist", "album"] | None = None
+    level: Literal["artist", "album", "track"] | None = None
 
 
 class ListSourceIn(BaseModel):
@@ -257,11 +258,12 @@ def _cleanup_posters(config_dir: Path, db: sqlite3.Connection) -> None:
         return
     referenced: set[str] = set()
     for row in col.built_rows(db):
-        poster = (json.loads(row["definition"] or "{}") or {}).get("poster")
-        if isinstance(poster, dict) and poster.get("kind") == "file":
-            path = poster.get("path")
-            if isinstance(path, str) and path.startswith(f"{POSTER_FOLDER}/"):
-                referenced.add(Path(path).name)
+        definition = json.loads(row["definition"] or "{}") or {}
+        for poster in (definition.get("poster"), definition.get("square_art")):
+            if isinstance(poster, dict) and poster.get("kind") == "file":
+                path = poster.get("path")
+                if isinstance(path, str) and path.startswith(f"{POSTER_FOLDER}/"):
+                    referenced.add(Path(path).name)
     young = time.time() - POSTER_GRACE
     for path in folder.iterdir():
         # An upload not saved yet belongs to an editor still open (maybe another tab): keep it for a while.
@@ -345,6 +347,7 @@ def _definition(body: CollectionIn) -> dict:
         "summary": (body.summary or "").strip() or None,
         "sort_title": (body.sort_title or "").strip() or None,
         "poster": _poster_dict(body.poster),
+        "square_art": _poster_dict(body.square_art),
         "skip_requests": body.skip_requests or [],
     }
 
@@ -373,6 +376,7 @@ def _collection_in_from_row(row: sqlite3.Row) -> CollectionIn:
         summary=definition.get("summary"),
         sort_title=definition.get("sort_title"),
         poster=PosterIn.model_validate(definition["poster"]) if definition.get("poster") else None,
+        square_art=PosterIn.model_validate(definition["square_art"]) if definition.get("square_art") else None,
         download_missing=bool(row["download_missing"]),
         request_cap=row["request_cap"],
         request_profile=row["request_profile"],
@@ -452,6 +456,7 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "summary": definition.get("summary"),
         "sort_title": definition.get("sort_title"),
         "poster": definition.get("poster"),
+        "square_art": definition.get("square_art"),
         "skip_requests": definition.get("skip_requests") or [],
         "state": _entry_state(row, run_status),
         "plex_items": int(row["plex_items"]) if row["plex_items"] is not None else None,
@@ -489,7 +494,9 @@ def _body_problems(context: Context, body: CollectionIn, settings) -> list[str]:
             problems.append("Studio can't request music, so a music collection has nothing to download")
         return problems
     if body.level is not None:
-        return ["Only music collections choose between artists and albums"]
+        return ["Only music collections choose between artists, albums and tracks"]
+    if body.square_art is not None:
+        return ["Only music collections have square art"]
     if any(source.kind == "filters" for source in sources):
         if len(sources) > 1:
             return ["A smart filter can't be combined with other sources (Kometa takes a smart_filter only on its own). Use a Plex search beside lists instead"]
@@ -617,7 +624,7 @@ async def builder_fields(library: str, request: Request, settings: AppSettings) 
             for field in smart_filters.fields(context.library_type)
         ],
         "sorts": [{"key": key, "label": label} for key, label in smart_filters.sorts(context.library_type)],
-    } | ({"levels": [_level(key, label) for key, label in (("artist", "Artists"), ("album", "Albums"))]} if context.library_type == "artist" else {})
+    } | ({"levels": [_level(key, label) for key, label in (("artist", "Artists"), ("album", "Albums"), ("track", "Tracks"))]} if context.library_type == "artist" else {})
 
 
 def _level(key: str, label: str) -> dict:
@@ -659,7 +666,7 @@ async def builder_preview(body: PreviewIn, request: Request, settings: AppSettin
         raise HTTPException(503, f"Plex can't be reached: {error}") from None
     return {
         "count": total,
-        "items": [{"rating_key": i.rating_key, "title": i.title, "year": i.year, "thumb": i.thumb, "artist": i.artist} for i in items],
+        "items": [{"rating_key": i.rating_key, "title": i.title, "year": i.year, "thumb": i.thumb, "artist": i.artist, "album": i.album} for i in items],
         "problems": [],
     }
 
@@ -919,6 +926,7 @@ async def create_collection(body: CollectionIn, request: Request, db: Db, settin
     if problems:
         raise HTTPException(422, {"message": "The collection can't be made like this", "problems": problems})
     _check_poster(settings, body.poster)
+    _check_poster(settings, body.square_art)
     taken = await _title_taken(db, request, context, title, None)
     if taken:
         raise HTTPException(409, {"message": taken})
@@ -966,6 +974,7 @@ async def update_collection(row_id: int, body: CollectionIn, request: Request, d
     if problems:
         raise HTTPException(422, {"message": "The collection can't be made like this", "problems": problems})
     _check_poster(settings, body.poster)
+    _check_poster(settings, body.square_art)
     taken = await _title_taken(db, request, context, title, row_id)
     if taken:
         raise HTTPException(409, {"message": taken})

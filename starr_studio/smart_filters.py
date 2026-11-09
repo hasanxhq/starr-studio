@@ -338,6 +338,38 @@ ALBUM_SORTS: dict[str, str] = {
     "random": "random",
 }
 
+# from kometa/modules/plex.py, v2.5.4 lines 754–779
+TRACK_SORTS: dict[str, str] = {
+    "title.asc": "titleSort",
+    "title.desc": "titleSort%3Adesc",
+    "album_artist.asc": "artist.titleSort%2Calbum.titleSort%2Calbum.year%2Ctrack.absoluteIndex%2Ctrack.index%2Ctrack.titleSort%2Ctrack.id",
+    "album_artist.desc": "artist.titleSort%3Adesc%2Calbum.titleSort%2Calbum.year%2Ctrack.absoluteIndex%2Ctrack.index%2Ctrack.titleSort%2Ctrack.id",
+    "artist.asc": "originalTitle",
+    "artist.desc": "originalTitle%3Adesc",
+    "album.asc": "album.titleSort",
+    "album.desc": "album.titleSort%3Adesc",
+    "user_rating.asc": "userRating",
+    "user_rating.desc": "userRating%3Adesc",
+    "duration.asc": "duration",
+    "duration.desc": "duration%3Adesc",
+    "plays.asc": "viewCount",
+    "plays.desc": "viewCount%3Adesc",
+    "added.asc": "addedAt",
+    "added.desc": "addedAt%3Adesc",
+    "played.asc": "lastViewedAt",
+    "played.desc": "lastViewedAt%3Adesc",
+    "rated.asc": "lastRatedAt",
+    "rated.desc": "lastRatedAt%3Adesc",
+    "popularity.asc": "ratingCount",
+    "popularity.desc": "ratingCount%3Adesc",
+    "bitrate.asc": "mediaBitrate",
+    "bitrate.desc": "mediaBitrate%3Adesc",
+    "random": "random",
+}
+
+# A music collection's level: its Plex item type and sorts (kometa/modules/plex.py sort_types, lines 781–789)
+MUSIC_LEVELS: dict[str, tuple[str, dict[str, str]]] = {"artist": ("8", ARTIST_SORTS), "album": ("9", ALBUM_SORTS), "track": ("10", TRACK_SORTS)}
+
 SORT_LABELS: dict[str, str] = {
     "title.asc": "Title (A–Z)",
     "title.desc": "Title (Z–A)",
@@ -382,6 +414,14 @@ SORT_LABELS: dict[str, str] = {
     "played.desc": "Date played (newest first)",
     "album_artist.asc": "Artist (A–Z)",
     "album_artist.desc": "Artist (Z–A)",
+    "artist.asc": "Track artist (A–Z)",
+    "artist.desc": "Track artist (Z–A)",
+    "album.asc": "Album (A–Z)",
+    "album.desc": "Album (Z–A)",
+    "rated.asc": "Date rated (oldest first)",
+    "rated.desc": "Date rated (newest first)",
+    "popularity.asc": "Popularity (least first)",
+    "popularity.desc": "Popularity (most first)",
 }
 
 
@@ -598,7 +638,7 @@ def _build_music_fields() -> list[Field]:
         Field("album_added", "Added", "date", MODS_DATE, "Album", level="album"),
         Field("album_released", "Release date", "date", MODS_DATE, "Album", level="album"),
         Field("album_last_played", "Last played", "date", MODS_DATE, "Album", level="album"),
-        # Track (filters at artist/album collection level; no track builder_level in phase 1)
+        # Track
         Field("track_title", "Track title", "string", MODS_STRING, "Track", level="track"),
         Field("track_mood", "Mood", "tag", MODS_TAG, "Track", plex_tag="mood", level="track"),
         Field("track_plays", "Plays", "number", MODS_NUMBER, "Track", level="track"),
@@ -632,7 +672,7 @@ def fields(library_type: str) -> list[Field]:
 def sorts(library_type: str, level: str | None = None) -> list[tuple[str, str]]:
     """Sort options supported for a library type as (Kometa sort key, label) pairs.
 
-    For music libraries, ``level`` None or ``artist`` gives artist sorts; ``album`` gives album sorts.
+    For music libraries, ``level`` picks the level's sorts (None means artist).
     """
     lib = library_type.lower()
     if lib == "movie":
@@ -640,7 +680,7 @@ def sorts(library_type: str, level: str | None = None) -> list[tuple[str, str]]:
     if lib == "show":
         return [(k, SORT_LABELS.get(k, k)) for k in SHOW_SORTS]
     if lib == "artist":
-        sort_table = ALBUM_SORTS if level == "album" else ARTIST_SORTS
+        _, sort_table = MUSIC_LEVELS.get(level or "artist", MUSIC_LEVELS["artist"])
         return [(k, SORT_LABELS.get(k, k)) for k in sort_table]
     return []
 
@@ -667,12 +707,11 @@ def validate(library_type: str, spec: dict, sort_by: str | None = None, level: s
     if lib in ("movie", "show") and level is not None:
         problems.append(f"Collection level is not used for {lib} libraries")
 
-    if lib == "artist" and level is not None and level not in ("artist", "album"):
+    if lib == "artist" and level is not None and level not in MUSIC_LEVELS:
         problems.append(f"Unknown collection level '{level}' for music libraries")
 
     if sort_by is not None:
-        music_sort_level = "album" if lib == "artist" and level == "album" else None
-        allowed_sorts = dict(sorts(lib, music_sort_level))
+        allowed_sorts = dict(sorts(lib, level if lib == "artist" else None))
         if sort_by not in allowed_sorts:
             problems.append(f"Unknown sort '{sort_by}' for {lib} library")
 
@@ -912,10 +951,8 @@ async def plex_query(
         type_key = "1"
     elif lib == "show":
         type_key = "2"
-    elif level == "album":
-        type_key = "9"
     else:
-        type_key = "8"
+        type_key = MUSIC_LEVELS[level or "artist"][0]
 
     # 2. Sort parameter: title.asc if not given. Kometa's own default for smart_filter is random (builder.py lines 1720, 4825),
     #    which would reshuffle the preview on every look
@@ -923,10 +960,8 @@ async def plex_query(
         sort_dict = MOVIE_SORTS
     elif lib == "show":
         sort_dict = SHOW_SORTS
-    elif level == "album":
-        sort_dict = ALBUM_SORTS
     else:
-        sort_dict = ARTIST_SORTS
+        sort_dict = MUSIC_LEVELS[level or "artist"][1]
     sort_key = sort_by if sort_by is not None else "title.asc"
     sort_param_value = sort_dict[sort_key]
 
