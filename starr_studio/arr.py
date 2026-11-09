@@ -217,6 +217,72 @@ async def test_connection(http: httpx.AsyncClient, conn: Connection, kind: Kind)
     }
 
 
+# --- Lidarr --------------------------------------------------------------------------
+# Kometa has no lidarr: block, so Lidarr's whole connection is Studio's: url, key and proxy login encrypted in
+# SQLite (music plan, decision 2), with the defaults Studio files music requests with. Lidarr's API is v1.
+
+LIDARR = "arr.lidarr"
+LIDARR_IMPORTED = 3  # TrackFileImported in Lidarr's EntityHistoryEventType (src/NzbDrone.Core/History/EntityHistory.cs)
+
+
+class LidarrOptions(BaseModel):
+    """What Studio adds music to Lidarr with (names, as Lidarr shows them)."""
+
+    root_folder_path: str | None = None
+    quality_profile: str | None = None
+    metadata_profile: str | None = None
+
+
+def lidarr_connection(db: sqlite3.Connection, box: SecretBox) -> Connection | None:
+    saved = get_setting(db, LIDARR) or {}
+    key = box.decrypt(saved["api_key"]) if saved.get("api_key") else None
+    if not saved.get("url") or not key:
+        return None
+    login = None
+    if saved.get("username"):
+        login = (str(saved["username"]), (box.decrypt(saved["password"]) or "") if saved.get("password") else "")
+    return Connection(str(saved["url"]), key, login)
+
+
+def lidarr_options(db: sqlite3.Connection) -> LidarrOptions:
+    saved = get_setting(db, LIDARR) or {}
+    return LidarrOptions.model_validate({key: saved.get(key) for key in LidarrOptions.model_fields})
+
+
+def save_lidarr(db: sqlite3.Connection, box: SecretBox, conn: Connection, options: LidarrOptions) -> None:
+    login = conn.login
+    saved = {
+        "url": conn.url,
+        "api_key": box.encrypt(conn.api_key),
+        "username": login[0] if login else None,
+        "password": box.encrypt(login[1]) if login and login[1] else None,
+    }
+    set_setting(db, LIDARR, saved | options.model_dump())
+
+
+def remove_lidarr(db: sqlite3.Connection) -> None:
+    delete_setting(db, LIDARR)
+
+
+async def test_lidarr(http: httpx.AsyncClient, conn: Connection) -> dict:
+    """Whether ``conn`` is Lidarr, with what music requests can be filed with."""
+    status = await _get(http, conn, "/api/v1/system/status")
+    app = str(status.get("appName") or "") if isinstance(status, dict) else ""
+    if app.lower() != "lidarr":
+        raise ArrProblem(f"That's {app or 'not Lidarr'}, not Lidarr")
+
+    def names(found: Any, field: str) -> list[str]:
+        return [str(f[field]) for f in found if isinstance(f, dict) and f.get(field)] if isinstance(found, list) else []
+
+    return {
+        "app": app,
+        "version": str(status.get("version") or ""),
+        "root_folders": names(await _get(http, conn, "/api/v1/rootfolder"), "path"),
+        "quality_profiles": names(await _get(http, conn, "/api/v1/qualityprofile"), "name"),
+        "metadata_profiles": names(await _get(http, conn, "/api/v1/metadataprofile"), "name"),
+    }
+
+
 async def imports_since(http: httpx.AsyncClient, conn: Connection, kind: Kind, since: datetime) -> list[dict]:
     """Import history records at or after ``since``, oldest first."""
     params = {"date": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "eventType": IMPORTED}
