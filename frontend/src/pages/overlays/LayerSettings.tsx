@@ -264,7 +264,7 @@ export function LayerSettings({
               />
             </Field>
           )}
-          {styleFeatured.map(({ key, label, switchOn, hint, options }) => {
+          {styleFeatured.map(({ key, label, switchOn, hint, options, unset }) => {
             const info = known.get(key);
             if (!info) return null;
             return switchOn === undefined ? (
@@ -277,7 +277,7 @@ export function LayerSettings({
                 value={values[key]}
                 onChange={(next) => set(key, next)}
                 hint={hint}
-                unset="Kometa's default"
+                unset={unset ?? "Kometa's default"}
                 optionLabels={options}
               />
             ) : (

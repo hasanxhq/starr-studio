@@ -12,7 +12,7 @@ import { keySchema, mappingKeys, type JsonSchema } from "../yaml/schema";
 
 export type Values = Record<string, unknown>;
 
-export type Featured = { key: string; label: string; switchOn?: boolean; hint?: string; options?: Record<string, string> };
+export type Featured = { key: string; label: string; switchOn?: boolean; hint?: string; options?: Record<string, string>; unset?: string }; // unset: what an empty value does, when "Kometa's default" says too little
 
 // The variables worth a control of their own, where a default has them. The rest are under "More variables".
 const FEATURED: Featured[] = [
@@ -151,7 +151,7 @@ export function VariablesEditor({
           </div>
         </fieldset>
       )}
-      {featured.map(({ key, label: name, switchOn, hint, options }) => {
+      {featured.map(({ key, label: name, switchOn, hint, options, unset }) => {
         const info = known.get(key)!;
         return switchOn === undefined ? (
           <SettingField
@@ -164,7 +164,7 @@ export function VariablesEditor({
             onChange={(next) => set(key, next)}
             onValidity={(ok) => validity(key, ok)}
             hint={hint}
-            unset="Kometa's default"
+            unset={unset ?? "Kometa's default"}
             optionLabels={options}
           />
         ) : (

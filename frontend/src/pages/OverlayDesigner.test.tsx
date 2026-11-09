@@ -336,6 +336,24 @@ describe("The overlay studio", () => {
     expect(names[3]).toMatch(/^Episode Info/); // not in the popular list: after it
   });
 
+  it("starts a new ratings layer with IMDb and Rotten Tomatoes", async () => {
+    const calls = mockApi({ ...routes, "GET /config/libraries/Movies": () => ({ ...movies, overlay_files: [ref("resolution")] }), "PUT /config/libraries/Movies/defaults/overlay/ratings": () => saved });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: "Ratings" }));
+    await waitFor(() => expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/ratings")?.body).toEqual({ template_variables: { rating1: "imdb", rating2: "plex_tomatoes" } }));
+  });
+
+  it("says an empty rating slot draws no badge", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: /Ratings.*Drag/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Style" }));
+    const slot = await screen.findByRole("combobox", { name: /^Rating 1 \(/ });
+    expect(within(slot).getByRole("option", { selected: true })).toHaveTextContent("None (no badge)");
+  });
+
   it("lists the layer's other variables under More variables", async () => {
     mockApi({ ...routes, "GET /config/libraries/Movies": () => ({ ...movies, overlay_files: [ref("resolution", { font: "fonts/Inter.ttf", use_edition: false })] }) });
     renderAt("/overlays?library=Movies");
