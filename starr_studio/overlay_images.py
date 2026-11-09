@@ -1,23 +1,15 @@
 """Serve Kometa's overlay badge PNGs from ``defaults/overlays/images/`` for the overlay studio preview."""
 
 from pathlib import Path
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
+from .plex_routes import AppSettings
 from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/overlay-images", tags=["overlays"])
 
 CACHE_HEADERS = {"Cache-Control": "public, max-age=86400"}
-
-
-def _settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-AppSettings = Annotated[Settings, Depends(_settings)]
 
 
 def _images_root(settings: Settings) -> Path | None:
