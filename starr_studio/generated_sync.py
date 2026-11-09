@@ -74,7 +74,7 @@ class GeneratedFiles:
         changed: list[str] = []
         for library in libraries:
             library_type = types.get(str(library.settings.get("library_name") or library.name).casefold())
-            if library_type not in ("movie", "show"):
+            if library_type not in ("movie", "show", "artist"):
                 continue
             edited = studio_files.hand_edited(self.db, settings.kometa_config.parent, library.name, all_names)
             try:
