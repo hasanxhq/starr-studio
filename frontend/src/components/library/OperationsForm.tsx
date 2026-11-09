@@ -33,6 +33,26 @@ const COMMON = [
   "sonarr_add_all",
 ];
 
+// Music has no TMDb/IMDb/TVDb ids or Radarr/Sonarr, so Kometa has just these operations for it.
+const MUSIC_COMMON = ["update_blank_track_titles", "remove_title_parentheses", "assets_for_all", "assets_for_all_collections", "delete_collections"];
+const MUSIC_MORE = [
+  "mass_collection_mode",
+  "split_duplicates",
+  "ignore_labels",
+  "genre_mapper",
+  "mass_poster_update",
+  "mass_background_update",
+  "metadata_backup",
+];
+const MUSIC = [...MUSIC_COMMON, ...MUSIC_MORE];
+
+/** Whether a library of this type offers ``key``. A key already set is shown whatever this says. */
+function offered(key: string, libraryType: string | undefined): boolean {
+  if (libraryType === "artist") return MUSIC.includes(key);
+  if (libraryType !== undefined) return key !== "update_blank_track_titles";
+  return true;
+}
+
 function operationBlocks(operations: ConfigLibrary["operations"]): Values[] {
   // A list keeps every block (including empty ones) so a save round-trips the same list; a mapping always gets one form.
   if (Array.isArray(operations)) return operations.map((block) => (block && typeof block === "object" ? { ...block } : {}));
@@ -43,18 +63,30 @@ function BlockFields({
   root,
   schema,
   values,
+  libraryType,
   onChange,
   onValidity,
 }: {
   root: JsonSchema | null;
   schema: JsonSchema | undefined;
   values: Values;
+  libraryType?: string;
   onChange: (key: string, value: unknown) => void;
   onValidity: (key: string, ok: boolean) => void;
 }) {
-  const keys = useMemo(() => formableKeys(root, schema), [root, schema]);
-  const common = keys.filter((key) => COMMON.includes(key.name));
-  const more = keys.filter((key) => !COMMON.includes(key.name));
+  const keys = useMemo(() => {
+    const shown = formableKeys(root, schema).filter((key) => key.name in values || offered(key.name, libraryType));
+    if (libraryType !== "artist") return shown;
+    // Music's common operations go first in the order above, then the rest, then any key already set.
+    const rank = (name: string) => {
+      const index = MUSIC.indexOf(name);
+      return index === -1 ? MUSIC.length : index;
+    };
+    return [...shown].sort((a, b) => rank(a.name) - rank(b.name));
+  }, [root, schema, values, libraryType]);
+  const commonNames = libraryType === "artist" ? MUSIC_COMMON : COMMON;
+  const common = keys.filter((key) => commonNames.includes(key.name));
+  const more = keys.filter((key) => !commonNames.includes(key.name));
   const moreOpen = more.some((key) => key.name in values);
   return (
     <div className="flex flex-col gap-4">
@@ -82,6 +114,7 @@ function OperationsEditor({
   asList,
   root,
   schema,
+  libraryType,
 }: {
   library: string;
   base: Values | Values[];
@@ -89,6 +122,7 @@ function OperationsEditor({
   asList: boolean;
   root: JsonSchema | null;
   schema: JsonSchema | undefined;
+  libraryType?: string;
 }) {
   const [blocks, setBlocks] = useState<Values[]>(saved);
   const [badYaml, setBadYaml] = useState<Set<string>>(new Set());
@@ -150,7 +184,14 @@ function OperationsEditor({
         blocks.map((block, index) => (
           <div key={index} className={index > 0 ? "border-t border-border pt-4" : undefined}>
             {asList && <p className="mb-3 text-sm font-semibold text-muted">Operation {index + 1}</p>}
-            <BlockFields root={root} schema={schema} values={block} onChange={(key, value) => set(index, key, value)} onValidity={validity} />
+            <BlockFields
+              root={root}
+              schema={schema}
+              values={block}
+              libraryType={libraryType}
+              onChange={(key, value) => set(index, key, value)}
+              onValidity={validity}
+            />
           </div>
         ))
       )}
@@ -178,7 +219,15 @@ function OperationsEditor({
   );
 }
 
-export function OperationsForm({ library, operations }: { library: string; operations: ConfigLibrary["operations"] }) {
+export function OperationsForm({
+  library,
+  operations,
+  libraryType,
+}: {
+  library: string;
+  operations: ConfigLibrary["operations"];
+  libraryType?: string;
+}) {
   const schema = useQuery({ queryKey: ["schema", "config"], queryFn: () => loadSchema("config"), staleTime: Infinity });
   const asList = Array.isArray(operations);
   const saved = operationBlocks(operations);
@@ -191,7 +240,16 @@ export function OperationsForm({ library, operations }: { library: string; opera
       {schema.isPending ? (
         <p className="text-muted">Loading…</p>
       ) : (
-        <OperationsEditor key={formKey} library={library} base={operations} saved={saved} asList={asList} root={root} schema={operationsSchema} />
+        <OperationsEditor
+          key={formKey}
+          library={library}
+          base={operations}
+          saved={saved}
+          asList={asList}
+          root={root}
+          schema={operationsSchema}
+          libraryType={libraryType}
+        />
       )}
     </Card>
   );
