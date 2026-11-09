@@ -17,6 +17,8 @@ import httpx
 KOMETA_LABELS = ("Kometa", "PMM")
 STUDIO_LABEL = "Studio"
 COLLECTION_TYPE = "18"  # Plex's metadata type for collections
+# Plex's metadata type for each library type or item level; a music library is "artist", holding albums and tracks
+PLEX_TYPES = {"movie": "1", "show": "2", "artist": "8", "album": "9", "track": "10"}
 TIMEOUT = 20.0
 # Images the poster proxy may fetch: a collection's or item's own artwork, nothing else.
 PLEX_IMAGES = "images.plex.tv"
@@ -46,7 +48,7 @@ class PlexCollection:
 
 @dataclass
 class PlexItem:
-    """A movie or show in a collection."""
+    """A movie, show, artist or album in a collection."""
 
     rating_key: str
     title: str
@@ -60,6 +62,7 @@ class PlexItem:
     added_at: int | None
     video_resolution: str | None = None  # from Plex's media info, where the listing has it
     audio_codec: str | None = None
+    artist: str | None = None  # albums only: the album's artist
 
 
 @dataclass
@@ -104,9 +107,12 @@ class PlexServer:
         return [PlexLibrary(str(d["key"]), str(d["title"]), str(d.get("type", ""))) for d in container.get("Directory", [])]
 
     async def tag_values(self, library_key: str, tag: str, library_type: str = "", episode: bool = False) -> list[tuple[str, str]]:
-        """Tag values from /library/sections/{library_key}/{tag} as (title, key) tuples; ``episode`` reads episodes' tags."""
+        """Tag values from /library/sections/{library_key}/{tag} as (title, key) tuples; ``episode`` reads episodes' tags, and a music
+        level (artist, album, track) reads that level's tags."""
+        music = PLEX_TYPES.get(library_type) if library_type in ("artist", "album", "track") else None
+        params = {"type": "4"} if episode else {"type": music} if music else None
         try:
-            container = await self._get(f"/library/sections/{library_key}/{tag}", {"type": "4"} if episode else None)
+            container = await self._get(f"/library/sections/{library_key}/{tag}", params)
         except PlexNotFound:
             return []
         return [
@@ -115,8 +121,8 @@ class PlexServer:
         ]
 
     async def count_where(self, library_key: str, library_type: str, params: dict) -> int:
-        """How many movies or shows match the given filter parameters."""
-        plex_type = {"movie": "1", "show": "2"}.get(library_type.lower())
+        """How many movies, shows or artists match the given filter parameters."""
+        plex_type = PLEX_TYPES.get(library_type.lower())
         query = {"X-Plex-Container-Start": "0", "X-Plex-Container-Size": "0"}
         if plex_type:
             query["type"] = plex_type
@@ -125,14 +131,14 @@ class PlexServer:
         return int(container.get("totalSize", container.get("size", 0)) or 0)
 
     async def added_since(self, library_key: str, library_type: str, since: int) -> int:
-        """How many movies (or episodes, in a show library) Plex added to a library at or after ``since`` (Unix time)."""
-        params = {"type": "4" if library_type == "show" else "1", "addedAt>>": str(since), "X-Plex-Container-Start": "0", "X-Plex-Container-Size": "0"}
+        """How many movies (or episodes in a show library, albums in a music one) Plex added to a library at or after ``since`` (Unix time)."""
+        params = {"type": {"show": "4", "artist": "9"}.get(library_type, "1"), "addedAt>>": str(since), "X-Plex-Container-Start": "0", "X-Plex-Container-Size": "0"}
         container = await self._get(f"/library/sections/{library_key}/all", params)
         return int(container.get("totalSize", container.get("size", 0)) or 0)
 
     async def size(self, library_key: str, library_type: str) -> int | None:
-        """How many movies or shows a library holds; None for the kinds Kometa doesn't count (music, photos)."""
-        plex_type = {"movie": "1", "show": "2"}.get(library_type)
+        """How many movies, shows or artists a library holds; None for photos and other kinds."""
+        plex_type = PLEX_TYPES.get(library_type) if library_type in ("movie", "show", "artist") else None
         if plex_type is None:
             return None
         params = {"type": plex_type, "X-Plex-Container-Start": "0", "X-Plex-Container-Size": "0"}
@@ -309,8 +315,8 @@ class PlexServer:
         return items, int(container.get("totalSize", container.get("size", len(items))) or 0)
 
     async def library_items(self, library_key: str, library_type: str, start: int, size: int, title: str = "") -> tuple[list[PlexItem], int]:
-        """A page of a library's movies or shows, newest first, and how many there are. ``title`` narrows them to matching titles."""
-        plex_type = {"movie": "1", "show": "2"}.get(library_type)
+        """A page of a library's movies, shows or artists, newest first, and how many there are. ``title`` narrows them to matching titles."""
+        plex_type = PLEX_TYPES.get(library_type) if library_type in ("movie", "show", "artist") else None
         if plex_type is None:
             return [], 0
         params = {"type": plex_type, "sort": "addedAt:desc", "X-Plex-Container-Start": str(start), "X-Plex-Container-Size": str(size)}
@@ -321,9 +327,11 @@ class PlexServer:
         return items, int(container.get("totalSize", container.get("size", len(items))) or 0)
 
     async def _all(self, library_key: str, library_type: str, page: int = 500) -> list[dict]:
-        """Every movie or show's listing, with its guids, in the order Kometa's ``get_all`` reads them (the section's own order)."""
-        plex_type = {"movie": "1", "show": "2"}[library_type]
+        """Every movie, show, artist or album's listing, with its guids, in the order Kometa's ``get_all`` reads them (the section's own order)."""
+        plex_type = PLEX_TYPES.get(library_type)
         found: list[dict] = []
+        if plex_type is None:
+            return found
         start = 0
         while True:
             container = await self._get(
@@ -419,6 +427,7 @@ def _item(m: dict) -> PlexItem:
         added_at=m.get("addedAt"),
         video_resolution=str(media["videoResolution"]) if media.get("videoResolution") else None,
         audio_codec=str(media["audioCodec"]) if media.get("audioCodec") else None,
+        artist=str(m["parentTitle"]) if m.get("type") == "album" and m.get("parentTitle") else None,
     )
 
 

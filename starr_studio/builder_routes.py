@@ -118,6 +118,7 @@ class CollectionIn(BaseModel):
     filters: FiltersIn = Field(default_factory=FiltersIn)
     sort_by: str | None = None
     limit: int | None = Field(default=None, ge=1)
+    level: Literal["artist", "album"] | None = None  # music libraries only: what the collection holds (None = artists)
     visible: Visible = Field(default_factory=Visible)
     minimum_items: int = Field(default=1, ge=1)
     summary: str | None = None
@@ -145,6 +146,7 @@ class PreviewIn(BaseModel):
     library: str
     filters: FiltersIn
     sort_by: str | None = None
+    level: Literal["artist", "album"] | None = None
 
 
 class ListSourceIn(BaseModel):
@@ -188,8 +190,8 @@ async def _context(request: Request, settings, name: str) -> Context:
     library_type = types.get(_plex_title(library).casefold())
     if section is None or library_type is None:
         raise HTTPException(404, f"Plex has no library called {_plex_title(library)!r}")
-    if library_type not in ("movie", "show"):
-        raise HTTPException(422, "The builder makes collections in movie and show libraries")
+    if library_type not in ("movie", "show", "artist"):
+        raise HTTPException(422, "The builder makes collections in movie, show and music libraries")
     return Context(library, all_libraries, server, section, library_type)
 
 
@@ -337,6 +339,7 @@ def _definition(body: CollectionIn) -> dict:
         "filters": body.filters.model_dump(),
         "sort_by": body.sort_by,
         "limit": body.limit,
+        "level": body.level,
         "visible": body.visible.model_dump(),
         "minimum_items": body.minimum_items,
         "summary": (body.summary or "").strip() or None,
@@ -364,6 +367,7 @@ def _collection_in_from_row(row: sqlite3.Row) -> CollectionIn:
         filters=FiltersIn.model_validate(definition.get("filters") or {"match": "all", "rules": []}),
         sort_by=definition.get("sort_by"),
         limit=definition.get("limit"),
+        level=definition.get("level"),
         visible=Visible.model_validate(definition.get("visible") or {"library": True, "home": False, "shared": False}),
         minimum_items=definition.get("minimum_items") or 1,
         summary=definition.get("summary"),
@@ -442,6 +446,7 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
         "filters": definition.get("filters") or {"match": "all", "rules": []},
         "sort_by": definition.get("sort_by"),
         "limit": definition.get("limit"),
+        "level": definition.get("level"),
         "visible": definition.get("visible") or {"library": True, "home": False, "shared": False},
         "minimum_items": definition.get("minimum_items") or 1,
         "summary": definition.get("summary"),
@@ -463,8 +468,8 @@ def _built_json(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
     }
 
 
-def _problems(context: Context, filters: FiltersIn, sort_by: str | None) -> list[str]:
-    return smart_filters.validate(context.library_type, filters.model_dump(), sort_by)
+def _problems(context: Context, filters: FiltersIn, sort_by: str | None, level: str | None = None) -> list[str]:
+    return smart_filters.validate(context.library_type, filters.model_dump(), sort_by, level)
 
 
 def _connected(settings) -> set[str]:
@@ -476,6 +481,15 @@ def _body_problems(context: Context, body: CollectionIn, settings) -> list[str]:
     sources = _sources(body)
     if not sources:
         return ["Give the collection at least one source"]
+    if context.library_type == "artist":
+        if any(source.kind != "filters" for source in sources):
+            return ["A music collection is made from Plex filters: Kometa has no lists for music"]
+        problems = _problems(context, body.filters, body.sort_by, body.level)
+        if body.download_missing:
+            problems.append("Studio can't request music, so a music collection has nothing to download")
+        return problems
+    if body.level is not None:
+        return ["Only music collections choose between artists and albums"]
     if any(source.kind == "filters" for source in sources):
         if len(sources) > 1:
             return ["A smart filter can't be combined with other sources (Kometa takes a smart_filter only on its own). Use a Plex search beside lists instead"]
@@ -603,7 +617,12 @@ async def builder_fields(library: str, request: Request, settings: AppSettings) 
             for field in smart_filters.fields(context.library_type)
         ],
         "sorts": [{"key": key, "label": label} for key, label in smart_filters.sorts(context.library_type)],
-    }
+    } | ({"levels": [_level(key, label) for key, label in (("artist", "Artists"), ("album", "Albums"))]} if context.library_type == "artist" else {})
+
+
+def _level(key: str, label: str) -> dict:
+    """What a music collection can hold, with the sorts Kometa takes at that level."""
+    return {"key": key, "label": label, "sorts": [{"key": k, "label": lab} for k, lab in smart_filters.sorts("artist", key)]}
 
 
 @router.get("/builder/values")
@@ -613,7 +632,7 @@ async def builder_values(library: str, field: str, request: Request, settings: A
     if found is None or found.plex_tag is None:
         raise HTTPException(422, f"Studio can't list the values of {field!r}")
     try:
-        values = await context.server.tag_values(context.section, found.plex_tag, context.library_type, episode=found.episode)
+        values = await context.server.tag_values(context.section, found.plex_tag, found.level or context.library_type, episode=found.episode)
     except PlexUnavailable as error:
         raise HTTPException(503, f"Plex can't be reached: {error}") from None
     seen: set[str] = set()
@@ -628,11 +647,11 @@ async def builder_values(library: str, field: str, request: Request, settings: A
 @router.post("/builder/preview")
 async def builder_preview(body: PreviewIn, request: Request, settings: AppSettings) -> dict:
     context = await _context(request, settings, body.library)
-    problems = _problems(context, body.filters, body.sort_by)
+    problems = _problems(context, body.filters, body.sort_by, body.level)
     if problems:
         return {"count": 0, "items": [], "problems": problems}
     try:
-        params = await smart_filters.plex_query(context.server, context.section, context.library_type, body.filters.model_dump(), body.sort_by)
+        params = await smart_filters.plex_query(context.server, context.section, context.library_type, body.filters.model_dump(), body.sort_by, body.level)
         items, total = await context.server.query(context.section, params, PREVIEW_SIZE)
     except smart_filters.SmartFilterError as error:
         return {"count": 0, "items": [], "problems": [str(error)]}
@@ -640,7 +659,7 @@ async def builder_preview(body: PreviewIn, request: Request, settings: AppSettin
         raise HTTPException(503, f"Plex can't be reached: {error}") from None
     return {
         "count": total,
-        "items": [{"rating_key": i.rating_key, "title": i.title, "year": i.year, "thumb": i.thumb} for i in items],
+        "items": [{"rating_key": i.rating_key, "title": i.title, "year": i.year, "thumb": i.thumb, "artist": i.artist} for i in items],
         "problems": [],
     }
 

@@ -58,6 +58,39 @@ SEARCH_TRANSLATION: dict[str, str] = {
     "episode_collection": "episode.collection",
     "season_label": "season.label",
     "episode_label": "episode.label",
+    # kometa/modules/plex.py, v2.5.4 lines 97–138 (track_unmatched, *_source, album_format, album_type left out)
+    "artist_title": "artist.title",
+    "artist_user_rating": "artist.userRating",
+    "artist_genre": "artist.genre",
+    "artist_collection": "artist.collection",
+    "artist_country": "artist.country",
+    "artist_mood": "artist.mood",
+    "artist_style": "artist.style",
+    "artist_added": "artist.addedAt",
+    "artist_last_played": "artist.lastViewedAt",
+    "artist_label": "artist.label",
+    "album_title": "album.title",
+    "album_year": "album.year",
+    "album_decade": "album.decade",
+    "album_genre": "album.genre",
+    "album_plays": "album.viewCount",
+    "album_last_played": "album.lastViewedAt",
+    "album_user_rating": "album.userRating",
+    "album_critic_rating": "album.rating",
+    "album_record_label": "album.studio",
+    "album_mood": "album.mood",
+    "album_style": "album.style",
+    "album_collection": "album.collection",
+    "album_added": "album.addedAt",
+    "album_released": "album.originallyAvailableAt",
+    "album_label": "album.label",
+    "track_mood": "track.mood",
+    "track_title": "track.title",
+    "track_plays": "track.viewCount",
+    "track_last_played": "track.lastViewedAt",
+    "track_skips": "track.skipCount",
+    "track_user_rating": "track.userRating",
+    "track_added": "track.addedAt",
 }
 
 # from kometa/modules/plex.py, v2.5.4 line 283
@@ -266,6 +299,45 @@ SHOW_SORTS: dict[str, str] = {
     "random": "random",
 }
 
+# from kometa/modules/plex.py, v2.5.4 lines 718–753
+ARTIST_SORTS: dict[str, str] = {
+    "title.asc": "titleSort",
+    "title.desc": "titleSort%3Adesc",
+    "user_rating.asc": "userRating",
+    "user_rating.desc": "userRating%3Adesc",
+    "added.asc": "addedAt",
+    "added.desc": "addedAt%3Adesc",
+    "played.asc": "lastViewedAt",
+    "played.desc": "lastViewedAt%3Adesc",
+    "plays.asc": "viewCount",
+    "plays.desc": "viewCount%3Adesc",
+    "random": "random",
+}
+
+ALBUM_SORTS: dict[str, str] = {
+    "title.asc": "titleSort",
+    "title.desc": "titleSort%3Adesc",
+    "album_artist.asc": "artist.titleSort%2Calbum.titleSort%2Calbum.index%2Calbum.id%2Calbum.originallyAvailableAt",
+    "album_artist.desc": "artist.titleSort%3Adesc%2Calbum.titleSort%2Calbum.index%2Calbum.id%2Calbum.originallyAvailableAt",
+    "year.asc": "year",
+    "year.desc": "year%3Adesc",
+    "originally_available.asc": "originallyAvailableAt",
+    "originally_available.desc": "originallyAvailableAt%3Adesc",
+    "release.asc": "originallyAvailableAt",
+    "release.desc": "originallyAvailableAt%3Adesc",
+    "critic_rating.asc": "rating",
+    "critic_rating.desc": "rating%3Adesc",
+    "user_rating.asc": "userRating",
+    "user_rating.desc": "userRating%3Adesc",
+    "added.asc": "addedAt",
+    "added.desc": "addedAt%3Adesc",
+    "played.asc": "lastViewedAt",
+    "played.desc": "lastViewedAt%3Adesc",
+    "plays.asc": "viewCount",
+    "plays.desc": "viewCount%3Adesc",
+    "random": "random",
+}
+
 SORT_LABELS: dict[str, str] = {
     "title.asc": "Title (A–Z)",
     "title.desc": "Title (Z–A)",
@@ -306,6 +378,10 @@ SORT_LABELS: dict[str, str] = {
     "episode_added.desc": "Episode date added (newest first)",
     "unplayed.asc": "Unplayed episodes (least first)",
     "unplayed.desc": "Unplayed episodes (most first)",
+    "played.asc": "Date played (oldest first)",
+    "played.desc": "Date played (newest first)",
+    "album_artist.asc": "Artist (A–Z)",
+    "album_artist.desc": "Artist (Z–A)",
 }
 
 
@@ -322,6 +398,7 @@ class Field:
     group: str                     # UI grouping, e.g. "Details", "Media", "People", "Ratings", "Dates", "Watch status"
     plex_tag: str | None = None    # for tag fields: the /library/sections/<key>/<tag> directory to list values from (e.g. "genre", "contentRating"); None if values can't be listed
     episode: bool = False          # True when Kometa reads this attribute from episodes in a show library
+    level: str | None = None       # for music: Plex item level ("artist", "album", "track"); movie/show fields keep None
 
 
 # Common modifier sets
@@ -490,37 +567,89 @@ def _build_show_fields() -> list[Field]:
     ]
 
 
+def _build_music_fields() -> list[Field]:
+    # kometa/modules/plex.py, v2.5.4: string_attributes, tag_attributes, date_attributes, year_attributes,
+    # number_attributes, float_attributes (lines 508–592)
+    return [
+        # Artist — most-used first (kometa/modules/plex.py music_searches, line 604)
+        Field("artist_title", "Artist title", "string", MODS_STRING, "Artist", level="artist"),
+        Field("artist_genre", "Genre", "tag", MODS_TAG, "Artist", plex_tag="genre", level="artist"),
+        Field("artist_mood", "Mood", "tag", MODS_TAG, "Artist", plex_tag="mood", level="artist"),
+        Field("artist_style", "Style", "tag", MODS_TAG, "Artist", plex_tag="style", level="artist"),
+        Field("artist_country", "Country", "tag", MODS_TAG, "Artist", plex_tag="country", level="artist"),
+        Field("artist_collection", "Collection", "tag", MODS_TAG, "Artist", plex_tag="collection", level="artist"),
+        Field("artist_label", "Label", "tag", MODS_TAG, "Artist", plex_tag="label", level="artist"),
+        Field("artist_user_rating", "User rating", "float", MODS_FLOAT_RATING, "Artist", level="artist"),
+        Field("artist_added", "Added", "date", MODS_DATE, "Artist", level="artist"),
+        Field("artist_last_played", "Last played", "date", MODS_DATE, "Artist", level="artist"),
+        # Album
+        Field("album_title", "Album title", "string", MODS_STRING, "Album", level="album"),
+        Field("album_year", "Year", "year", MODS_YEAR, "Album", level="album"),
+        Field("album_decade", "Decade", "year", MODS_DECADE, "Album", level="album"),
+        Field("album_genre", "Genre", "tag", MODS_TAG, "Album", plex_tag="genre", level="album"),
+        Field("album_mood", "Mood", "tag", MODS_TAG, "Album", plex_tag="mood", level="album"),
+        Field("album_style", "Style", "tag", MODS_TAG, "Album", plex_tag="style", level="album"),
+        Field("album_record_label", "Record label", "string", MODS_STRING, "Album", level="album"),
+        Field("album_collection", "Collection", "tag", MODS_TAG, "Album", plex_tag="collection", level="album"),
+        Field("album_label", "Label", "tag", MODS_TAG, "Album", plex_tag="label", level="album"),
+        Field("album_user_rating", "User rating", "float", MODS_FLOAT_RATING, "Album", level="album"),
+        Field("album_critic_rating", "Critic rating", "float", MODS_FLOAT_RATING, "Album", level="album"),
+        Field("album_plays", "Plays", "number", MODS_NUMBER, "Album", level="album"),
+        Field("album_added", "Added", "date", MODS_DATE, "Album", level="album"),
+        Field("album_released", "Release date", "date", MODS_DATE, "Album", level="album"),
+        Field("album_last_played", "Last played", "date", MODS_DATE, "Album", level="album"),
+        # Track (filters at artist/album collection level; no track builder_level in phase 1)
+        Field("track_title", "Track title", "string", MODS_STRING, "Track", level="track"),
+        Field("track_mood", "Mood", "tag", MODS_TAG, "Track", plex_tag="mood", level="track"),
+        Field("track_plays", "Plays", "number", MODS_NUMBER, "Track", level="track"),
+        Field("track_skips", "Skips", "number", MODS_NUMBER, "Track", level="track"),
+        Field("track_user_rating", "User rating", "float", MODS_FLOAT_RATING, "Track", level="track"),
+        Field("track_added", "Added", "date", MODS_DATE, "Track", level="track"),
+        Field("track_last_played", "Last played", "date", MODS_DATE, "Track", level="track"),
+    ]
+
+
 _MOVIE_FIELDS = _build_movie_fields()
 _SHOW_FIELDS = _build_show_fields()
+_MUSIC_FIELDS = _build_music_fields()
 _MOVIE_FIELDS_BY_KEY = {f.key: f for f in _MOVIE_FIELDS}
 _SHOW_FIELDS_BY_KEY = {f.key: f for f in _SHOW_FIELDS}
+_MUSIC_FIELDS_BY_KEY = {f.key: f for f in _MUSIC_FIELDS}
 
 
 def fields(library_type: str) -> list[Field]:
-    """Filter fields supported for a movie or show library, ordered for a picker."""
+    """Filter fields supported for a library, ordered for a picker."""
     lib = library_type.lower()
     if lib == "movie":
         return list(_MOVIE_FIELDS)
     if lib == "show":
         return list(_SHOW_FIELDS)
+    if lib == "artist":
+        return list(_MUSIC_FIELDS)
     return []
 
 
-def sorts(library_type: str) -> list[tuple[str, str]]:
-    """Sort options supported for a library type as (Kometa sort key, label) pairs."""
+def sorts(library_type: str, level: str | None = None) -> list[tuple[str, str]]:
+    """Sort options supported for a library type as (Kometa sort key, label) pairs.
+
+    For music libraries, ``level`` None or ``artist`` gives artist sorts; ``album`` gives album sorts.
+    """
     lib = library_type.lower()
     if lib == "movie":
         return [(k, SORT_LABELS.get(k, k)) for k in MOVIE_SORTS]
     if lib == "show":
         return [(k, SORT_LABELS.get(k, k)) for k in SHOW_SORTS]
+    if lib == "artist":
+        sort_table = ALBUM_SORTS if level == "album" else ARTIST_SORTS
+        return [(k, SORT_LABELS.get(k, k)) for k in sort_table]
     return []
 
 
-def validate(library_type: str, spec: dict, sort_by: str | None = None) -> list[str]:
+def validate(library_type: str, spec: dict, sort_by: str | None = None, level: str | None = None) -> list[str]:
     """Validate a smart filter spec and optional sort_by against Kometa's rules."""
     problems: list[str] = []
     lib = library_type.lower()
-    if lib not in ("movie", "show"):
+    if lib not in ("movie", "show", "artist"):
         return [f"Unknown library type '{library_type}'"]
 
     if not isinstance(spec, dict):
@@ -535,13 +664,27 @@ def validate(library_type: str, spec: dict, sort_by: str | None = None) -> list[
         problems.append("Rule list cannot be empty")
         return problems
 
+    if lib in ("movie", "show") and level is not None:
+        problems.append(f"Collection level is not used for {lib} libraries")
+
+    if lib == "artist" and level is not None and level not in ("artist", "album"):
+        problems.append(f"Unknown collection level '{level}' for music libraries")
+
     if sort_by is not None:
-        allowed_sorts = dict(sorts(lib))
+        music_sort_level = "album" if lib == "artist" and level == "album" else None
+        allowed_sorts = dict(sorts(lib, music_sort_level))
         if sort_by not in allowed_sorts:
             problems.append(f"Unknown sort '{sort_by}' for {lib} library")
 
-    field_map = _MOVIE_FIELDS_BY_KEY if lib == "movie" else _SHOW_FIELDS_BY_KEY
-    other_field_map = _SHOW_FIELDS_BY_KEY if lib == "movie" else _MOVIE_FIELDS_BY_KEY
+    if lib == "movie":
+        field_map = _MOVIE_FIELDS_BY_KEY
+        other_field_map = _SHOW_FIELDS_BY_KEY
+    elif lib == "show":
+        field_map = _SHOW_FIELDS_BY_KEY
+        other_field_map = _MOVIE_FIELDS_BY_KEY
+    else:
+        field_map = _MUSIC_FIELDS_BY_KEY
+        other_field_map = {}
 
     for idx, rule in enumerate(rules):
         if not isinstance(rule, dict):
@@ -554,7 +697,14 @@ def validate(library_type: str, spec: dict, sort_by: str | None = None) -> list[
             continue
 
         if field_key not in field_map:
-            if field_key in other_field_map:
+            if lib == "artist":
+                if field_key in _MOVIE_FIELDS_BY_KEY or field_key in _SHOW_FIELDS_BY_KEY:
+                    problems.append(f"Field '{field_key}' doesn't work in music libraries")
+                else:
+                    problems.append(f"Unknown field '{field_key}'")
+            elif field_key in _MUSIC_FIELDS_BY_KEY:
+                problems.append(f"Field '{field_key}' only works in music libraries")
+            elif field_key in other_field_map:
                 target_lib = "show" if lib == "movie" else "movie"
                 problems.append(f"Field '{field_key}' only works for {target_lib} libraries")
             else:
@@ -737,6 +887,7 @@ async def plex_query(
     library_type: str,
     spec: dict,
     sort_by: str | None = None,
+    level: str | None = None,
 ) -> list[tuple[str, str]]:
     """Build the parameter pairs for GET /library/sections/<library_key>/all matching Kometa's smart collection query.
 
@@ -744,19 +895,38 @@ async def plex_query(
     Includes ``type`` and ``sort`` parameters, and mirrors Kometa's push/or/pop grouping for 'any'.
     Raises SmartFilterError on validation error or unknown tag values.
     """
-    problems = validate(library_type, spec, sort_by=sort_by)
+    problems = validate(library_type, spec, sort_by=sort_by, level=level)
     if problems:
         raise SmartFilterError("; ".join(problems))
 
     lib = library_type.lower()
-    field_map = _MOVIE_FIELDS_BY_KEY if lib == "movie" else _SHOW_FIELDS_BY_KEY
+    if lib == "movie":
+        field_map = _MOVIE_FIELDS_BY_KEY
+    elif lib == "show":
+        field_map = _SHOW_FIELDS_BY_KEY
+    else:
+        field_map = _MUSIC_FIELDS_BY_KEY
 
-    # 1. Type parameter: 1 for movie, 2 for show (kometa/modules/plex.py line 921 sort_types)
-    type_key = "1" if lib == "movie" else "2"
+    # 1. Type parameter (kometa/modules/plex.py sort_types, line 781)
+    if lib == "movie":
+        type_key = "1"
+    elif lib == "show":
+        type_key = "2"
+    elif level == "album":
+        type_key = "9"
+    else:
+        type_key = "8"
 
     # 2. Sort parameter: title.asc if not given. Kometa's own default for smart_filter is random (builder.py lines 1720, 4825),
     #    which would reshuffle the preview on every look
-    sort_dict = MOVIE_SORTS if lib == "movie" else SHOW_SORTS
+    if lib == "movie":
+        sort_dict = MOVIE_SORTS
+    elif lib == "show":
+        sort_dict = SHOW_SORTS
+    elif level == "album":
+        sort_dict = ALBUM_SORTS
+    else:
+        sort_dict = ARTIST_SORTS
     sort_key = sort_by if sort_by is not None else "title.asc"
     sort_param_value = sort_dict[sort_key]
 
@@ -793,10 +963,11 @@ async def plex_query(
             resolved_keys: list[str] = []
 
             if tag_name is not None:
+                tag_lib_type = field_obj.level if lib == "artist" and field_obj.level else lib
                 available_tags = await plex.tag_values(
                     library_key,
                     tag_name,
-                    library_type=lib,
+                    library_type=tag_lib_type,
                     episode=field_obj.episode,
                 )
                 tag_map: dict[str, str] = {}

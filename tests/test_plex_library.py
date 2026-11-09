@@ -91,7 +91,7 @@ def test_exploring_a_collection_a_page_at_a_time(tmp_path, config):
     assert (first["total"], len(first["items"]), first["start"]) == (11, 4, 0)
     assert first["items"][0] == {
         "rating_key": "201", "title": "Marvel film 1", "type": "movie", "year": 2008, "thumb": "/library/metadata/201/thumb/1700000100",
-        "ids": {"imdb": "tt0371746", "tmdb": "1726", "tvdb": "128"}, "content_rating": "PG-13", "audience_rating": 7.5, "episodes": None, "added_at": 1700000000, "video_resolution": None, "audio_codec": None,
+        "ids": {"imdb": "tt0371746", "tmdb": "1726", "tvdb": "128"}, "content_rating": "PG-13", "audience_rating": 7.5, "episodes": None, "added_at": 1700000000, "video_resolution": None, "audio_codec": None, "artist": None,
     }
     assert [item["title"] for item in rest["items"]] == ["Marvel film 9", "Marvel film 10", "Marvel film 11"]
     assert show["collection"]["managed"] and show["collection"]["smart"]  # the older PMM label counts

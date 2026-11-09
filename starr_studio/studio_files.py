@@ -238,7 +238,10 @@ def render_built(
     A filter collection is a ``smart_filter``. Any other collection has each of its sources as its Kometa builder
     (``tmdb_collection: 1234``, ``imdb_list: [a, b]``, ``tmdb_movie: [10196]``, ``plex_search: {any: …}``; Kometa adds
     up what they find) with ``sync_mode: sync``, so titles leaving the list leave the collection, and with Kometa's own Radarr/Sonarr
-    requests off: only Studio requests missing titles.
+    requests off: only Studio requests missing titles. A music library (``artist``) has no Radarr/Sonarr key at all: Kometa
+    refuses them there. A music collection of albums is a ``plex_search`` with ``builder_level: album``, because Kometa
+    takes no ``builder_level`` on a smart collection and no ``minimum_items`` on an album one (builder.py ``smart_invalid``,
+    ``parts_collection_valid``).
 
     ``file_ref`` turns a config-relative poster path (``studio/posters/…``) into the path Kometa's working directory
     uses for ``file_poster`` (``ConfigWriter.reference``). Without it, a file poster is skipped.
@@ -251,12 +254,20 @@ def render_built(
     for title, definition in sorted(definitions, key=lambda pair: pair[0].casefold()):
         body = CommentedMap()
         sources = list_sources.sources_of(definition)
-        if any(source.get("kind") != "filters" for source in sources):
+        albums = library_type == "artist" and definition.get("level") == "album"
+        if albums:
+            body["plex_search"] = smart_filters.to_kometa(definition.get("filters") or {}, definition.get("sort_by"), definition.get("limit"))
+            body["builder_level"] = "album"
+            body["sync_mode"] = "sync"
+            if definition.get("sort_by"):
+                body["collection_order"] = "custom"  # keep the search's order
+        elif any(source.get("kind") != "filters" for source in sources):
             body.update(_builders(sources))
             body["sync_mode"] = "sync"
             if definition.get("sort_by") in ("custom", "release", "alpha"):
                 body["collection_order"] = str(definition["sort_by"])
-            body["radarr_add_missing" if library_type == "movie" else "sonarr_add_missing"] = False
+            if library_type in ("movie", "show"):
+                body["radarr_add_missing" if library_type == "movie" else "sonarr_add_missing"] = False
         else:
             body["smart_filter"] = smart_filters.to_kometa(definition.get("filters") or {}, definition.get("sort_by"), definition.get("limit"))
         body["label"] = "Studio"  # adds the label without replacing others (Kometa's label, not label.sync)
@@ -265,7 +276,8 @@ def render_built(
             value = visible.get(setting, default)
             if value is not None:  # None (an imported collection whose file didn't say): Plex keeps what it has
                 body[key] = bool(value)
-        body["minimum_items"] = int(definition.get("minimum_items") or 1)
+        if not albums:
+            body["minimum_items"] = int(definition.get("minimum_items") or 1)
         if definition.get("summary"):
             body["summary"] = str(definition["summary"])
         if definition.get("sort_title"):

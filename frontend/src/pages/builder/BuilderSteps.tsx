@@ -27,7 +27,7 @@ export function BuilderSteps({
   orderProblem,
 }: {
   library: string;
-  libraryType: "movie" | "show";
+  libraryType: "movie" | "show" | "artist";
   fields: BuilderField[];
   sorts: { key: string; label: string }[];
   mode: StartMode;
@@ -76,7 +76,7 @@ export function BuilderSteps({
                     (isList ? (
                       <SourcesEditor
                         library={library}
-                        libraryType={libraryType}
+                        libraryType={libraryType === "artist" ? "movie" : libraryType}
                         fields={fields}
                         sources={draft.sources}
                         onChange={(sources: DraftSource[]) => onDraft({ sources })}

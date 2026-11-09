@@ -15,7 +15,7 @@ export function MissingTabControls({
   onRequestProfile,
   requestsEnabled,
 }: {
-  libraryType: "movie" | "show";
+  libraryType: "movie" | "show" | "artist";
   downloadMissing: boolean;
   requestCap: number | null;
   requestProfile: string | null;

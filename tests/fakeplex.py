@@ -26,7 +26,7 @@ class FakePlex:
         self.account_token = ACCOUNT_TOKEN
         self.reachable = {REMOTE_URI, RELAY_URI}
         self.requests: list[httpx.Request] = []
-        self.added: dict[str, list[int]] = {}  # section key -> when each movie or episode was added (Unix time)
+        self.added: dict[str, list[int]] = {}  # section key -> when each movie, episode or album was added (Unix time)
         self.deletions: list[str] = []
         self._next_key = 200
         self.TAGS = {
@@ -46,6 +46,20 @@ class FakePlex:
         self.ITEMS = {k: [dict(i) for i in v] for k, v in self.DEFAULT_ITEMS.items()}
         self.item_labels: dict[str, list[str]] = {}
         self.label_removals: list[tuple[str, list[str]]] = []
+        self.MUSIC: dict[str, dict[str, list[dict]]] = {}  # music section key -> Plex type ("8", "9", "10") -> its items
+
+    def add_music_section(self, key: str = "3", title: str = "Music") -> None:
+        """Add a music library (Plex type "artist") with two artists, three albums and four tracks."""
+        self.SECTIONS = [*self.SECTIONS, {"key": key, "title": title, "type": "artist"}]
+        self.COLLECTIONS[key], self.LABELS[key] = [], []
+        artists = [{"ratingKey": "801", "type": "artist", "title": "Radiohead"}, {"ratingKey": "802", "type": "artist", "title": "Björk"}]
+        albums = [
+            {"ratingKey": "901", "type": "album", "title": "OK Computer", "parentTitle": "Radiohead", "year": 1997},
+            {"ratingKey": "902", "type": "album", "title": "Kid A", "parentTitle": "Radiohead", "year": 2000},
+            {"ratingKey": "903", "type": "album", "title": "Homogenic", "parentTitle": "Björk", "year": 1997},
+        ]
+        tracks = [{"ratingKey": str(1001 + i), "type": "track", "title": f"Track {i + 1}"} for i in range(4)]
+        self.MUSIC[key] = {"8": artists, "9": albums, "10": tracks}
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -320,6 +334,14 @@ class FakePlex:
                 return httpx.Response(200, json={"MediaContainer": {"Metadata": self.COLLECTIONS[key]}})
             if what == "label":
                 return httpx.Response(200, json={"MediaContainer": {"Directory": self.LABELS[key]}})
+            if what == "all" and key in self.MUSIC and request.url.params.get("type") in self.MUSIC[key]:
+                if "addedAt>>" in request.url.params:  # albums added since
+                    since = int(request.url.params["addedAt>>"])
+                    return httpx.Response(200, json={"MediaContainer": {"size": 0, "totalSize": len([at for at in self.added.get(key, []) if at >= since]), "Metadata": []}})
+                found = self.MUSIC[key][request.url.params["type"]]
+                start, size = int(request.url.params.get("X-Plex-Container-Start", "0")), int(request.url.params.get("X-Plex-Container-Size", "0"))
+                page = found[start : start + size]
+                return httpx.Response(200, json={"MediaContainer": {"size": len(page), "totalSize": len(found), "offset": start, "Metadata": page}})
             if what == "all" and request.url.params.get("type") in ("1", "2") and "addedAt>>" not in request.url.params:
                 if request.url.params.get("X-Plex-Container-Size", "0") != "0":  # a page of titles
                     title = request.url.params.get("title", "").lower()

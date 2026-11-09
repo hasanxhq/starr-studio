@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Music libraries, phase 1:** a Plex music library now works in Studio. Home counts its artists, and the collection builder makes collections of **artists** or **albums** from Plex's own data (genre, mood, style, year, plays, ratings and more, at artist, album or track level), with a live preview. Ready-made says **Coming soon** for music, and Overlays aren't offered there (Kometa has neither for music). Kometa has no outside lists for music, so music collections come from your library only.
 - Studio serves Kometa's overlay badge images (`/api/v1/overlay-images/…`) for the overlay studio's preview.
 - **Studio's own log** (`logs/studio.log` in its data folder), on System → Logs next to Kometa's. Settings → General → **Log level** sets how much it says: info, debug (every call to Plex and the other apps, with secrets hidden) or trace (also what they sent back, for 24 hours). `STUDIO_LOG_LEVEL` sets it from the environment.
 - Each collection's API entry carries its **last change** (titles added and removed in its last run, from Kometa's change reports), ready for the Home page.
