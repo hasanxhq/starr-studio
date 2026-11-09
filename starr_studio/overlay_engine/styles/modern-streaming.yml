@@ -1,0 +1,72 @@
+# Modern streaming: a dark band along the bottom with scores, then quality and sound; a NEW tag on recent additions.
+# Shipped with Starr Studio (read-only). Duplicate it in the overlay studio to make your own.
+studio_style: 1
+name: Modern streaming
+description: Dark band at the bottom with scores, quality and sound, and a NEW tag on recent additions.
+canvas: poster
+
+options:
+  accent:   { type: colour, default: "#E50914", label: Accent colour }
+  band:     { type: percent, default: 65, label: Band darkness }
+  new_days: { type: number, default: 14, min: 0, max: 365, label: Show NEW for how many days (0 = never) }
+  ratings:  { type: choice, multiple: true, default: [imdb, rt_critic], choices: [imdb, rt_critic, rt_audience, tmdb], label: Ratings }
+
+elements:
+  - id: band
+    type: rect
+    box: { left: 0, right: 0, bottom: 0, height: 260 }
+    fill: { colour: "#000000", opacity: $band }
+
+  - id: scores
+    type: row
+    box: { left: 48, bottom: 142 }   # 64 tall, so centred 174 above the bottom
+    gap: 36
+    children:
+      - type: row
+        gap: 12
+        show_when: { has: imdb, option: { ratings: imdb } }
+        children:
+          - { type: logo, image: imdb, height: 64 }
+          - { type: text, text: "{imdb}", size: 54 }
+      - type: row
+        gap: 12
+        show_when: { has: rt_critic, option: { ratings: rt_critic } }
+        children:
+          - { type: logo, image: rt_fresh, height: 64, show_when: { rt_critic: { min: 60 } } }
+          - { type: logo, image: rt_rotten, height: 64, show_when: { rt_critic: { max: 59 } } }
+          - { type: text, text: "{rt_critic}%", size: 54 }
+      - type: row
+        gap: 12
+        show_when: { has: rt_audience, option: { ratings: rt_audience } }
+        children:
+          - { type: logo, image: rt_audience_upright, height: 64, show_when: { rt_audience: { min: 60 } } }
+          - { type: logo, image: rt_audience_spilled, height: 64, show_when: { rt_audience: { max: 59 } } }
+          - { type: text, text: "{rt_audience}%", size: 54 }
+      - type: row
+        gap: 12
+        show_when: { has: tmdb, option: { ratings: tmdb } }
+        children:
+          - { type: logo, image: tmdb, height: 64 }
+          - { type: text, text: "{tmdb}", size: 54 }
+
+  - id: quality
+    type: row
+    box: { left: 48, bottom: 44 }   # about 56 tall, so centred 72 above the bottom
+    gap: 22
+    children:
+      - type: text
+        text: "{resolution}"
+        size: 42
+        background: { stroke: { colour: "#FFFFFF", width: 3 }, radius: 8, padding: 13 }
+        show_when: { has: resolution }
+      - { type: text, text: "{hdr}", size: 42, colour: "#E1E1E1", show_when: { has: hdr } }
+      - { type: text, text: "{audio}", size: 42, colour: "#E1E1E1", show_when: { has: audio_codec } }
+
+  - id: new
+    type: text
+    text: NEW
+    font: Inter ExtraBold
+    size: 40
+    box: { left: 40, top: 40 }
+    background: { fill: { colour: $accent }, radius: 14, padding: [16, 40] }
+    show_when: { added_within_days: $new_days }

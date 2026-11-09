@@ -3,7 +3,7 @@
 A plan for Starr Studio to draw poster overlays itself, instead of through Kometa, with an editor that responds like a photo editing app.
 
 - **Where things stand:** `dev` at `2d22c26` (PR #133), 2026-11-10. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** planned; nothing built. Decisions D1–D4 accepted on 2026-11-10 (see the end); styles are YAML files (3.6). Phase 0 done on 2026-11-10: the gate passed, SVG + resvg confirmed (see "Phase 0 results"). Phase 1 is next.
+- **Status:** planned; nothing built. Decisions D1–D4 accepted on 2026-11-10 (see the end); styles are YAML files (3.6). Phase 0 done on 2026-11-10: the gate passed, SVG + resvg confirmed (see "Phase 0 results"). Phase 1 done on 2026-11-10 (PR #136, see "Phase 1 results"). Phase 2 is next.
 - **Why now:** the maintainer finds the overlay studio slow and clunky, and the look stale. Mock-ups on real posters (2026-11-10: glassy, modern streaming and minimal, each in two free versions and one Kometa-drawable version) showed that Kometa can draw most of the shapes, but:
   - **its rules can't keep a style off some titles**, so two overlay sets overlap on the same poster;
   - **every change is a whole Kometa run**: 3 of the 3.2 minutes of run 25 were overlays (90 s choosing titles, 86 s drawing 185 posters, 32 s uploading);
@@ -126,6 +126,7 @@ The engine draws on several processor cores at once and uploads a few posters at
 ### 3.5 Maintainerr and Kometa
 
 - **Maintainerr's overlays win.** Studio doesn't draw on titles that are in Maintainerr's collections. When one leaves, Studio notices the poster change (3.4) and draws again.
+- **The switch is a setting:** Settings → Overlays has, for each library, "Overlays drawn by: Kometa / Starr Studio" (maintainer's request, 2026-11-10). Changing it runs the switch below after a confirmation that says how many posters will be redrawn. Kometa stays the default until a library is switched.
 - **Kometa:** switching a library to Studio's engine removes that library's `overlay_files` from config.yml (Studio owns the config), imports Kometa's originals, and redraws. Kometa's later runs skip overlays for that library, so they get faster. Switching back restores the originals and puts the old `overlay_files` back from the backup.
 
 ### 3.6 Styles are YAML files
@@ -246,6 +247,15 @@ Each step is one branch and one PR.
 3. Rules (3.3) using the builder's filter model; detection rules copied from Kometa's sets, with attribution.
 4. Preview endpoint: scene + title → PNG. Golden-image tests.
 
+**Phase 1 results** (2026-11-10, all in `starr_studio/overlay_engine/`):
+- `style.py` (format v1), `facts.py`, `fonts/` (Inter), `logos/` (stand-ins drawn by `scripts/make_overlay_logos.py`), `styles/modern-streaming.yml`.
+- `facts_plex.py`: facts from Plex's metadata, cached in `overlay_facts` (migration 0019) by `updatedAt`. Audio comes from the media summary, Atmos and DTS:X from the stream with the summary's codec. Detection is Studio's own, written from Plex's fields; no Kometa code was copied.
+- `rules.py`: options, show_when and placeholders resolved per title. show_when uses the style's own keys (3.6), not the builder's filter model.
+- `render.py`: one SVG scene for browser and server, text as glyph outlines; on the server resvg draws only the overlay and Pillow composites it. Golden-image tests in `tests/fixtures/overlay_render/`.
+- `POST /api/v1/overlay-engine/preview`: a shipped style or a style file, option values and a rating key give the JPEG the engine would upload (JPEG rather than PNG, so the preview is exactly what Plex will get). It draws on Kometa's untouched backup when one exists.
+- Tried read-only on the real Plex: Poor Things, Oldboy, Moonlight and The Two Towers came out right (Atmos, HDR and ratings). A poster takes 0.2 s on the test poster and 0.3–0.6 s on real ones (large originals are decoded and resized first).
+- Moved to Phase 2: the process pool for whole libraries; caching the 1000×1500 original so it isn't decoded again on every pass.
+
 ### Phase 2: applying (Plex writes, asked first)
 1. Originals store: import from Kometa's folder and from Studio's `overlay-originals` preview cache where useful.
 2. Upload, hash, fingerprint and skip; noticing replaced posters; restore; dry run; per-title Apply / Restore / Repair.
@@ -258,7 +268,7 @@ The style format (3.6) with its JSON Schema and loader; Modern streaming as the 
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
 
 ### Phase 5: switching over and automation
-Per-library switch from Kometa (3.5); triggers after imports; nightly check; the Maintainerr guard; Glassy and Minimal templates.
+The Settings → Overlays switch per library (3.5); triggers after imports; nightly check; the Maintainerr guard; Glassy and Minimal templates.
 
 ### Later
 TV seasons and episodes, more rating sources (MDBList, Trakt, Letterboxd), music album covers, per-title overrides, sharing templates.

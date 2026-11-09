@@ -1,8 +1,23 @@
 """A fake plex.tv and Plex server behind an httpx.MockTransport, for tests that must not touch the network."""
 
+import json
+from io import BytesIO
 from pathlib import Path
 
 import httpx
+from PIL import Image
+
+_OVERLAY_FIXTURES = Path(__file__).parent / "fixtures" / "overlay_facts"
+OVERLAY_METADATA: dict = json.loads((_OVERLAY_FIXTURES / "metadata.json").read_text())
+OVERLAY_LISTING: list = json.loads((_OVERLAY_FIXTURES / "listing.json").read_text())
+
+
+def overlay_poster(colour: tuple[int, int, int] = (40, 90, 160)) -> bytes:
+    """A real (plain) poster JPEG, for the overlay engine's preview."""
+    buf = BytesIO()
+    Image.new("RGB", (200, 300), colour).save(buf, "JPEG")
+    return buf.getvalue()
+
 
 RESOURCES_XML = (Path(__file__).parent / "fixtures" / "plex_resources.xml").read_text()
 
@@ -47,6 +62,16 @@ class FakePlex:
         self.item_labels: dict[str, list[str]] = {}
         self.label_removals: list[tuple[str, list[str]]] = []
         self.MUSIC: dict[str, dict[str, list[dict]]] = {}  # music section key -> Plex type ("8", "9", "10") -> its items
+        self.OVERLAY_METADATA = {k: dict(v) for k, v in OVERLAY_METADATA.items()}
+        self.OVERLAY_LISTING = [dict(m) for m in OVERLAY_LISTING]
+
+    def add_overlay_section(self, key: str = "90", title: str = "Overlay fixtures") -> None:
+        """Movies section backed by ``fixtures/overlay_facts`` for overlay-engine tests."""
+        if not any(s["key"] == key for s in self.SECTIONS):
+            self.SECTIONS = [*self.SECTIONS, {"key": key, "title": title, "type": "movie"}]
+        self.COLLECTIONS.setdefault(key, [])
+        self.LABELS.setdefault(key, [])
+        self.SIZES[key] = len(self.OVERLAY_LISTING)
 
     def add_music_section(self, key: str = "3", title: str = "Music") -> None:
         """Add a music library (Plex type "artist") with two artists, three albums and four tracks."""
@@ -342,6 +367,13 @@ class FakePlex:
                 start, size = int(request.url.params.get("X-Plex-Container-Start", "0")), int(request.url.params.get("X-Plex-Container-Size", "0"))
                 page = found[start : start + size]
                 return httpx.Response(200, json={"MediaContainer": {"size": len(page), "totalSize": len(found), "offset": start, "Metadata": page}})
+            if what == "all" and key in self.SIZES and key not in self.TITLES and key not in self.MUSIC and request.url.params.get("type") == "1":
+                if request.url.params.get("X-Plex-Container-Size", "0") != "0":
+                    found = self.OVERLAY_LISTING
+                    start, size = int(request.url.params.get("X-Plex-Container-Start", "0")), int(request.url.params.get("X-Plex-Container-Size"))
+                    page = found[start : start + size]
+                    return httpx.Response(200, json={"MediaContainer": {"size": len(page), "totalSize": len(found), "offset": start, "Metadata": page}})
+                return httpx.Response(200, json={"MediaContainer": {"size": 0, "totalSize": self.SIZES.get(key, 0), "Metadata": []}})
             if what == "all" and request.url.params.get("type") in ("1", "2") and "addedAt>>" not in request.url.params:
                 if request.url.params.get("X-Plex-Container-Size", "0") != "0":  # a page of titles
                     title = request.url.params.get("title", "").lower()
@@ -363,6 +395,12 @@ class FakePlex:
             if what == "all" and request.url.params.get("type") == "18":
                 keys = self.LABELLED.get(request.url.params.get("label", ""), [])
                 return httpx.Response(200, json={"MediaContainer": {"Metadata": [{"ratingKey": k} for k in keys]}})
+        if len(parts) == 5 and parts[1] == "metadata" and parts[3] == "thumb" and parts[2] in self.OVERLAY_METADATA:
+            return httpx.Response(200, content=overlay_poster(), headers={"Content-Type": "image/jpeg"})
+        if len(parts) == 3 and parts[1] == "metadata" and parts[2] in self.OVERLAY_METADATA:
+            meta = dict(self.OVERLAY_METADATA[parts[2]])
+            meta.setdefault("librarySectionID", 90)
+            return httpx.Response(200, json={"MediaContainer": {"size": 1, "Metadata": [meta]}})
         if len(parts) == 3 and parts[1] == "metadata" and parts[2] in self.COLLECTION_META:
             meta = next(c for c in self.COLLECTIONS["1"] if c["ratingKey"] == parts[2]) | self.COLLECTION_META[parts[2]] | {"type": "collection"}
             return httpx.Response(200, json={"MediaContainer": {"size": 1, "Metadata": [meta]}})

@@ -20,6 +20,9 @@ dependencies = [
     "cryptography>=43",
     "tzdata>=2024.1",  # timezone data for zoneinfo where the system has none
     "pillow>=11",  # the Defaults gallery's covers (default_covers.py)
+    "resvg-py>=0.5",  # the overlay engine draws SVG with resvg (overlay_engine/)
+    "uharfbuzz>=0.57",  # the overlay engine shapes text the way browsers do
+    "fonttools>=4.68",  # the overlay engine writes text as glyph outlines
 ]
 
 [project.optional-dependencies]

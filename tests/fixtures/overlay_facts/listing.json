@@ -1,0 +1,77 @@
+[
+  {
+    "ratingKey": "4635",
+    "type": "movie",
+    "title": "Poor Things",
+    "year": 2023,
+    "addedAt": 1763053132,
+    "updatedAt": 1794231179,
+    "Media": [
+      {
+        "videoResolution": "4k",
+        "audioCodec": "eac3",
+        "audioChannels": 6
+      }
+    ]
+  },
+  {
+    "ratingKey": "4331",
+    "type": "movie",
+    "title": "Oldboy",
+    "year": 2003,
+    "addedAt": 1762956822,
+    "updatedAt": 1794231176,
+    "Media": [
+      {
+        "videoResolution": "4k",
+        "audioCodec": "eac3",
+        "audioChannels": 8
+      }
+    ]
+  },
+  {
+    "ratingKey": "7356",
+    "type": "movie",
+    "title": "The Lord of the Rings: The Two Towers",
+    "year": 2002,
+    "addedAt": 1784437985,
+    "updatedAt": 1794231166,
+    "Media": [
+      {
+        "videoResolution": "4k",
+        "audioCodec": "truehd",
+        "audioChannels": 8
+      }
+    ]
+  },
+  {
+    "ratingKey": "3770",
+    "type": "movie",
+    "title": "The Chronicles of Narnia: Prince Caspian",
+    "year": 2008,
+    "addedAt": 1762699462,
+    "updatedAt": 1794231129,
+    "Media": [
+      {
+        "videoResolution": "1080",
+        "audioCodec": "dca-ma",
+        "audioChannels": 8
+      }
+    ]
+  },
+  {
+    "ratingKey": "8586",
+    "type": "movie",
+    "title": "Moonlight",
+    "year": 2016,
+    "addedAt": 1791442806,
+    "updatedAt": 1794231172,
+    "Media": [
+      {
+        "videoResolution": "1080",
+        "audioCodec": "aac",
+        "audioChannels": 6
+      }
+    ]
+  }
+]
