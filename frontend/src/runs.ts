@@ -65,6 +65,7 @@ export const triggerLabels: Record<RunTrigger, string> = {
   schedule: "Scheduled",
   catch_up: "Catch-up",
   arr: "Radarr/Sonarr",
+  lidarr: "Lidarr",
   maintainerr: "Before Maintainerr's redraw",
   "ready-made": "Ready-made",
   builder: "Collection builder",
