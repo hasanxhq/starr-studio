@@ -94,7 +94,7 @@ def matches(rule: dict, facts: TitleFacts, values: dict, now: int) -> bool:
         elif key == "not":
             ok = not matches(want, facts, values, now)
         elif key == "has":
-            ok = all(getattr(facts, n) not in (None, False) for n in (want if isinstance(want, list) else [want]))
+            ok = all(getattr(facts, n) is not None and getattr(facts, n) is not False for n in (want if isinstance(want, list) else [want]))  # `in (None, False)` would treat a 0 score as missing
         elif key == "added_within_days":
             ok = want > 0 and facts.added_at is not None and now - facts.added_at <= want * 86400
         elif key == "option":

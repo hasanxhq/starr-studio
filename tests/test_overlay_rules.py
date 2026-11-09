@@ -114,3 +114,7 @@ def test_option():
     values = {"ratings": ["imdb", "tmdb"], "style": "a"}
     assert m({"option": {"ratings": "tmdb"}}, values=values) and not m({"option": {"ratings": "rt_critic"}}, values=values)
     assert m({"option": {"ratings": "imdb", "style": "a"}}, values=values) and not m({"option": {"ratings": "imdb", "style": "b"}}, values=values)
+
+
+def test_has_a_zero_score():
+    assert m({"has": "rt_critic"}, facts(rt_critic=0)) and not m({"has": "rt_critic"}, facts())
