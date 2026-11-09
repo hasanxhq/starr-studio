@@ -1,10 +1,12 @@
-"""Radarr and Sonarr over their API: run Kometa after new imports, once things go quiet (handoff v2 §4.5, §8).
+"""Radarr, Sonarr and Lidarr over their API: run Kometa after new imports, once things go quiet (handoff v2 §4.5, §8).
 
 Studio polls each app's import history (``GET /api/v3/history/since``, event type 3, "download folder
 imported", in both apps) every ``POLL_EVERY``. Studio reaches out to them, so nothing has to reach Studio,
 and imports made while Studio was off are found when it starts again (up to ``CATCH_UP`` back).
 
 The connection is Kometa's own: ``radarr:``/``sonarr:`` in config.yml, which Settings → Connect edits.
+Lidarr (``/api/v1/history/since``, event 3, a track file imported) is Studio's alone: Kometa has no Lidarr, so its
+connection is kept in SQLite (``lidarr_connection``) and its runs cover the music libraries.
 A seedbox's proxy login in front of an app (HTTP Basic) is Studio's alone, kept encrypted, since
 Kometa can't send one.
 
@@ -51,9 +53,11 @@ TIMEOUT = 10.0
 KEEP_TITLES = 10
 IMPORTED = 3  # DownloadFolderImported, in Radarr's MovieHistoryEventType and Sonarr's EpisodeHistoryEventType
 
-Kind = Literal["radarr", "sonarr"]
+Kind = Literal["radarr", "sonarr"]  # the apps whose connection is Kometa's (config.yml)
 KINDS: tuple[Kind, ...] = ("radarr", "sonarr")
-NAMES = {"radarr": "Radarr", "sonarr": "Sonarr"}
+App = Literal["radarr", "sonarr", "lidarr"]  # every app Studio polls for imports; Lidarr's connection is Studio's own
+APPS: tuple[App, ...] = (*KINDS, "lidarr")
+NAMES = {"radarr": "Radarr", "sonarr": "Sonarr", "lidarr": "Lidarr"}
 
 
 class AppRuns(BaseModel):
@@ -70,8 +74,10 @@ class AppRuns(BaseModel):
 class ArrSettings(BaseModel):
     radarr: AppRuns = Field(default_factory=AppRuns)
     sonarr: AppRuns = Field(default_factory=AppRuns)
+    # Lidarr: libraries empty means every music library, and every import counts (nothing says what a music collection wants).
+    lidarr: AppRuns = Field(default_factory=AppRuns)
 
-    def app(self, kind: "Kind") -> AppRuns:
+    def app(self, kind: "App") -> AppRuns:
         return getattr(self, kind)
 
 
@@ -84,15 +90,15 @@ def load_settings(db: sqlite3.Connection) -> ArrSettings:
     return ArrSettings.model_validate(raw)
 
 
-def pending_key(kind: "Kind") -> str:
+def pending_key(kind: "App") -> str:
     return f"arr.pending.{kind}"
 
 
-def skipped_key(kind: "Kind") -> str:
+def skipped_key(kind: "App") -> str:
     return f"arr.skipped.{kind}"
 
 
-TYPES = {"radarr": "movie", "sonarr": "show"}  # the Plex library type each app imports into
+TYPES = {"radarr": "movie", "sonarr": "show", "lidarr": "artist"}  # the Plex library type each app imports into
 LIBRARY_TYPES_TTL = 600.0
 
 
@@ -283,18 +289,22 @@ async def test_lidarr(http: httpx.AsyncClient, conn: Connection) -> dict:
     }
 
 
-async def imports_since(http: httpx.AsyncClient, conn: Connection, kind: Kind, since: datetime) -> list[dict]:
-    """Import history records at or after ``since``, oldest first."""
-    params = {"date": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "eventType": IMPORTED}
-    params["includeMovie" if kind == "radarr" else "includeSeries"] = "true"
-    records = await _get(http, conn, "/api/v3/history/since", params)
+async def imports_since(http: httpx.AsyncClient, conn: Connection, kind: App, since: datetime) -> list[dict]:
+    """Import history records at or after ``since``, oldest first. Lidarr's are one per track file (API v1)."""
+    params = {"date": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "eventType": LIDARR_IMPORTED if kind == "lidarr" else IMPORTED}
+    if kind == "lidarr":
+        params |= {"includeArtist": "true", "includeAlbum": "true"}
+    else:
+        params["includeMovie" if kind == "radarr" else "includeSeries"] = "true"
+    records = await _get(http, conn, "/api/v1/history/since" if kind == "lidarr" else "/api/v3/history/since", params)
     if not isinstance(records, list):
         raise ArrProblem("Unexpected answer to the history request")
     return sorted((r for r in records if isinstance(r, dict) and isinstance(r.get("id"), int)), key=lambda r: r["id"])
 
 
-def item_keys(kind: Kind, record: dict) -> list[str]:
-    """How ``wanted`` names the imported item: a movie by its TMDb ID, a show by its TVDb (and TMDb) ID."""
+def item_keys(kind: App, record: dict) -> list[str]:
+    """How ``wanted`` names the imported item: a movie by its TMDb ID, a show by its TVDb (and TMDb) ID. Music: none
+    (one track isn't the album; requests follow albums themselves)."""
     item = record.get("movie") if kind == "radarr" else record.get("series")
     item = item if isinstance(item, dict) else {}
     keys = []
@@ -308,6 +318,10 @@ def item_keys(kind: Kind, record: dict) -> list[str]:
 
 
 def _title(record: dict) -> str | None:
+    album, artist = record.get("album"), record.get("artist")
+    if isinstance(album, dict) and album.get("title"):  # Lidarr: "Artist – Album", so an album's tracks count once
+        name = artist.get("artistName") if isinstance(artist, dict) else None
+        return f"{name} – {album['title']}" if name else str(album["title"])
     item = record.get("movie") or record.get("series") or {}
     title = item.get("title") if isinstance(item, dict) else None
     if not title:
@@ -351,17 +365,20 @@ class Arr:
             try:
                 await self.poll(datetime.now(UTC))
             except Exception:  # a bad answer must not stop polling for good
-                log.exception("Polling Radarr/Sonarr failed")
+                log.exception("Polling Radarr/Sonarr/Lidarr failed")
             await asyncio.sleep(POLL_EVERY)
+
+    def connection(self, kind: App) -> Connection | None:
+        return lidarr_connection(self.db, self.box) if kind == "lidarr" else connection(self.db, self.box, self.config, kind)
 
     async def poll(self, now: datetime) -> dict[str, int]:
         """Look for new imports in each connected app that runs Kometa; returns how many each had."""
         found = {}
         settings = load_settings(self.db)
-        if any(get_setting(self.db, pending_key(kind)) for kind in KINDS):
+        if any(get_setting(self.db, pending_key(kind)) for kind in APPS):
             await usage.refresh_mdblist(self.db, self.http, self.config, now)  # for the MDBList limit when the run is due
-        for kind in KINDS:
-            conn = connection(self.db, self.box, self.config, kind)
+        for kind in APPS:
+            conn = self.connection(kind)
             if conn is None or not settings.app(kind).enabled:
                 continue
             cursor = get_setting(self.db, f"arr.cursor.{kind}") or {"date": utc_text(now), "id": 0}
@@ -386,8 +403,13 @@ class Arr:
             found[kind] = len(records)
         return found
 
-    async def _count(self, kind: Kind, runs: AppRuns, records: list[dict], now: datetime) -> None:
+    async def _count(self, kind: App, runs: AppRuns, records: list[dict], now: datetime) -> None:
         """Add imports to the app's pending run: all of them, or only those that matter to one of its libraries."""
+        if kind == "lidarr":  # every import counts; the run is the chosen libraries, else every music library
+            targets = list(runs.libraries) or await self._music_libraries()
+            decisions = [wanted.Decision(name, True, [], "Lidarr imported music") for name in targets]
+            self.record(kind, [_title(r) for r in records], now, decisions or None)
+            return
         if runs.trigger == "any":
             self.record(kind, [_title(r) for r in records], now)
             return
@@ -410,6 +432,15 @@ class Arr:
         if skipped:
             self.skip(kind, skipped, targets, now)
 
+    async def _music_libraries(self) -> list[str]:
+        """config.yml's music libraries, as Plex says; none if that can't be told (the run then covers every library)."""
+        try:
+            plans = wanted.plan(self.config, self.kometa_root) if self.config else None
+        except (FileNotFoundError, ValueError):
+            return []
+        types = await self._library_types()
+        return [name for name, plan in (plans or {}).items() if types.get(plan.plex_name) == "artist"]
+
     async def _libraries_for(self, kind: Kind, plans: dict[str, "wanted.LibraryPlan"]) -> list[str]:
         """config.yml's libraries of the type this app imports, as Plex says; all of them if Plex can't say."""
         types = await self._library_types()
@@ -429,21 +460,21 @@ class Arr:
         self._types = (time.monotonic(), {library.title: library.type for library in libraries})
         return self._types[1]
 
-    def skip(self, kind: Kind, titles: list[str | None], libraries: list[str], now: datetime) -> None:
+    def skip(self, kind: App, titles: list[str | None], libraries: list[str], now: datetime) -> None:
         """Note imports that didn't matter to any library, for the page and the jobs drawer."""
         recent = get_setting(self.db, skipped_key(kind)) or []
         where = ", ".join(libraries) or "any library"
         recent += [{"at": utc_text(now), "title": title, "libraries": where} for title in titles if title]
         set_setting(self.db, skipped_key(kind), recent[-KEEP_TITLES:])
 
-    def reset_cursor(self, kind: Kind) -> None:
+    def reset_cursor(self, kind: App) -> None:
         """Start from now: a newly connected app's history isn't news."""
         delete_setting(self.db, f"arr.cursor.{kind}")
         delete_setting(self.db, f"arr.status.{kind}")
 
     # --- The pending runs --------------------------------------------------------------
 
-    def record(self, kind: Kind, titles: list[str | None], now: datetime, decisions: list["wanted.Decision"] | None = None) -> None:
+    def record(self, kind: App, titles: list[str | None], now: datetime, decisions: list["wanted.Decision"] | None = None) -> None:
         """Add imports to the app's pending run. ``decisions`` (relevant imports only) narrow what it runs; None runs the app's libraries."""
         pending = get_setting(self.db, pending_key(kind)) or {"first_at": utc_text(now), "imports": 0, "titles": [], "libraries": {}}
         pending["last_at"] = utc_text(now)
@@ -477,7 +508,7 @@ class Arr:
         """Queue each app's pending run that's due; returns their run IDs (an equal queued run is reused)."""
         queued = []
         settings = load_settings(self.db)
-        for kind in KINDS:
+        for kind in APPS:
             pending = get_setting(self.db, pending_key(kind))
             if not pending or now < self.due_at(pending, settings.app(kind)):
                 continue
@@ -487,14 +518,14 @@ class Arr:
                     set_setting(self.db, pending_key(kind), pending | {"held": reason})
                 continue
             delete_setting(self.db, pending_key(kind))
-            queued.append(self.runner.enqueue(self.request(settings.app(kind), pending), trigger="arr"))
+            queued.append(self.runner.enqueue(self.request(settings.app(kind), pending), trigger="lidarr" if kind == "lidarr" else "arr"))
         return queued
 
     def pending(self) -> dict[str, dict]:
         """Each app's pending run, with when it's due."""
         settings = load_settings(self.db)
         found = {}
-        for kind in KINDS:
+        for kind in APPS:
             pending = get_setting(self.db, pending_key(kind))
             if pending:
                 found[kind] = pending | {"due_at": utc_text(self.due_at(pending, settings.app(kind)))}

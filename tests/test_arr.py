@@ -237,7 +237,7 @@ def test_saving_tests_again_then_writes_kometas_section(tmp_path):
 def test_each_app_has_its_own_run_settings(tmp_path):
     with make_client(tmp_path, FakeArr()) as client:
         state = client.put("/api/v1/settings/arr/sonarr/runs", json={"enabled": True, "mode": "overlays", "wait_minutes": 20, "libraries": ["TV Shows"]}).json()
-        assert client.put("/api/v1/settings/arr/lidarr/runs", json={}).status_code == 404
+        assert client.put("/api/v1/settings/arr/readarr/runs", json={}).status_code == 404
     assert state["settings"]["sonarr"] == {"enabled": True, "trigger": "any", "mode": "overlays", "wait_minutes": 20, "libraries": ["TV Shows"]}
     assert state["settings"]["radarr"]["enabled"] is False
 
