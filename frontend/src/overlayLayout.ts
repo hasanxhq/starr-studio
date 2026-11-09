@@ -8,7 +8,20 @@ export const POSTER_HEIGHT = 1500;
 
 type Vars = Record<string, unknown>;
 
-export type Box = { key: string; label: string; x: number; y: number; width: number; height: number; color: string; radius: number; textColor?: string };
+export type Box = {
+  key: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  radius: number;
+  textColor?: string;
+  badge?: string; // ratings: which slot this box is (rating1, rating2, rating3)
+  image?: string; // Kometa's badge image, under defaults/overlays/images/
+  text?: string; // what Kometa writes in it
+};
 
 /** One of Kometa's template conditions: every key must match. A list means any of these, `.exists` and `.not` as in Kometa. */
 function matches(condition: Record<string, unknown>, vars: Vars): boolean {
@@ -64,8 +77,8 @@ export function layerBoxes(key: string, label: string, layout: OverlayLayout | u
   const height = Number(vars.back_height) || 105;
   const style = { color: typeof vars.back_color === "string" ? vars.back_color : "#00000099", radius: Number(vars.back_radius) || 30 };
   if (layout?.moved_by !== "position") return [{ key, label, ...place(vars, width, height), width, height, ...style }];
-  const ratings = [1, 2, 3].map((n) => vars[`rating${n}`]).filter((rating): rating is string => typeof rating === "string" && rating !== "none");
-  const names = ratings.length ? ratings.map((rating) => RATING_LABELS[rating] ?? rating.toUpperCase()) : [label];
+  const slots = ["rating1", "rating2", "rating3"].filter((slot) => typeof vars[slot] === "string" && vars[slot] !== "none");
+  const names = slots.length ? slots.map((slot) => RATING_LABELS[vars[slot] as string] ?? String(vars[slot]).toUpperCase()) : [label];
   const across = vars.rating_alignment === "horizontal";
   const gap = across ? 15 : 100;
   const group = { width: across ? names.length * (width + gap) - gap : width, height: across ? height : names.length * (height + gap) - gap };
@@ -78,6 +91,7 @@ export function layerBoxes(key: string, label: string, layout: OverlayLayout | u
   return names.map((name, index) => ({
     key: `${key}-${index}`,
     label: name,
+    badge: slots[index],
     x: across ? x + index * (width + gap) : x,
     y: across ? y : y + index * (height + gap),
     width,

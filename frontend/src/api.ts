@@ -839,6 +839,7 @@ export const api = {
     apply: (library: string) => request<{ run_id: number }>("POST", `/overlays/${encodeURIComponent(library)}/apply`),
     off: (library: string) => request<{ run_id: number }>("POST", `/overlays/${encodeURIComponent(library)}/off`),
     on: (library: string) => request<{ run_id: number }>("POST", `/overlays/${encodeURIComponent(library)}/on`),
+    imageUrl: (path: string) => `${urlBase}/api/v1/overlay-images/${path.split("/").map(encodeURIComponent).join("/")}`, // Kometa's own badge images
     originalUrl: (library: string, ratingKey: string) =>
       `${urlBase}/api/v1/overlays/${encodeURIComponent(library)}/original/${encodeURIComponent(ratingKey)}`,
     estimate: (library: string, layers: { name: string; variables: Record<string, unknown> }[]) =>

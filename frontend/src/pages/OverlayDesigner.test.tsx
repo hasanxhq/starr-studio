@@ -366,4 +366,17 @@ describe("The overlay studio", () => {
     expect(screen.queryByRole("region", { name: "Overlay changes" })).not.toBeInTheDocument();
     expect(within(poster).getByRole("button", { name: /Status.*Drag/ }).style.touchAction).toBe("none"); // the tap picked it: now it drags
   });
+
+  it("draws Kometa's own badge image, and the layer's name when the image won't load", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    const badge = within(poster).getByRole("button", { name: /4K.*Drag/ });
+    const image = badge.querySelector("img")!;
+    expect(image.getAttribute("src")).toMatch(/\/api\/v1\/overlay-images\/resolution\/[^/]+\.png$/);
+    fireEvent.error(image);
+    await waitFor(() => expect(badge.querySelector("img")).toBeNull());
+    expect(badge).toHaveTextContent("4K");
+  });
 });

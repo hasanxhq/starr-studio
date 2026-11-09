@@ -2,7 +2,7 @@
 // title to preview on, and the nine-cell anchor grid.
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useDeferredValue, useReducer, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useReducer, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { api, type PlexItem } from "../api";
 import { mergeLibraries } from "../libraries";
@@ -10,6 +10,42 @@ import { overlaps, POSTER_HEIGHT, POSTER_WIDTH, type Box } from "../overlayLayou
 import { inputClass } from "./ui";
 
 const CLICK_SLOP = 4;
+const KOMETA_FONT_SIZE = 5.5; // cqw: Kometa's standard overlay text is 55 px on its 1000 px poster
+
+/** Each of Kometa's badge images' own size, [width, height], once it has loaded. */
+export function useImageSizes(paths: string[]): Record<string, [number, number]> {
+  const [sizes, setSizes] = useState<Record<string, [number, number]>>({});
+  const wanted = [...new Set(paths.filter(Boolean))].sort().join("|");
+  useEffect(() => {
+    for (const path of wanted ? wanted.split("|") : []) {
+      const image = new Image();
+      image.onload = () => setSizes((known) => (known[path] ? known : { ...known, [path]: [image.naturalWidth, image.naturalHeight] }));
+      image.src = api.overlays.imageUrl(path);
+    }
+  }, [wanted]);
+  return sizes;
+}
+
+/** What a box shows: Kometa's badge image at its own size and its text, or the layer's name where Studio can't tell. */
+function BoxFace({ box, broken, onBroken }: { box: Box; broken: boolean; onBroken: () => void }) {
+  const image = box.image && !broken;
+  if (!image && !box.text) return <>{box.label}</>;
+  return (
+    <span className="flex max-h-full max-w-full items-center justify-center gap-[1.5cqw]">
+      {image && (
+        <img
+          src={api.overlays.imageUrl(box.image!)}
+          alt=""
+          draggable={false}
+          className="pointer-events-none max-h-full max-w-full object-contain"
+          onLoad={(event) => (event.currentTarget.style.width = `${event.currentTarget.naturalWidth / 10}cqw`)} // 1000 px poster
+          onError={onBroken}
+        />
+      )}
+      {box.text && <span className="font-sans font-medium whitespace-nowrap" style={{ fontSize: `${KOMETA_FONT_SIZE}cqw` }}>{box.text}</span>}
+    </span>
+  );
+}
 
 function resolutionRank(resolution: string | null | undefined) {
   if (!resolution) return 0;
@@ -247,6 +283,8 @@ export function OverlayPoster({
         };
         const look = `absolute flex items-center justify-center overflow-hidden px-[1cqw] text-center font-display leading-none font-semibold text-white ${selected === layerKey(box) ? "outline-2 outline-accent" : ""}`;
         const aria = boxAriaLabel?.(box) ?? `Select ${box.label}`;
+        const art = box.image ? api.overlays.imageUrl(box.image) : null;
+        const face = <BoxFace box={box} broken={art !== null && failed.includes(art)} onBroken={() => setFailed((urls) => [...urls, art!])} />;
         return onPick ? (
           <button
             key={box.key}
@@ -297,11 +335,11 @@ export function OverlayPoster({
             }}
             onKeyDown={onNudge ? (event) => onBoxKeyDown(event, box) : undefined}
           >
-            {box.label}
+            {face}
           </button>
         ) : (
           <span key={box.key} className={look} style={place}>
-            {box.label}
+            {face}
           </span>
         );
       })}
