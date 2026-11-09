@@ -206,6 +206,18 @@ async def create_requests(body: CreateRequestBody, service: ServiceDep) -> Reque
         raise HTTPException(409, str(e)) from None
 
 
+@router.get("/music/search")
+async def search_music(service: ServiceDep, term: str = "") -> dict:
+    if not term.strip():
+        raise HTTPException(422, "Enter a search term") from None
+    if not service.connected().get("lidarr"):
+        raise HTTPException(409, "Connect Lidarr in Settings → Connect first") from None
+    try:
+        return {"albums": await service.search_music(term)}
+    except ArrProblem as problem:
+        raise HTTPException(502, str(problem)) from None
+
+
 @router.post("/refresh")
 async def refresh_requests(service: ServiceDep) -> dict[str, int]:
     return await service.check(datetime.now(UTC))
