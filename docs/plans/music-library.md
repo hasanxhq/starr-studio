@@ -3,7 +3,7 @@
 A plan to add Plex music library management to Starr Studio. Starr Studio owns Kometa's configuration and uses Kometa as its run engine. Today Studio handles movie and TV show libraries; this plan extends management to music libraries.
 
 - **Where things stand:** `dev` at `4a7c2f6` (PR #122), 2026-11-09. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** Phase 1 built on 2026-11-09 (music libraries in Studio, artist and album collections). Phase 2 built on 2026-11-09 (track collections, square art, music operations; `album_sorting` dropped, see Step 2.2). Phase 3 not started.
+- **Status:** Phase 1 built on 2026-11-09 (music libraries in Studio, artist and album collections). Phase 2 built on 2026-11-09 (track collections, square art, music operations; `album_sorting` dropped, see Step 2.2). Phase 3 built on 2026-11-09 (Lidarr connection, runs after imports, album search and requests; see Phase 3 "As built").
 - **Phase 1 as built differs in one way:** album collections are a `plex_search` with `builder_level: album`, not a `smart_filter`: Kometa refuses `builder_level` on smart collections and `minimum_items` on album ones (`kometa/modules/builder.py` `smart_invalid`, `parts_collection_valid`).
 
 ## Working rules
@@ -268,6 +268,7 @@ Connects Studio to Lidarr for automated post-import Kometa runs and missing albu
 - **Acceptance list**:
   - Missing music items can be submitted to Lidarr.
   - Requests page displays status (`requested`, `downloading`, `imported`) with Lidarr tag.
+- **As built (2026-11-09):** music collections never have missing items (they come from Plex), so the maintainer chose a **Request music** search on the Requests page instead: albums looked up through Lidarr (`/api/v1/album/lookup`), requested as `mb-album:<release group id>` through the shared `RequestService.request()`, so future music ready-mades (trending, charts) can hand it albums. A requested album is monitored alone (decision, 2026-11-09). Albums only; no whole-artist requests. Lidarr's import event is 3 (`TrackFileImported`, checked in Lidarr's `EntityHistory.cs`).
 
 ---
 

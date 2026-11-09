@@ -22,7 +22,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from . import arr, tmdb_details
-from .arr import ArrProblem, Connection, Kind
+from .arr import ArrProblem, Connection, Kind, LidarrOptions, lidarr_connection, lidarr_options
 from .config_sections import read_section, save_section
 from .config_write import ConfigWriter, SaveRefused
 from .auth_routes import TIMEZONE
@@ -458,10 +458,12 @@ class RequestService:
         radarr = arr.connection(self.db, self.box, self.config, "radarr") is not None
         sonarr = arr.connection(self.db, self.box, self.config, "sonarr") is not None
         seerr = self.load_seerr_connection() is not None
+        lidarr = lidarr_connection(self.db, self.box) is not None
         return {
             "radarr": radarr,
             "sonarr": sonarr,
             "seerr": seerr,
+            "lidarr": lidarr,
         }
 
     def counts(self) -> dict[str, int]:
@@ -553,6 +555,161 @@ class RequestService:
         if isinstance(created, dict) and "id" in created:
             return int(created["id"])
         raise ArrProblem("Could not create tag 'starr'")
+
+    async def _ensure_lidarr_tag(self, conn: Connection) -> int:
+        """Lidarr.Api.V1/Tags/TagResource — same starr label as Radarr/Sonarr."""
+        tags = await arr._get(self.http, conn, "/api/v1/tag")
+        if isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, dict) and str(t.get("label", "")).lower() == "starr":
+                    return int(t["id"])
+        created = await arr._post(self.http, conn, "/api/v1/tag", json={"label": "starr"})
+        if isinstance(created, dict) and "id" in created:
+            return int(created["id"])
+        raise ArrProblem("Could not create tag 'starr'")
+
+    @staticmethod
+    def _album_year(album: dict) -> int | None:
+        release = album.get("releaseDate")
+        if isinstance(release, str) and len(release) >= 4:
+            with contextlib.suppress(ValueError):
+                return int(release[:4])
+        return None
+
+    @staticmethod
+    def _album_display_title(album: dict) -> str:
+        artist = (album.get("artist") or {}).get("artistName") or ""
+        name = str(album.get("title") or "")
+        return f"{artist} – {name}" if artist else name
+
+    @staticmethod
+    def _album_cover(album: dict) -> str | None:
+        for image in album.get("images") or []:
+            if isinstance(image, dict) and image.get("coverType") == "cover":
+                url = image.get("remoteUrl")
+                return str(url) if url else None
+        return None
+
+    @staticmethod
+    def _album_in_lidarr(album: dict) -> bool:
+        """In Lidarr and either monitored or already has track files."""
+        if not album.get("id"):
+            return False
+        stats = album.get("statistics") if isinstance(album.get("statistics"), dict) else {}
+        if (stats or {}).get("trackFileCount", 0) > 0:
+            return True
+        return bool(album.get("monitored"))
+
+    async def _resolve_lidarr_options(self, conn: Connection, options: LidarrOptions) -> tuple[int, int, str]:
+        profiles = await arr._get(self.http, conn, "/api/v1/qualityprofile")
+        if not isinstance(profiles, list) or not profiles:
+            raise ArrProblem("No quality profile available in Lidarr")
+        meta = await arr._get(self.http, conn, "/api/v1/metadataprofile")
+        if not isinstance(meta, list) or not meta:
+            raise ArrProblem("No metadata profile available in Lidarr")
+        folders = await arr._get(self.http, conn, "/api/v1/rootfolder")
+        if not isinstance(folders, list) or not folders:
+            raise ArrProblem("No root folder available in Lidarr")
+
+        qp_id = _profile_id(profiles, options.quality_profile) or profiles[0].get("id")
+        mp_id = _profile_id(meta, options.metadata_profile) or meta[0].get("id")
+        rf_path = None
+        if options.root_folder_path:
+            for f in folders:
+                if isinstance(f, dict) and f.get("path") == options.root_folder_path:
+                    rf_path = f.get("path")
+                    break
+        if rf_path is None:
+            rf_path = folders[0].get("path")
+
+        if qp_id is None or mp_id is None or rf_path is None:
+            raise ArrProblem("Invalid Lidarr quality profile, metadata profile or root folder")
+        return int(qp_id), int(mp_id), str(rf_path)
+
+    async def _monitor_and_search_album(self, conn: Connection, album_id: int) -> None:
+        await arr._put(self.http, conn, "/api/v1/album/monitor", json={"albumIds": [album_id], "monitored": True})
+        await arr._post(self.http, conn, "/api/v1/command", json={"name": "AlbumSearch", "albumIds": [album_id]})
+
+    async def _request_lidarr(self, conn: Connection, options: LidarrOptions, mbid: str) -> tuple[str, str | None, str | None, str | None, int | None]:
+        """File one album by MusicBrainz release-group id. Returns (status, external_id, error, stored_title, year)."""
+        try:
+            existing = await arr._get(self.http, conn, "/api/v1/album", {"foreignAlbumId": mbid})
+            albums = existing if isinstance(existing, list) else ([existing] if isinstance(existing, dict) and existing.get("id") else [])
+            if albums:
+                album = albums[0]
+                title = self._album_display_title(album)
+                stats = album.get("statistics") or {}
+                # Lidarr has its files, or already wants it: Studio leaves it alone (a cancel mustn't unmonitor it).
+                if (stats.get("trackFileCount") or 0) > 0 or album.get("monitored"):
+                    return "exists", str(album["id"]), None, title, self._album_year(album)
+                album_id = int(album["id"])
+                await self._monitor_and_search_album(conn, album_id)  # e.g. a followed artist's unmonitored album
+                return "requested", str(album_id), None, title, self._album_year(album)
+
+            lookup = await arr._get(self.http, conn, "/api/v1/album/lookup", {"term": f"lidarr:{mbid}"})
+            album_data = lookup[0] if isinstance(lookup, list) and lookup else None
+            if not album_data or not isinstance(album_data, dict):
+                return "failed", None, "Album not found in Lidarr's metadata", None, None
+
+            qp_id, mp_id, rf_path = await self._resolve_lidarr_options(conn, options)
+            starr_tag = await self._ensure_lidarr_tag(conn)
+            artist = album_data.get("artist") or {}
+            foreign_artist = artist.get("foreignArtistId")
+            if not foreign_artist:
+                return "failed", None, "Album lookup has no artist id", None, None
+
+            payload = dict(album_data)
+            payload["monitored"] = True
+            payload["addOptions"] = {"searchForNewAlbum": True}
+            payload["artist"] = {
+                "foreignArtistId": foreign_artist,
+                "artistName": artist.get("artistName") or "",
+                "qualityProfileId": qp_id,
+                "metadataProfileId": mp_id,
+                "rootFolderPath": rf_path,
+                "monitored": True,
+                "monitorNewItems": "none",
+                "addOptions": {"monitor": "none", "searchForMissingAlbums": False},
+                "tags": [starr_tag],
+            }
+            created = await arr._post(self.http, conn, "/api/v1/album", json=payload)
+            external_id = str(created.get("id")) if isinstance(created, dict) and created.get("id") else None
+            return "requested", external_id, None, self._album_display_title(created if isinstance(created, dict) else album_data), self._album_year(album_data)
+        except ArrProblem as problem:
+            return "failed", None, str(problem), None, None
+        except Exception as e:
+            return "failed", None, str(e), None, None
+
+    def _latest_request_for_item(self, item: str) -> dict | None:
+        row = self.db.execute(
+            "SELECT id, status FROM requests WHERE item = ? ORDER BY requested_at DESC, id DESC LIMIT 1",
+            (item,),
+        ).fetchone()
+        return {"id": row["id"], "status": row["status"]} if row else None
+
+    async def search_music(self, term: str) -> list[dict]:
+        conn = lidarr_connection(self.db, self.box)
+        if conn is None:
+            raise ArrProblem("Connect Lidarr in Settings → Connect first")
+        results = await arr._get(self.http, conn, "/api/v1/album/lookup", {"term": term.strip()})
+        if not isinstance(results, list):
+            return []
+        albums = []
+        for album in results:
+            if not isinstance(album, dict) or not album.get("foreignAlbumId"):
+                continue
+            item = f"mb-album:{album['foreignAlbumId']}"
+            artist_name = (album.get("artist") or {}).get("artistName") or ""
+            albums.append({
+                "item": item,
+                "title": str(album.get("title") or ""),
+                "artist": artist_name,
+                "year": self._album_year(album),
+                "cover": self._album_cover(album),
+                "in_lidarr": self._album_in_lidarr(album),
+                "request": self._latest_request_for_item(item),
+            })
+        return albums
 
     async def _resolve_radarr_options(self, conn: Connection, radarr_settings: RadarrRequestSettings, profile: str | None = None) -> tuple[int, str]:
         profiles = await arr._get(self.http, conn, "/api/v3/qualityprofile")
@@ -934,11 +1091,40 @@ class RequestService:
                 elif it.item.startswith("tvdb:"):
                     media = "show"
                     kind_id = ("tvdb", it.item.removeprefix("tvdb:"))
+                elif it.item.startswith("mb-album:"):
+                    media = "album"
+                    kind_id = ("mb-album", it.item.removeprefix("mb-album:"))
                 else:
                     outcome.failed += 1
                     error_msg = f"Unknown item key format: {it.item}"
                     self._record(it.item, "movie", it.title, it.year, library, collection_id, "unknown", None, "failed", error_msg, now)
                     outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
+                    continue
+
+                # Music always goes to Lidarr; Seerr can't file albums (music-library.md phase 3).
+                if media == "album":
+                    via_record = "lidarr"
+                    lidarr_conn = lidarr_connection(self.db, self.box)
+                    if lidarr_conn is None:
+                        error_msg = "Lidarr isn't connected"
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, "failed", error_msg, now)
+                        outcome.failed += 1
+                        outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
+                        continue
+                    status, external_id, error_msg, stored_title, found_year = await self._request_lidarr(
+                        lidarr_conn, lidarr_options(self.db), kind_id[1]
+                    )
+                    title = stored_title or it.title
+                    year = it.year if it.year is not None else found_year
+                    self._record(it.item, media, title, year, library, collection_id, via_record, external_id, status, error_msg, now)
+                    if status == "requested":
+                        outcome.requested += 1
+                        active_items.add(it.item)
+                    elif status == "exists":
+                        outcome.exists += 1
+                    elif status == "failed":
+                        outcome.failed += 1
+                    outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
                     continue
 
                 # Route target
@@ -1011,6 +1197,7 @@ class RequestService:
 
         radarr_conn = arr.connection(self.db, self.box, self.config, "radarr")
         sonarr_conn = arr.connection(self.db, self.box, self.config, "sonarr")
+        lidarr_conn = lidarr_connection(self.db, self.box)
 
         radarr_queue_movie_ids = set()
         if radarr_conn:
@@ -1035,6 +1222,18 @@ class RequestService:
                         sonarr_queue_series_ids.add(sid)
             except Exception as e:
                 log.warning("Could not fetch Sonarr queue: %s", e)
+
+        lidarr_queue_album_ids = set()
+        if lidarr_conn:
+            try:
+                queue_data = await arr._get(self.http, lidarr_conn, "/api/v1/queue")
+                records = queue_data.get("records", []) if isinstance(queue_data, dict) else (queue_data if isinstance(queue_data, list) else [])
+                for r in records:
+                    aid = r.get("albumId")
+                    if aid:
+                        lidarr_queue_album_ids.add(int(aid))
+            except Exception as e:
+                log.warning("Could not fetch Lidarr queue: %s", e)
 
         radarr_starr_tag_id = None
         if radarr_conn:
@@ -1127,6 +1326,36 @@ class RequestService:
                             )
                 except Exception as e:
                     log.warning("Error checking series %s in Sonarr: %s", tvdb_id, e)
+
+            elif media == "album" and via == "lidarr" and lidarr_conn and row.get("external_id"):
+                try:
+                    album = await arr._get(self.http, lidarr_conn, f"/api/v1/album/{row['external_id']}")
+                except ArrProblem as problem:
+                    if "HTTP 404" in str(problem):
+                        self.db.execute(
+                            "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                            ("Removed from Lidarr", utc_text(now), row_id),
+                        )
+                    else:
+                        log.warning("Error checking album %s in Lidarr: %s", row["external_id"], problem)
+                    continue
+                except Exception as e:
+                    log.warning("Error checking album %s in Lidarr: %s", row["external_id"], e)
+                    continue
+                if not isinstance(album, dict):
+                    continue
+                album_id = int(album["id"])
+                track_files = (album.get("statistics") or {}).get("trackFileCount", 0)
+                if track_files > 0 and album_id not in lidarr_queue_album_ids:  # still queued: more tracks to come
+                    self.db.execute(
+                        "UPDATE requests SET status = 'imported', imported_at = ?, updated_at = ? WHERE id = ?",
+                        (utc_text(now), utc_text(now), row_id),
+                    )
+                elif album_id in lidarr_queue_album_ids and current_status != "downloading":
+                    self.db.execute(
+                        "UPDATE requests SET status = 'downloading', updated_at = ? WHERE id = ?",
+                        (utc_text(now), row_id),
+                    )
 
         self.db.commit()
         return self.counts()
@@ -1262,6 +1491,8 @@ class RequestService:
                     item_to_rating_key[f"tvdb:{ids['tvdb']}"] = rating_key
 
             for row in lib_rows:
+                if row["media"] == "album" or row["item"].startswith("mb-album:"):
+                    continue  # shortcut: Plex starr labelling for music requests is not implemented yet (music-library.md)
                 rating_key = item_to_rating_key.get(row["item"])
                 if rating_key is None:
                     # Check tvdb <-> tmdb if alternative key matches
@@ -1333,6 +1564,18 @@ class RequestService:
             # Deleting Seerr's request leaves what Seerr already added to Radarr/Sonarr monitored, so it would still
             # download. Unmonitor it there, as a direct request's cancel does, when it carries Studio's starr tag.
             await self._unmonitor_seerr_item(row_dict)
+        elif via == "lidarr" and external_id:
+            conn = lidarr_connection(self.db, self.box)
+            if conn:
+                try:
+                    await arr._put(
+                        self.http,
+                        conn,
+                        "/api/v1/album/monitor",
+                        json={"albumIds": [int(external_id)], "monitored": False},
+                    )
+                except Exception as e:
+                    log.warning("Could not unmonitor album %s in Lidarr: %s", external_id, e)
 
         self.db.execute(
             "UPDATE requests SET status = 'cancelled', updated_at = ? WHERE id = ?",

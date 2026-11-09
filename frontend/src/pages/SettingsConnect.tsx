@@ -8,23 +8,25 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import {
   api,
   type AppRuns,
+  type AppKind,
   type ArrConnection,
   type ArrConnectionInput,
-  type ArrKind,
   type ArrPending,
-  type ArrState,
   type LibraryRelevance,
+  type LidarrConnection,
   type MaintainerrState,
   type RunMode,
   type ServiceName,
   type TautulliState,
 } from "../api";
+import { useMusicLibraries } from "../components/requests/musicLibraries";
 import { Button, Card, Checkbox, ConfirmButton, Field, inputClass } from "../components/ui";
 import { formatRelative, formatTime, modes } from "../runs";
 
-const apps: { kind: ArrKind; label: string }[] = [
+const apps: { kind: AppKind; label: string }[] = [
   { kind: "radarr", label: "Radarr" },
   { kind: "sonarr", label: "Sonarr" },
+  { kind: "lidarr", label: "Lidarr" },
 ];
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -97,7 +99,8 @@ function ProxyLogin({
 
 // --- Radarr and Sonarr -------------------------------------------------------------
 
-function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: string; connection: ArrConnection }) {
+function ArrConnectionForm({ kind, label, connection }: { kind: AppKind; label: string; connection: ArrConnection | LidarrConnection }) {
+  const lidarr = kind === "lidarr";
   const queryClient = useQueryClient();
   const [url, setUrl] = useState(connection.url ?? "");
   const [apiKey, setApiKey] = useState("");
@@ -106,6 +109,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
   const [password, setPassword] = useState("");
   const [root, setRoot] = useState(connection.root_folder_path ?? "");
   const [profile, setProfile] = useState(connection.quality_profile ?? "");
+  const [metadata, setMetadata] = useState("metadata_profile" in connection ? (connection.metadata_profile ?? "") : "");
   const body = (): ArrConnectionInput => ({
     url,
     api_key: apiKey || null,
@@ -113,6 +117,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
     password: proxy ? password || null : null,
     root_folder_path: root || null,
     quality_profile: profile || null,
+    ...(lidarr && { metadata_profile: metadata || null }),
   });
   const test = useMutation({ mutationFn: () => api.arr.test(kind, body()) });
   const done = (data: Awaited<ReturnType<typeof api.arr.get>>) => {
@@ -144,7 +149,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
               className={inputClass}
               value={url}
               onChange={(e) => changed(setUrl)(e.target.value)}
-              placeholder={kind === "radarr" ? "http://radarr:7878" : "http://sonarr:8989"}
+              placeholder={{ radarr: "http://radarr:7878", sonarr: "http://sonarr:8989", lidarr: "http://lidarr:8686" }[kind]}
               inputMode="url"
               spellCheck={false}
             />
@@ -175,7 +180,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
       />
       <div className="flex flex-wrap gap-3">
         <div className="min-w-0 flex-1 basis-48">
-          <Field label="Root folder" hint="Where Kometa adds missing items. Test to list them.">
+          <Field label="Root folder" hint={lidarr ? "Where Lidarr puts requested albums. Test to list them." : "Where Kometa adds missing items. Test to list them."}>
             <select className={inputClass} value={root} onChange={(e) => setRoot(e.target.value)} disabled={!tested}>
               <option value="">(none)</option>
               {options(tested?.root_folders, root).map((path) => (
@@ -187,7 +192,7 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
           </Field>
         </div>
         <div className="min-w-0 flex-1 basis-48">
-          <Field label="Quality profile" hint="For items Kometa adds.">
+          <Field label="Quality profile" hint={lidarr ? "For requested albums." : "For items Kometa adds."}>
             <select className={inputClass} value={profile} onChange={(e) => setProfile(e.target.value)} disabled={!tested}>
               <option value="">(none)</option>
               {options(tested?.quality_profiles, profile).map((name) => (
@@ -198,6 +203,20 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
             </select>
           </Field>
         </div>
+        {lidarr && (
+          <div className="min-w-0 flex-1 basis-48">
+            <Field label="Metadata profile" hint="For requested albums.">
+              <select className={inputClass} value={metadata} onChange={(e) => setMetadata(e.target.value)} disabled={!tested}>
+                <option value="">(none)</option>
+                {options(tested?.metadata_profiles, metadata).map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={() => test.mutate()} disabled={!ready || test.isPending}>
@@ -210,14 +229,14 @@ function ArrConnectionForm({ kind, label, connection }: { kind: ArrKind; label: 
           <ConfirmButton
             label="Remove"
             confirm={`Remove ${label}`}
-            warning={`Kometa stops using ${label} too.`}
+            warning={lidarr ? "Studio stops using Lidarr." : `Kometa stops using ${label} too.`}
             onConfirm={() => remove.mutate()}
             busy={remove.isPending}
           />
         )}
         {test.data && (test.data.ok ? <Outcome ok>{`${test.data.app} ${test.data.version} answered.`}</Outcome> : <Outcome ok={false}>{test.data.error}</Outcome>)}
         {test.isError && <Outcome ok={false}>{test.error.message}</Outcome>}
-        {save.isSuccess && <Outcome ok>Saved to config.yml</Outcome>}
+        {save.isSuccess && <Outcome ok>{lidarr ? "Saved." : "Saved to config.yml"}</Outcome>}
         {save.isError && <Outcome ok={false}>{save.error.message}</Outcome>}
         {remove.isError && <Outcome ok={false}>{remove.error.message}</Outcome>}
       </div>
@@ -292,14 +311,15 @@ function AppRunsForm({
   relevance,
   skipped,
 }: {
-  kind: ArrKind;
+  kind: AppKind;
   label: string;
   runs: AppRuns;
   libraries: string[];
   pending?: ArrPending;
   relevance: LibraryRelevance[];
-  skipped: ArrState["skipped"][ArrKind];
+  skipped: { at: string; title: string; libraries: string }[];
 }) {
+  const lidarr = kind === "lidarr";
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<AppRuns>(runs);
   const save = useMutation({ mutationFn: () => api.arr.saveRuns(kind, draft), onSuccess: (data) => queryClient.setQueryData(["arr"], data) });
@@ -338,6 +358,7 @@ function AppRunsForm({
               />
             </Field>
           </div>
+          {!lidarr && (
           <fieldset className="flex flex-col">
             <legend className="mb-1 text-sm text-muted">Which imports</legend>
             <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -355,13 +376,14 @@ function AppRunsForm({
               </span>
             </label>
           </fieldset>
-          {draft.trigger === "relevant" && (
+          )}
+          {!lidarr && draft.trigger === "relevant" && (
             <Relevance libraries={relevance.filter((library) => draft.libraries.length === 0 || draft.libraries.includes(library.library))} mode={draft.mode} />
           )}
           <fieldset>
             <legend className="mb-1.5 text-sm text-muted">Libraries to run for</legend>
             {libraries.length === 0 ? (
-              <p className="text-sm text-muted">No libraries in config.yml yet, so Kometa runs for all of them.</p>
+              <p className="text-sm text-muted">{lidarr ? "No music libraries in config.yml yet." : "No libraries in config.yml yet, so Kometa runs for all of them."}</p>
             ) : (
               <div className="flex flex-wrap gap-x-4">
                 {libraries.map((name) => (
@@ -372,7 +394,7 @@ function AppRunsForm({
                 ))}
               </div>
             )}
-            {libraries.length > 0 && draft.libraries.length === 0 && <p className="text-xs text-muted">None ticked: Kometa runs for every library.</p>}
+            {libraries.length > 0 && draft.libraries.length === 0 && <p className="text-xs text-muted">{lidarr ? "None ticked: Kometa runs for every music library." : "None ticked: Kometa runs for every library."}</p>}
           </fieldset>
         </>
       )}
@@ -733,10 +755,11 @@ export function SettingsConnect() {
   const tautulli = useQuery({ queryKey: ["tautulli"], queryFn: api.tautulli.get });
   const config = useQuery({ queryKey: ["config"], queryFn: api.config.overview, retry: false });
   const libraries = config.data?.libraries.map((library) => library.name) ?? [];
+  const musicLibraries = useMusicLibraries();
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
-      <Card title="Radarr, Sonarr and Maintainerr">
+      <Card title="Radarr, Sonarr, Lidarr and Maintainerr">
         <div className="flex flex-col gap-5">
           {arr.isPending ? (
             <p className="text-muted">Loading…</p>
@@ -745,24 +768,31 @@ export function SettingsConnect() {
               {arr.error.message}
             </p>
           ) : (
-            apps.map(({ kind, label }) => (
-              <Section key={kind} title={label}>
-                <p className="text-sm text-muted">
-                  Kometa's own {label} connection, in config.yml. Kometa uses it to add missing items; Studio uses it to run Kometa after imports.
-                </p>
-                <ArrConnectionForm key={JSON.stringify(arr.data.connections[kind])} kind={kind} label={label} connection={arr.data.connections[kind]} />
-                <AppRunsForm
-                  key={JSON.stringify(arr.data.settings[kind])}
-                  kind={kind}
-                  label={label}
-                  runs={arr.data.settings[kind]}
-                  libraries={libraries}
-                  pending={arr.data.pending[kind]}
-                  relevance={arr.data.libraries}
-                  skipped={arr.data.skipped[kind]}
-                />
-              </Section>
-            ))
+            apps.map(({ kind, label }) => {
+              const connection = arr.data.connections[kind];
+              const runs = arr.data.settings[kind];
+              if (!connection || !runs) return null;
+              return (
+                <Section key={kind} title={label}>
+                  <p className="text-sm text-muted">
+                    {kind === "lidarr"
+                      ? "Studio keeps Lidarr's connection itself: Kometa doesn't use Lidarr."
+                      : `Kometa's own ${label} connection, in config.yml. Kometa uses it to add missing items; Studio uses it to run Kometa after imports.`}
+                  </p>
+                  <ArrConnectionForm key={JSON.stringify(connection)} kind={kind} label={label} connection={connection} />
+                  <AppRunsForm
+                    key={JSON.stringify(runs)}
+                    kind={kind}
+                    label={label}
+                    runs={runs}
+                    libraries={kind === "lidarr" ? musicLibraries : libraries}
+                    pending={arr.data.pending[kind]}
+                    relevance={arr.data.libraries}
+                    skipped={arr.data.skipped[kind] ?? []}
+                  />
+                </Section>
+              );
+            })
           )}
           <Section title="Maintainerr">
             {maintainerr.isPending ? (
