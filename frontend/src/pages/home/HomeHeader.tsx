@@ -6,7 +6,7 @@ import { PlusIcon } from "../../components/icons";
 import { useHeaderTitle } from "../../components/HeaderTitle";
 import { mergeLibraries } from "../../libraries";
 
-const itemWords: Record<string, string> = { movie: "movie", show: "show" };
+const itemWords: Record<string, string> = { movie: "movie", show: "show", artist: "artist" };
 import { phraseNextRun } from "./nextRun";
 import { libraryQs } from "./collectionShelf";
 

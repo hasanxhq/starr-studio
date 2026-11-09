@@ -98,7 +98,7 @@ function CategoryCard({
 
 /** Ready-made category grid (Collections → Ready-made tab). */
 export function ReadyMadeTab({ search = "", compact = true }: { search?: string; compact?: boolean }) {
-  const { library, overview } = useLibrary();
+  const { library, libraryType, overview } = useLibrary();
   const data = useQuery({
     queryKey: ["ready-made", "library", library],
     queryFn: () => api.readyMade.library(library!),
@@ -123,6 +123,18 @@ export function ReadyMadeTab({ search = "", compact = true }: { search?: string;
         </Link>
         .
       </p>
+    );
+  }
+
+  if (libraryType === "artist") {
+    return (
+      <div className="flex max-w-lg flex-col gap-3">
+        <h2 className="text-lg font-semibold">Ready-made collections for music are coming soon</h2>
+        <p className="text-sm text-muted">Until then, make your own in the builder.</p>
+        <Link className="min-h-11 text-sm underline hover:text-text" to={`/collections/new?library=${encodeURIComponent(library)}`}>
+          New collection
+        </Link>
+      </div>
     );
   }
 

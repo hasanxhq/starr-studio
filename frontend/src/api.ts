@@ -566,7 +566,7 @@ export type ReadyMadeCategorySummary = {
 
 export type ReadyMadeLibrary = {
   library: string;
-  library_type: "movie" | "show" | null;
+  library_type: "movie" | "show" | "artist" | null;
   counted_at: string | null;
   counting: boolean;
   categories: ReadyMadeCategorySummary[];

@@ -85,6 +85,7 @@ function FilterPreviewBody({ preview, updating }: { preview: BuilderPreview | un
         <li key={item.rating_key} className="flex flex-col gap-1">
           <PlexPoster thumb={item.thumb} title={item.title} />
           <span className="line-clamp-2 text-xs font-medium">{item.title}</span>
+          {item.artist != null && item.artist !== "" && <span className="text-xs text-muted">{item.artist}</span>}
           {item.year != null && <span className="text-xs text-muted">{item.year}</span>}
         </li>
       ))}
@@ -105,7 +106,7 @@ export function BuilderShelf({
   requestsEnabled,
 }: {
   library: string;
-  libraryType: "movie" | "show";
+  libraryType: "movie" | "show" | "artist";
   mode: StartMode;
   sources: Source[];
   draft: Draft;
