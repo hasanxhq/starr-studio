@@ -6,7 +6,7 @@ Instructions for anyone, human or agent, working on this repository. `CLAUDE.md`
 
 A studio for organising your Plex library, with the *arr suite: collections, posters, overlays and playlists, with Radarr, Sonarr or Seerr fetching what's missing. It is unofficial and powered by [Kometa](https://github.com/Kometa-Team/Kometa): Studio owns the configuration (collections are rows in its database), writes Kometa's YAML files from it, schedules runs, launches Kometa as a one-shot subprocess (`--run`), and records what changed. The current plan is `KOMETA_STUDIO_HANDOFF_v2.md`; the UI rework (library-first navigation, Home, Collections, builder and overlay studio) is planned in `docs/plans/ui-rework.md`.
 
-**Never modify Kometa.** No patches, no imports of Kometa internals. Studio only writes the user's own config and YAML files that Kometa reads.
+**Never modify Kometa.** No patches, no imports of Kometa internals. Studio only writes the user's own config and YAML files that Kometa reads. Studio may copy code from Kometa (MIT) into `starr_studio/` when it needs the same behaviour, such as overlay detection rules and original-poster handling for its own overlay engine (`docs/plans/overlay-engine.md`): keep Kometa's copyright notice at the top of the copied code and name the Kometa file it came from.
 
 ## Layout
 

@@ -3,7 +3,7 @@
 A plan for Starr Studio to draw poster overlays itself, instead of through Kometa, with an editor that responds like a photo editing app.
 
 - **Where things stand:** `dev` at `2d22c26` (PR #133), 2026-11-10. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** planned; nothing built. Phase 0 (a spike, no Plex writes) is next once the maintainer agrees to the open decisions at the end.
+- **Status:** planned; nothing built. Decisions D1–D4 accepted on 2026-11-10 (see the end); styles are YAML files (3.6). Phase 0 (a spike, no Plex writes) is next.
 - **Why now:** the maintainer finds the overlay studio slow and clunky, and the look stale. Mock-ups on real posters (2026-11-10: glassy, modern streaming and minimal, each in two free versions and one Kometa-drawable version) showed that Kometa can draw most of the shapes, but:
   - **its rules can't keep a style off some titles**, so two overlay sets overlap on the same poster;
   - **every change is a whole Kometa run**: 3 of the 3.2 minutes of run 25 were overlays (90 s choosing titles, 86 s drawing 185 posters, 32 s uploading);
@@ -15,7 +15,7 @@ The maintainer's pick is **Modern streaming, version C** (dark band at the botto
 
 These extend `AGENTS.md` and match `docs/plans/ui-rework.md` and `docs/plans/music-library.md`:
 
-1. **Never modify Kometa, never import it.** This plan copies some of Kometa's overlay logic (MIT licence, notice kept) into `starr_studio/`. That is a change to `AGENTS.md` ("no imports of Kometa internals" stays; "copy with attribution" is new) and needs the maintainer's yes: decision D1.
+1. **Never modify Kometa, never import it.** This plan copies some of Kometa's overlay logic (MIT licence, notice kept) into `starr_studio/`. `AGENTS.md` allows that since D1: "no imports of Kometa internals" stays; "copy with attribution" is new.
 2. **Posters are the user's data.** Studio never uploads a poster without a stored original it can restore, never deletes an original, and never draws on a poster another tool (Maintainerr, Kometa, the user) has just changed without noticing it first.
 3. **One engine per library.** A library's overlays come from Kometa *or* Studio, never both. Switching is explicit and per library.
 4. **Ask before Plex changes.** Phases 0 and 1 write nothing to Plex. Anything that uploads posters is tried on items the maintainer names before any whole library, and switching a library over needs a yes each time.
@@ -128,14 +128,83 @@ The engine draws on several processor cores at once and uploads a few posters at
 - **Maintainerr's overlays win.** Studio doesn't draw on titles that are in Maintainerr's collections. When one leaves, Studio notices the poster change (3.4) and draws again.
 - **Kometa:** switching a library to Studio's engine removes that library's `overlay_files` from config.yml (Studio owns the config), imports Kometa's originals, and redraws. Kometa's later runs skip overlays for that library, so they get faster. Switching back restores the originals and puts the old `overlay_files` back from the backup.
 
-### 3.6 Templates
+### 3.6 Styles are YAML files
 
-A template is a scene with a few named options (accent colour, band darkness, top or bottom, which ratings, NEW for how many days). Studio ships three, from the mock-ups: **Modern streaming** (first), **Glassy** and **Minimal**. Users:
-- pick one in a gallery, shown on their own posters;
-- change its options;
-- then optionally open it in the free editor.
+A style (template) is one YAML file. The GUI and the file are two views of the same thing: everything the editor does is written to the file, and anything written in the file shows in the editor. Power users can edit the file, share it and keep it in git. Everyone else never sees it (working rule: no YAML in the main UI, raw YAML behind a disclosure).
 
-Templates export and import as files.
+**Why YAML:**
+- Kometa users already know it.
+- It allows comments.
+- Studio already rewrites YAML keeping the user's comments (ruamel, as for config.yml).
+- Studio already checks YAML against a schema in the browser (`frontend/src/yaml/`).
+
+**The format** (version 1), Modern streaming C as the example:
+
+```yaml
+studio_style: 1                    # format version, for later migrations
+name: Modern streaming
+description: Dark band at the bottom with scores, quality and sound.
+canvas: poster                     # 1000×1500 units; season, episode, album later
+fonts: [Inter]                     # shipped with Studio, or files in config/studio/fonts/
+
+options:                           # what a library can change without editing the file
+  accent:   { type: colour, default: "#E50914", label: Accent colour }
+  band:     { type: percent, default: 65, label: Band darkness }
+  new_days: { type: number, default: 14, min: 0, label: Show NEW for how many days (0 = never) }
+  ratings:  { type: choice, multiple: true, default: [imdb, rt_critic],
+              choices: [imdb, rt_critic, rt_audience, tmdb], label: Ratings }
+
+elements:
+  - id: band
+    type: rect
+    box: { left: 0, right: 0, bottom: 0, height: 17% }
+    fill: { colour: "#000000", opacity: $band }
+
+  - id: scores
+    type: row                      # lays children left to right; hidden ones close up
+    box: { left: 48, bottom: 150 }
+    gap: 36
+    children:
+      - { type: logo, image: imdb, height: 64, show_when: { has: imdb, option: { ratings: imdb } } }
+      - { type: text, text: "{imdb}", font: Inter Bold, size: 54, show_when: { has: imdb, option: { ratings: imdb } } }
+      - { type: logo, image: rt_fresh, height: 64, show_when: { has: rt_critic, option: { ratings: rt_critic } } }
+      - { type: text, text: "{rt_critic}%", font: Inter Bold, size: 54, show_when: { has: rt_critic, option: { ratings: rt_critic } } }
+
+  - id: quality
+    type: row
+    box: { left: 48, bottom: 52 }
+    gap: 22
+    children:
+      - { type: text, text: "{resolution}", font: Inter Bold, size: 42, outline: { colour: "#FFFFFF", width: 3, radius: 8, padding: [6, 13] } }
+      - { type: text, text: "{hdr}", font: Inter Bold, size: 42, colour: "#E1E1E1", show_when: { has: hdr } }
+      - { type: text, text: "{audio}", font: Inter Bold, size: 42, colour: "#E1E1E1" }
+
+  - id: new
+    type: text
+    text: NEW
+    box: { left: 40, top: 40 }
+    font: Inter ExtraBold
+    size: 40
+    background: { colour: $accent, radius: 14, padding: [16, 40] }
+    show_when: { added_within_days: $new_days }
+```
+
+**Rules of the format:**
+- **Boxes** are pinned to poster edges (`left`, `right`, `top`, `bottom`, or `centre`) in poster units (1000 wide) or percentages. That's what keeps a style right on any poster size, and what the editor's snapping writes.
+- **Element types:** `rect`, `text`, `logo` (shipped badge images or the user's own PNG/SVG), `image`, `row` and `column` (flow layout: the piece Kometa lacks), and `group`.
+- **Effects** on any element: `shadow`, `blur_behind` (frosted glass), `gradient`, `opacity`, `outline`.
+- **Text** fills `{placeholders}` from the title's facts (3.2): `{resolution}`, `{hdr}`, `{audio}`, `{channels}`, `{imdb}`, `{rt_critic}`, `{rt_audience}`, `{tmdb}`, `{edition}`, `{year}`, `{runtime}` and so on.
+- **`show_when`** uses the rule model of 3.3 (`has`, equals, lists, `added_within_days`, `any` / `all` / `not`), plus `option:` to tie an element to an option.
+- **`$name`** refers to an option. There are no expressions and no loops. That keeps files readable and every file safely editable in the GUI.
+- **Power users' escape hatch:** an `svg` element with a raw SVG fragment. It is checked against an allow-list (no scripts, no external links), and the GUI shows it as one box it can move but not edit inside.
+- **Validation:** a JSON Schema for the format checks the YAML in the browser editor (with completion) and on the server before anything is drawn. A file that fails is never applied.
+
+**Where styles live:**
+- **Shipped styles** sit in the Studio image (`starr_studio/styles/`) and are read-only. "Duplicate" copies one to edit.
+- **The user's styles** are files in `config/studio/styles/`. Studio picks up a file edited there by hand.
+- **A library's choice** of style and its option values (for example accent colour) sit in Studio's database, so one style file serves many libraries with different options.
+
+**Sharing:** Export gives the YAML file, plus any custom logos and fonts it uses, as a zip. Import takes the same and validates it first.
 
 ### 3.7 The editor
 
@@ -164,8 +233,8 @@ Each step is one branch and one PR.
 2. Upload, hash, fingerprint and skip; noticing replaced posters; restore; dry run; per-title Apply / Restore / Repair.
 3. Proved on titles the maintainer names, then on one library they choose.
 
-### Phase 3: Modern streaming template and gallery
-The template with its options; the gallery on the user's own posters; Apply.
+### Phase 3: style files, Modern streaming and the gallery
+The style format (3.6) with its JSON Schema and loader; Modern streaming as the first shipped style; the gallery on the user's own posters; options per library; Apply; the YAML view behind a disclosure; export and import.
 
 ### Phase 4: the editor
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
@@ -176,12 +245,13 @@ Per-library switch from Kometa (3.5); triggers after imports; nightly check; the
 ### Later
 TV seasons and episodes, more rating sources (MDBList, Trakt, Letterboxd), music album covers, per-title overrides, sharing templates.
 
-## 5. Open decisions for the maintainer
+## 5. Decisions (accepted 2026-11-10)
 
-- **D1. Copying Kometa code.** Allow Studio to copy parts of Kometa's overlay logic (MIT, notice kept), mainly the detection rules and the originals handling, into `starr_studio/`, and update `AGENTS.md` to say so. *Recommended: yes.*
-- **D2. Renderer.** SVG drawn by resvg on the server and by the browser in the editor (3.1), confirmed by Phase 0; the Pillow fallback only if Phase 0 fails. *Recommended: SVG + resvg.*
-- **D3. First scope.** Movie and show posters first; seasons, episodes and music later. *Recommended: yes.*
-- **D4. Existing Kometa overlay layers.** When a library switches, offer a template instead of converting Kometa's built-in layers one for one. Conversion would mean re-creating Kometa's look, which is what the maintainer wants to leave. *Recommended: offer templates; keep Kometa's overlays on libraries not switched.*
+- **D1. Copying Kometa code:** yes. Studio may copy parts of Kometa's overlay logic (MIT, notice kept) into `starr_studio/`; `AGENTS.md` says so.
+- **D2. Renderer:** SVG drawn by resvg on the server and by the browser in the editor (3.1), confirmed by Phase 0; a Pillow renderer only if Phase 0 fails.
+- **D3. First scope:** movie and show posters; seasons, episodes and music later.
+- **D4. Existing Kometa layers:** offer templates when a library switches, rather than converting Kometa's built-in layers; libraries not switched keep Kometa's overlays.
+- **Styles are YAML files** (3.6), editable both in the GUI and by hand, at the maintainer's request for power users.
 
 ## Sources
 
