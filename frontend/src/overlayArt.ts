@@ -43,9 +43,7 @@ function resolutionKey(value: string): string {
   if (s === "720" || s === "hd") return "720p";
   if (s === "576") return "576p";
   if (s === "sd" || s === "480") return "480p";
-  if (/^\d+p$/.test(s)) return s;
-  if (/^\d+$/.test(s)) return `${s}p`;
-  return SAMPLE_RESOLUTION;
+  return SAMPLE_RESOLUTION; // Kometa only has art for 4K, 1080p, 720p, 576p and 480p
 }
 
 const pickStyle = (vars: Vars, key: string, fallback: string, allowed: readonly string[]) => {
@@ -80,7 +78,8 @@ function ratingArt(item: PlexItem | null, vars: Vars, slot: string | undefined):
   const score = source === "audience" && item?.audience_rating != null ? item.audience_rating : source === "user" ? SAMPLE_USER_SCORE : SAMPLE_CRITIC_SCORE;
   const level = score >= (Number(vars.fresh_rating) || 6) ? "Fresh" : "Rotten";
   // image_extra in ratings.yml (its "Top" art needs a top-list flag Studio doesn't have).
-  const extra = RT_DIRECT.includes(source) && level === "Fresh" ? "Direct" : ["rt_popcorn", "rt_tomato", "critic", "audience"].includes(logo) ? level : "";
+  const rt = logo === "rt_popcorn" || logo === "rt_tomato"; // only Rotten Tomatoes has Direct art
+  const extra = rt && RT_DIRECT.includes(source) && level === "Fresh" ? "Direct" : rt || logo === "critic" || logo === "audience" ? level : "";
   const file = LOGO_FILES[logo];
   const text = PERCENT_LOGOS.includes(logo) ? `${Math.round(score * 10)}%` : oneDecimal(score);
   return file ? { image: `rating/${file}${extra}.png`, text } : { text };
@@ -96,8 +95,8 @@ function contentRatingKey(region: "us" | "uk" | "de" | "au" | "nz", rating: stri
       if (has("tv-ma", "ma-17")) return "tv-ma";
       if (has("tv-14", "tv-13")) return "tv-14";
       if (has("tv-pg")) return "tv-pg";
-      if (has("tv-y7")) return "tv-y7";
-      if (has("tv-y", "tv-g")) return "tv-g";
+      if (has("tv-y")) return "tv-y"; // TV-Y7 too: content_rating_us_show.yml draws it with the TV-Y art
+      if (has("tv-g")) return "tv-g";
       return "tv-14";
     }
     if (has("nc-17", "nc17")) return "nc-17";

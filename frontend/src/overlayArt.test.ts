@@ -109,6 +109,8 @@ describe.skipIf(!existsSync(kometaImages))("Kometa overlay images", () => {
       { item: item({ type: "show", content_rating: "TV-MA" }), vars: { style: "white", image_level: "Rotten" } },
       { item: item({ video_resolution: "720", audio_codec: "aac", content_rating: "G" }), vars: { style: "compact", use_subtitles: true, rating1: "tmdb", rating2: "user", rating3: "plex_tomatoesaudience" } },
       { item: item({ audience_rating: 3 }), vars: { rating1: "critic", rating2: "audience", rating3: "mdb_letterboxd", rating1_image: "rt_popcorn" } },
+      { item: item({ type: "show", content_rating: "TV-Y7", video_resolution: "1440" }), vars: { rating1: "mdb_tomatoes", rating1_image: "imdb", rating2: "plex_tomatoesaudience" } },
+      { item: item({ type: "show", content_rating: "TV-Y", video_resolution: "360" }), vars: {} },
     ];
     for (const name of OVERLAY_DEFAULTS) {
       for (const row of matrix) {
