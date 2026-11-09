@@ -70,8 +70,16 @@ describe("layerArt", () => {
   it("draws content ratings and audience scores from the item", () => {
     expect(layerArt("content_rating_us_movie", item({ content_rating: "R" }), {})).toEqual({ image: "cr/usrc.png" });
     expect(layerArt("content_rating_us_movie", item({ content_rating: "unknown-mpaa" }), {})).toEqual({ image: "cr/uspg-13c.png" });
-    expect(layerArt("ratings", item(), { rating1: "audience" }, "audience")).toMatchObject({ image: "rating/AudienceFresh.png", text: "7.8" });
-    expect(layerArt("ratings", item({ audience_rating: null }), { rating1: "critic" }, "critic")).toMatchObject({ text: "8.2" });
+    expect(layerArt("ratings", item(), { rating1: "audience" }, "rating1")).toEqual({ image: "rating/AudienceFresh.png", text: "7.8" });
+    expect(layerArt("ratings", item({ audience_rating: null }), { rating2: "critic" }, "rating2")).toEqual({ image: "rating/CriticFresh.png", text: "8.2" });
+  });
+
+  it("draws ratings the way ratings.yml does: the slot's source, its chosen logo and Fresh or Rotten", () => {
+    expect(layerArt("ratings", item(), { rating1: "critic", rating1_image: "rt_tomato" }, "rating1")).toEqual({ image: "rating/RT-Crit-Fresh.png", text: "82%" });
+    expect(layerArt("ratings", item(), { rating1: "plex_tomatoes" }, "rating1")).toEqual({ image: "rating/RT-Crit-Direct.png", text: "82%" });
+    expect(layerArt("ratings", item(), { rating1: "critic", fresh_rating: 9 }, "rating1")).toEqual({ image: "rating/CriticRotten.png", text: "8.2" });
+    expect(layerArt("ratings", item(), { rating3: "imdb" }, "rating3")).toEqual({ image: "rating/IMDb.png", text: "8.2" });
+    expect(layerArt("ratings", item(), { rating1: "none" }, "rating1")).toEqual({});
   });
 
   it("covers text-only and image defaults with sensible samples", () => {
@@ -86,7 +94,7 @@ describe("layerArt", () => {
 
   it("returns something for every Kometa overlay default name", () => {
     for (const name of OVERLAY_DEFAULTS) {
-      const art = layerArt(name, item(), name === "episode_info" ? {} : {}, name === "ratings" ? "audience" : undefined);
+      const art = layerArt(name, item(), name === "ratings" ? { rating1: "audience" } : {}, name === "ratings" ? "rating1" : undefined);
       expect(art.image ?? art.text, name).toBeTruthy();
     }
   });
@@ -99,11 +107,12 @@ describe.skipIf(!existsSync(kometaImages))("Kometa overlay images", () => {
       { item: null, vars: {} },
       { item: item(), vars: { style: "standard", color: false } },
       { item: item({ type: "show", content_rating: "TV-MA" }), vars: { style: "white", image_level: "Rotten" } },
-      { item: item({ video_resolution: "720", audio_codec: "aac", content_rating: "G" }), vars: { style: "compact", use_subtitles: true, rating1: "tmdb", rating2: "user" } },
+      { item: item({ video_resolution: "720", audio_codec: "aac", content_rating: "G" }), vars: { style: "compact", use_subtitles: true, rating1: "tmdb", rating2: "user", rating3: "plex_tomatoesaudience" } },
+      { item: item({ audience_rating: 3 }), vars: { rating1: "critic", rating2: "audience", rating3: "mdb_letterboxd", rating1_image: "rt_popcorn" } },
     ];
     for (const name of OVERLAY_DEFAULTS) {
       for (const row of matrix) {
-        const badges = name === "ratings" ? (["critic", "audience", "user"] as const) : [undefined];
+        const badges = name === "ratings" ? ["rating1", "rating2", "rating3"] : [undefined];
         for (const badge of badges) {
           const art = layerArt(name, row.item, row.vars, badge);
           if (art.image) paths.add(art.image);

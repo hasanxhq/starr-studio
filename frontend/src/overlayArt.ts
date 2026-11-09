@@ -17,13 +17,11 @@ const SAMPLE_RUNTIME_H = 2;
 const SAMPLE_RUNTIME_M = 14;
 const SAMPLE_STATUS = "RETURNING";
 const SAMPLE_EPISODE = { season: 1, episode: 5 };
-const SAMPLE_CRITIC_SCORE = "8.2";
-const SAMPLE_USER_SCORE = "7.5";
+const SAMPLE_CRITIC_SCORE = 8.2;
+const SAMPLE_USER_SCORE = 7.5;
 const SAMPLE_AGE_COMMONSENSE = "13";
 const SAMPLE_VIDEO_FORMAT = "WEB";
 const SAMPLE_ASPECT = "1.78";
-
-const RATING_LEVEL = "Fresh";
 
 const CODEC_TO_KEY: Record<string, string> = {
   truehd: "truehd",
@@ -58,64 +56,34 @@ const pickStyle = (vars: Vars, key: string, fallback: string, allowed: readonly 
 
 const oneDecimal = (n: number) => (Math.round(n * 10) / 10).toFixed(1);
 
-const ratingLevel = (vars: Vars) => String(vars.image_level ?? RATING_LEVEL);
+// ratings.yml: rating<n> is where the score comes from; rating<n>_image, or else that source's own logo, is the picture.
+const RATING_LOGOS: Record<string, string> = {
+  tmdb: "tmdb", mdb_tmdb: "tmdb", plex_tmdb: "tmdb", imdb: "imdb", mdb_imdb: "imdb", plex_imdb: "imdb", omdb_imdb: "imdb",
+  omdb_tomatoes: "rt_tomato", omdb_metascore: "metacritic", omdb: "omdb", anidb: "anidb", anidb_average: "anidb", anidb_score: "anidb",
+  mdb_letterboxd: "letterboxd", mdb_metacritic: "metacritic", mdb_metacriticuser: "metacritic", mdb_tomatoesaudience: "rt_popcorn",
+  plex_tomatoesaudience: "rt_popcorn", mdb_tomatoes: "rt_tomato", plex_tomatoes: "rt_tomato", serializd: "serializd", mal: "mal",
+  mdb_myanimelist: "mal", mdb: "mdb", mdb_average: "mdb", user: "star", floppy: "floppy", critic: "critic", audience: "audience",
+};
+const LOGO_FILES: Record<string, string> = {
+  anidb: "AniDB", imdb: "IMDb", floppy: "Floppy", omdb: "OMDb", letterboxd: "Letterboxd", mdb: "MDBList", metacritic: "Metacritic",
+  rt_popcorn: "RT-Aud-", rt_tomato: "RT-Crit-", tmdb: "TMDb", serializd: "Serializd", mal: "MAL", star: "Star", critic: "Critic", audience: "Audience",
+};
+const PERCENT_LOGOS = ["rt_popcorn", "rt_tomato", "tmdb"]; // Kometa writes these as a percentage
+const RT_DIRECT = ["mdb_tomatoes", "mdb_tomatoesaudience", "plex_tomatoes", "plex_tomatoesaudience"];
 
-/** rating.yml image_url plus optional Fresh/Rotten/Top/Direct suffix. */
-function ratingImagePath(source: string, vars: Vars): string | undefined {
-  const level = ratingLevel(vars);
-  const plex = (base: string) => `rating/${base}${level === "Top" ? "Top" : level}.png`;
-  switch (source) {
-    case "critic":
-      return plex("Critic");
-    case "audience":
-      return plex("Audience");
-    case "user":
-      return "rating/Star.png";
-    case "imdb":
-      return level === "Top" ? "rating/IMDbTop.png" : "rating/IMDb.png";
-    case "tmdb":
-      return "rating/TMDb.png";
-    case "metacritic":
-      return level === "Top" ? "rating/MetacriticTop.png" : "rating/Metacritic.png";
-    case "mdb_tomatoes":
-    case "plex_tomatoes":
-      return `rating/RT-Crit-${level}.png`;
-    case "mdb_tomatoesaudience":
-    case "plex_tomatoesaudience":
-      return `rating/RT-Aud-${level}.png`;
-    case "letterboxd":
-      return "rating/Letterboxd.png";
-    case "mal":
-      return "rating/MAL.png";
-    case "mdb":
-      return "rating/MDBList.png";
-    default:
-      return undefined;
-  }
-}
-
-function ratingText(source: string, item: PlexItem | null, vars: Vars): string | undefined {
-  const level = ratingLevel(vars);
-  const percentSources = new Set(["tmdb", "mdb_tmdb", "plex_tmdb", "mdb_tomatoes", "plex_tomatoes", "mdb_tomatoesaudience", "plex_tomatoesaudience"]);
-  const samplePercent = "87%";
-  if (percentSources.has(source)) return samplePercent;
-  if (source === "audience" && item?.audience_rating != null) return oneDecimal(item.audience_rating);
-  if (source === "critic") return SAMPLE_CRITIC_SCORE;
-  if (source === "audience") return item?.audience_rating != null ? oneDecimal(item.audience_rating) : "7.8";
-  if (source === "user") return SAMPLE_USER_SCORE;
-  if (["critic", "audience", "user"].includes(source) && (level === "Fresh" || level === "Rotten")) {
-    return source === "user" ? SAMPLE_USER_SCORE : SAMPLE_CRITIC_SCORE;
-  }
-  return "7.8";
-}
-
-function activeRatingSource(vars: Vars, badge?: string): string | undefined {
-  if (badge) return badge;
-  for (const n of [1, 2, 3]) {
-    const r = vars[`rating${n}`];
-    if (typeof r === "string" && r !== "none") return r;
-  }
-  return undefined;
+/** One rating badge: `slot` is rating1, rating2 or rating3. Fresh or Rotten art follows the score against fresh_rating. */
+function ratingArt(item: PlexItem | null, vars: Vars, slot: string | undefined): LayerArt {
+  const source = slot ? vars[slot] : undefined;
+  if (typeof source !== "string" || source === "none") return {};
+  const chosen = vars[`${slot}_image`];
+  const logo = typeof chosen === "string" ? chosen : RATING_LOGOS[source];
+  const score = source === "audience" && item?.audience_rating != null ? item.audience_rating : source === "user" ? SAMPLE_USER_SCORE : SAMPLE_CRITIC_SCORE;
+  const level = score >= (Number(vars.fresh_rating) || 6) ? "Fresh" : "Rotten";
+  // image_extra in ratings.yml (its "Top" art needs a top-list flag Studio doesn't have).
+  const extra = RT_DIRECT.includes(source) && level === "Fresh" ? "Direct" : ["rt_popcorn", "rt_tomato", "critic", "audience"].includes(logo) ? level : "";
+  const file = LOGO_FILES[logo];
+  const text = PERCENT_LOGOS.includes(logo) ? `${Math.round(score * 10)}%` : oneDecimal(score);
+  return file ? { image: `rating/${file}${extra}.png`, text } : { text };
 }
 
 /** First matching overlay key from Plex content_rating, else a sensible regional default. */
@@ -217,13 +185,7 @@ const HANDLERS: Record<string, (item: PlexItem | null, vars: Vars, badge?: strin
     const resolved = (plex && CODEC_TO_KEY[plex]) || SAMPLE_CODEC;
     return { image: `audio_codec/${style}/${resolved}.png` };
   },
-  ratings: (item, vars, badge) => {
-    const source = activeRatingSource(vars, badge);
-    if (!source) return {};
-    const image = ratingImagePath(source, vars);
-    const text = ratingText(source, item, vars);
-    return { ...(image ? { image } : {}), ...(text ? { text } : {}) };
-  },
+  ratings: ratingArt,
   streaming: (_item, vars) => {
     const style = pickStyle(vars, "style", "color", ["color", "white"]);
     const STREAMING_NAMES: Record<string, string> = { netflix: "Netflix", amazon: "Prime Video", disney: "Disney", hbomax: "HBO-Max", hulu: "Hulu" };
@@ -302,7 +264,7 @@ const HANDLERS: Record<string, (item: PlexItem | null, vars: Vars, badge?: strin
 
 /** What one badge of overlay default `name` shows on `item`. `vars` are the layer's template variables after
  *  resolveLayout (the default's own values plus the user's). `badge` is the rating slot for `ratings`
- *  ("critic" | "audience" | "user"), undefined otherwise. Returns {} when Studio can't tell, and the caller keeps the plain box. */
+ *  ("rating1" | "rating2" | "rating3"), undefined otherwise. Returns {} when Studio can't tell, and the caller keeps the plain box. */
 export function layerArt(name: string, item: PlexItem | null, vars: Record<string, unknown>, badge?: string): LayerArt {
   const handler = HANDLERS[name];
   if (!handler) return {}; // unknown default file name
