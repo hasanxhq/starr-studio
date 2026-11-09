@@ -3,7 +3,8 @@
 A plan to add Plex music library management to Starr Studio. Starr Studio owns Kometa's configuration and uses Kometa as its run engine. Today Studio handles movie and TV show libraries; this plan extends management to music libraries.
 
 - **Where things stand:** `dev` at `4a7c2f6` (PR #122), 2026-11-09. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** a plan only. Nothing here is built yet. The maintainer answered the open questions on 2026-11-09 (section 6): Phase 1 can start.
+- **Status:** Phase 1 built on 2026-11-09 (music libraries in Studio, artist and album collections). Phases 2 and 3 not started.
+- **Phase 1 as built differs in one way:** album collections are a `plex_search` with `builder_level: album`, not a `smart_filter`: Kometa refuses `builder_level` on smart collections and `minimum_items` on album ones (`kometa/modules/builder.py` `smart_invalid`, `parts_collection_valid`).
 
 ## Working rules
 
