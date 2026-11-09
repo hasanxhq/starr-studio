@@ -243,7 +243,7 @@ export function OverlayPoster({
           color: box.textColor,
           borderRadius: `${(box.radius / POSTER_WIDTH) * 100}cqw`,
           fontSize,
-          touchAction: onBoxDrop ? "none" : undefined,
+          touchAction: onBoxDrop && selected === layerKey(box) ? "none" : undefined, // a finger scrolls past unselected badges
         };
         const look = `absolute flex items-center justify-center overflow-hidden px-[1cqw] text-center font-display leading-none font-semibold text-white ${selected === layerKey(box) ? "outline-2 outline-accent" : ""}`;
         const aria = boxAriaLabel?.(box) ?? `Select ${box.label}`;
@@ -260,6 +260,7 @@ export function OverlayPoster({
               onBoxDrop
                 ? (event) => {
                     if (event.button > 0) return; // only the main button drags (jsdom leaves it undefined)
+                    if (event.pointerType === "touch" && selected !== layerKey(box)) return; // tap to pick it first
                     event.currentTarget.setPointerCapture?.(event.pointerId);
                     dragRef.current = { box, startClientX: event.clientX, startClientY: event.clientY, startX: box.x, startY: box.y, dx: 0, dy: 0 };
                     bump();

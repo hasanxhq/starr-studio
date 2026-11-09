@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ConfigLibrary, DefaultsCatalogue, FileReference, OverlayLayout, OverlayLibrary, PlexItem } from "../api";
@@ -298,5 +298,72 @@ describe("The overlay studio", () => {
     fireEvent.click(within(settings()).getByRole("button", { name: "Remove layer" }));
     fireEvent.click(within(settings()).getByRole("button", { name: "Turn off Resolution" }));
     await waitFor(() => expect(calls.some((c) => c.route === "DELETE /config/libraries/Movies/defaults/overlay/resolution")).toBe(true));
+  });
+
+  it("removes a layer from its row's x without asking about another layer's unsaved edits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = mockApi({ ...routes, "POST /overlays/Movies/estimate": () => ({ posters: 10, minutes: 1 }), "DELETE /config/libraries/Movies/defaults/overlay/status": () => saved });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(screen.getByRole("button", { name: "Bottom left" })); // an unsaved edit to Resolution
+    await vi.advanceTimersByTimeAsync(500);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Status" }));
+    expect(screen.getByText("Turn off Status?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
+    await waitFor(() => expect(calls.some((c) => c.route === "DELETE /config/libraries/Movies/defaults/overlay/status")).toBe(true));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Overlay changes" })).toBeInTheDocument(); // Resolution's edit is still there
+    vi.useRealTimers();
+  });
+
+  it("keeps a layer when its row's x is answered with Keep", async () => {
+    const calls = mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Status" }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep" }));
+    expect(layerRow("Status")).toBeInTheDocument();
+    expect(calls.some((c) => c.route.startsWith("DELETE"))).toBe(false);
+  });
+
+  it("suggests the most used layers first", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=TV%20Shows");
+    await layers();
+    const add = (await screen.findByText("Add a layer")).parentElement!;
+    const names = within(add).getAllByRole("button").map((button) => button.textContent);
+    expect(names.slice(0, 3)).toEqual([expect.stringMatching(/^Ratings/), expect.stringMatching(/^Ribbon/), expect.stringMatching(/^Status/)]);
+    expect(names[3]).toMatch(/^Episode Info/); // not in the popular list: after it
+  });
+
+  it("lists the layer's other variables under More variables", async () => {
+    mockApi({ ...routes, "GET /config/libraries/Movies": () => ({ ...movies, overlay_files: [ref("resolution", { font: "fonts/Inter.ttf", use_edition: false })] }) });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const panel = settings();
+    expect(await within(panel).findByText("More variables (1)")).toBeInTheDocument(); // use_edition has its own switch
+    expect(within(panel).getByText("font")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Remove font" })).toBeInTheDocument();
+  });
+
+  it("lets a finger scroll past a badge that isn't selected", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    vi.spyOn(poster, "getBoundingClientRect").mockReturnValue({ width: 340, height: 510, top: 0, left: 0, bottom: 510, right: 340, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
+    const status = within(poster).getByRole("button", { name: /Status.*Drag/ });
+    expect(status.style.touchAction).toBe("");
+    expect(within(poster).getByRole("button", { name: /4K.*Drag/ }).style.touchAction).toBe("none"); // the selected one drags
+    const touch = (make: typeof createEvent.pointerDown, clientY: number) => {
+      const event = make(status, { clientX: 100, clientY, pointerId: 1 });
+      Object.defineProperty(event, "pointerType", { value: "touch" }); // jsdom drops it from the init
+      fireEvent(status, event);
+    };
+    touch(createEvent.pointerDown, 100);
+    touch(createEvent.pointerMove, 300);
+    touch(createEvent.pointerUp, 300);
+    expect(screen.queryByRole("region", { name: "Overlay changes" })).not.toBeInTheDocument();
+    expect(within(poster).getByRole("button", { name: /Status.*Drag/ }).style.touchAction).toBe("none"); // the tap picked it: now it drags
   });
 });

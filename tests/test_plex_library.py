@@ -6,7 +6,7 @@ from fakeplex import REMOTE_URI, SERVER_TOKEN, FakePlex
 from fastapi.testclient import TestClient
 
 from starr_studio.app import create_app
-from starr_studio.plex_library import PlexServer, delete_studio_collection
+from starr_studio.plex_library import PlexServer, PlexUnavailable, delete_studio_collection
 from starr_studio.settings import Settings
 
 
@@ -56,6 +56,27 @@ def test_posters_go_through_studio(tmp_path, config):
     assert SERVER_TOKEN not in str(image.headers)
     assert fake.requests[-1].url.params["width"] == "120"
     assert (refused.status_code, escaped.status_code) == (404, 404)
+
+
+def test_a_poster_plex_only_links_comes_from_its_image_service_without_the_token():
+    seen = []
+
+    def answer(request):
+        seen.append(request)
+        if request.url.host == "images.plex.tv":
+            return httpx.Response(200, content=b"\xff\xd8remote", headers={"content-type": "image/jpeg"})
+        target = "https://images.plex.tv/photo?url=x" if "/9128/" in request.url.path else "https://evil.example/photo"
+        return httpx.Response(302, headers={"location": target})
+
+    async def fetch(path):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(answer)) as client:
+            return await PlexServer(client, "http://plex:32400", "t0k").image(path, 80, 120)
+
+    assert asyncio.run(fetch("/library/metadata/9128/thumb/1")) == (b"\xff\xd8remote", "image/jpeg")
+    assert "x-plex-token" not in seen[-1].headers
+    with pytest.raises(PlexUnavailable):  # any other host isn't followed
+        asyncio.run(fetch("/library/metadata/8994/thumb/1"))
+    assert all(r.url.host != "evil.example" for r in seen)
 
 
 def test_exploring_a_collection_a_page_at_a_time(tmp_path, config):

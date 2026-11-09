@@ -95,16 +95,10 @@ export function VariablesEditor({
 }) {
   const [values, setValues] = useState<Values>(saved);
   const [badYaml, setBadYaml] = useState<Set<string>>(new Set());
-  const [custom, setCustom] = useState("");
-  const { keys, patterns } = useMemo(() => (root ? mappingKeys(root, schema) : { keys: [], patterns: [] }), [root, schema]);
+  const { keys } = useMemo(() => (root ? mappingKeys(root, schema) : { keys: [], patterns: [] }), [root, schema]);
   const known = new Map(keys.map((k) => [k.name, k]));
   const featured = featuredList.filter((f) => known.has(f.key));
   const handled = new Set([...designed, ...featured.map((f) => f.key), ...toggles.map((t) => `use_${t.key}`)]);
-  const addable = keys
-    .map((k) => k.name)
-    .filter((name) => !(name in values) && !handled.has(name))
-    .sort((a, b) => (COMMON.includes(a) === COMMON.includes(b) ? a.localeCompare(b) : COMMON.includes(a) ? -1 : 1));
-  const others = Object.entries(values).filter(([key]) => !handled.has(key));
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
   // YAML that doesn't parse never reaches `values`, but it's still typing that would be lost.
   const unsaved = dirty || badYaml.size > 0;
@@ -178,73 +172,7 @@ export function VariablesEditor({
         );
       })}
       {preview && <pre aria-label="What this writes to config.yml" className="overflow-x-auto rounded-control border border-border bg-bg p-3 font-mono text-xs leading-5 text-muted">{preview(values)}</pre>}
-      <details className="flex flex-col gap-4 text-sm" open={others.length > 0 || toggles.length + featured.length === 0}>
-        <summary className="min-h-11 cursor-pointer content-center text-muted hover:text-text">More variables{others.length > 0 && ` (${others.length})`}</summary>
-        <div className="flex flex-col gap-4">
-          {others.map(([key, value]) => {
-            const info = known.get(key);
-            const property = info?.schema ?? (root ? keySchema(root, schema, key) : undefined);
-            return (
-              <div key={key} className="flex items-start gap-2">
-                <div className="min-w-0 flex-1">
-                  {property ? (
-                    <SettingField name={key} root={root} schema={property} value={value} onChange={(next) => set(key, next)} onValidity={(ok) => validity(key, ok)} hint={info?.description ?? property.description} />
-                  ) : (
-                    <div className="flex flex-col gap-1.5 text-sm">
-                      <span className="font-mono text-xs text-muted">{key}</span>
-                      <YamlBox label={key} value={value} onChange={(next) => set(key, next)} onValidity={(ok) => validity(key, ok)} />
-                      <Problems messages={root ? ["Kometa's schema doesn't list this variable; it's kept as written."] : undefined} />
-                    </div>
-                  )}
-                </div>
-                <Button className="mt-6" aria-label={`Remove ${key}`} onClick={() => set(key, undefined)}>
-                  Remove
-                </Button>
-              </div>
-            );
-          })}
-          {addable.length > 0 && (
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span className="text-muted">Add a variable</span>
-              <select className={`${inputClass} font-mono`} value="" onChange={(e) => e.target.value && set(e.target.value, null)}>
-                <option value="">Choose from {addable.length}…</option>
-                {addable.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <div className="flex flex-col gap-1.5 text-sm">
-            <span className="text-muted">Add one by name</span>
-            <div className="flex gap-2">
-              <input
-                className={`${inputClass} font-mono`}
-                value={custom}
-                onChange={(e) => setCustom(e.target.value.trim())}
-                placeholder={patterns.length ? "e.g. use_netflix" : "variable"}
-                aria-label="Variable name"
-              />
-              <Button
-                disabled={!custom || custom in values}
-                onClick={() => {
-                  set(custom, null);
-                  setCustom("");
-                }}
-              >
-                Add
-              </Button>
-            </div>
-            {patterns.length > 0 && (
-              <span className="text-xs text-muted">
-                Per-collection variables, such as {patterns.map((p) => p.pattern.replace(/^\^|\$$/g, "").replace(/\(\?!.*?\)/g, "").replace(".+", "<key>")).slice(0, 4).join(", ")}. The
-                keys are on the default's wiki page.
-              </span>
-            )}
-          </div>
-        </div>
-      </details>
+      <MoreVariables root={root} schema={schema} values={values} set={set} handled={handled} onValidity={validity} openWhenEmpty={toggles.length + featured.length === 0} />
       {/* Pinned, as the panel can be taller than the screen. */}
       <div className="sticky -bottom-5 z-10 -mb-5 flex flex-col gap-2 bg-surface pt-1 pb-5">
         <Button variant="primary" type="submit" disabled={(!dirty && !alwaysSave) || badYaml.size > 0 || saving}>
@@ -258,5 +186,106 @@ export function VariablesEditor({
         </div>
       </div>
     </form>
+  );
+}
+
+/**
+ * Every other variable the default takes: the ones already set, each with its own control (or YAML when Kometa's schema
+ * doesn't list it), and a way to add more by picking from the schema or by name.
+ */
+export function MoreVariables({
+  root,
+  schema,
+  values,
+  set,
+  handled,
+  onValidity,
+  openWhenEmpty = false,
+}: {
+  root: JsonSchema | null;
+  schema: JsonSchema | undefined;
+  values: Values;
+  set: (key: string, value: unknown) => void;
+  handled: Set<string>; // variables with controls of their own elsewhere
+  onValidity?: (key: string, ok: boolean) => void;
+  openWhenEmpty?: boolean;
+}) {
+  const [custom, setCustom] = useState("");
+  const { keys, patterns } = useMemo(() => (root ? mappingKeys(root, schema) : { keys: [], patterns: [] }), [root, schema]);
+  const known = new Map(keys.map((k) => [k.name, k]));
+  const validity = (key: string, ok: boolean) => onValidity?.(key, ok);
+  const addable = keys
+    .map((k) => k.name)
+    .filter((name) => !(name in values) && !handled.has(name))
+    .sort((a, b) => (COMMON.includes(a) === COMMON.includes(b) ? a.localeCompare(b) : COMMON.includes(a) ? -1 : 1));
+  const others = Object.entries(values).filter(([key]) => !handled.has(key));
+  return (
+    <details className="flex flex-col gap-4 text-sm" open={others.length > 0 || openWhenEmpty}>
+      <summary className="min-h-11 cursor-pointer content-center text-muted hover:text-text">More variables{others.length > 0 && ` (${others.length})`}</summary>
+      <div className="flex flex-col gap-4">
+        {others.map(([key, value]) => {
+          const info = known.get(key);
+          const property = info?.schema ?? (root ? keySchema(root, schema, key) : undefined);
+          return (
+            <div key={key} className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                {property ? (
+                  <SettingField name={key} root={root} schema={property} value={value} onChange={(next) => set(key, next)} onValidity={(ok) => validity(key, ok)} hint={info?.description ?? property.description} />
+                ) : (
+                  <div className="flex flex-col gap-1.5 text-sm">
+                    <span className="font-mono text-xs text-muted">{key}</span>
+                    <YamlBox label={key} value={value} onChange={(next) => set(key, next)} onValidity={(ok) => validity(key, ok)} />
+                    <Problems messages={root ? ["Kometa's schema doesn't list this variable; it's kept as written."] : undefined} />
+                  </div>
+                )}
+              </div>
+              <Button className="mt-6" aria-label={`Remove ${key}`} onClick={() => set(key, undefined)}>
+                Remove
+              </Button>
+            </div>
+          );
+        })}
+        {addable.length > 0 && (
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted">Add a variable</span>
+            <select className={`${inputClass} font-mono`} value="" onChange={(e) => e.target.value && set(e.target.value, null)}>
+              <option value="">Choose from {addable.length}…</option>
+              {addable.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <div className="flex flex-col gap-1.5 text-sm">
+          <span className="text-muted">Add one by name</span>
+          <div className="flex gap-2">
+            <input
+              className={`${inputClass} font-mono`}
+              value={custom}
+              onChange={(e) => setCustom(e.target.value.trim())}
+              placeholder={patterns.length ? "e.g. use_netflix" : "variable"}
+              aria-label="Variable name"
+            />
+            <Button
+              disabled={!custom || custom in values}
+              onClick={() => {
+                set(custom, null);
+                setCustom("");
+              }}
+            >
+              Add
+            </Button>
+          </div>
+          {patterns.length > 0 && (
+            <span className="text-xs text-muted">
+              Per-collection variables, such as {patterns.map((p) => p.pattern.replace(/^\^|\$$/g, "").replace(/\(\?!.*?\)/g, "").replace(".+", "<key>")).slice(0, 4).join(", ")}. The
+              keys are on the default's wiki page.
+            </span>
+          )}
+        </div>
+      </div>
+    </details>
   );
 }

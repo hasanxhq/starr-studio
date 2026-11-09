@@ -3,6 +3,9 @@ import type { Featured } from "../../components/DefaultVariables";
 /** Variables placed in the Place tab rather than Style or More variables. */
 export const PLACEMENT = ["horizontal_align", "vertical_align", "horizontal_offset", "vertical_offset", "horizontal_position", "vertical_position", "rating_alignment"];
 
+/** "Add a layer" offers these first: the overlay defaults Kometa setups use most (Studio's own reading of shared configs). */
+export const POPULAR_LAYERS = ["resolution", "audio_codec", "ratings", "streaming", "ribbon", "video_format", "runtimes", "status", "network", "studio", "languages", "mediastinger", "versions"];
+
 /** The controls this default has, besides the anchor. */
 export function overlayFeatured(name: string, moved: "align" | "position" | undefined, libraryType: string | null): Featured[] {
   return [
