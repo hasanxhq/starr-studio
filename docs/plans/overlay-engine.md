@@ -126,6 +126,7 @@ The engine draws on several processor cores at once and uploads a few posters at
 ### 3.5 Maintainerr and Kometa
 
 - **Maintainerr's overlays win.** Studio doesn't draw on titles that are in Maintainerr's collections. When one leaves, Studio notices the poster change (3.4) and draws again.
+- **The switch is a setting:** Settings → Overlays has, for each library, "Overlays drawn by: Kometa / Starr Studio" (maintainer's request, 2026-11-10). Changing it runs the switch below after a confirmation that says how many posters will be redrawn. Kometa stays the default until a library is switched.
 - **Kometa:** switching a library to Studio's engine removes that library's `overlay_files` from config.yml (Studio owns the config), imports Kometa's originals, and redraws. Kometa's later runs skip overlays for that library, so they get faster. Switching back restores the originals and puts the old `overlay_files` back from the backup.
 
 ### 3.6 Styles are YAML files
@@ -258,7 +259,7 @@ The style format (3.6) with its JSON Schema and loader; Modern streaming as the 
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
 
 ### Phase 5: switching over and automation
-Per-library switch from Kometa (3.5); triggers after imports; nightly check; the Maintainerr guard; Glassy and Minimal templates.
+The Settings → Overlays switch per library (3.5); triggers after imports; nightly check; the Maintainerr guard; Glassy and Minimal templates.
 
 ### Later
 TV seasons and episodes, more rating sources (MDBList, Trakt, Letterboxd), music album covers, per-title overrides, sharing templates.
