@@ -21,7 +21,7 @@ Notes collected as we go, for the next audit. Each one is checked and fixed or t
 - size, colour, weight (`font_style`) and outline (`stroke_*`)
 - the preview draws the text in the chosen font, size and colour, as Kometa will
 
-**Open questions for the audit:**
-- Fonts: Kometa's bundled ones only, or also font files the user uploads? Uploads would need to land in Kometa's config folder.
-- Per layer only, or one setting that applies to every layer at once?
-- Serving the font files to the browser for the preview: reuse the overlay-images route pattern (read-only, inside `kometa/fonts/`).
+**Decided (2026-11-09):**
+- Kometa's bundled fonts only: no custom or uploaded fonts.
+- Font choice is per layer.
+- The preview gets the font files from a read-only route, like the overlay-images route: it serves only from `kometa/fonts/`, and anything else returns 404.
