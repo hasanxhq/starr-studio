@@ -276,6 +276,17 @@ describe("The overlay studio", () => {
     expect(settings().querySelector("pre")?.textContent).toContain("rating_alignment: horizontal");
   });
 
+  it("moves ratings between the middle anchors without jumping to the top", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: /Ratings.*Drag/ }));
+    fireEvent.click(within(settings()).getByRole("button", { name: "Middle right" }));
+    expect(await within(settings()).findByRole("button", { name: "Middle right", pressed: true })).toBeInTheDocument();
+    fireEvent.click(within(settings()).getByRole("button", { name: "Middle left" }));
+    expect(await within(settings()).findByRole("button", { name: "Middle left", pressed: true })).toBeInTheDocument();
+  });
+
   it("treats a short press on a box as select only", async () => {
     mockApi(routes);
     renderAt("/overlays?library=Movies");

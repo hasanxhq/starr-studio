@@ -39,6 +39,8 @@ const usable = (value: unknown): value is string | number => typeof value === "n
 
 /** The layout's values with these template variables, which win over the default's own rules. */
 export function resolveLayout(layout: OverlayLayout | undefined, own: Vars): Vars {
+  // A key set to undefined is left out, so Kometa's own value applies (as when the YAML is written), not "no value".
+  own = Object.fromEntries(Object.entries(own).filter(([, value]) => value !== undefined));
   const vars: Vars = { ...layout?.variables, ...own };
   // The alignments first: the offsets' rules look at them.
   const rules = Object.entries(layout?.conditionals ?? {}).sort(([a], [b]) => Number(b.endsWith("_align")) - Number(a.endsWith("_align")));
