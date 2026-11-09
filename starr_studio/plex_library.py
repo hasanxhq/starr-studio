@@ -48,7 +48,7 @@ class PlexCollection:
 
 @dataclass
 class PlexItem:
-    """A movie, show, artist or album in a collection."""
+    """A movie, show, artist, album or track in a collection."""
 
     rating_key: str
     title: str
@@ -62,7 +62,8 @@ class PlexItem:
     added_at: int | None
     video_resolution: str | None = None  # from Plex's media info, where the listing has it
     audio_codec: str | None = None
-    artist: str | None = None  # albums only: the album's artist
+    artist: str | None = None  # albums and tracks: the artist
+    album: str | None = None  # tracks only: the album
 
 
 @dataclass
@@ -427,8 +428,15 @@ def _item(m: dict) -> PlexItem:
         added_at=m.get("addedAt"),
         video_resolution=str(media["videoResolution"]) if media.get("videoResolution") else None,
         audio_codec=str(media["audioCodec"]) if media.get("audioCodec") else None,
-        artist=str(m["parentTitle"]) if m.get("type") == "album" and m.get("parentTitle") else None,
+        artist=_artist(m),
+        album=str(m["parentTitle"]) if m.get("type") == "track" and m.get("parentTitle") else None,
     )
+
+
+def _artist(m: dict) -> str | None:
+    """An album's or track's artist: the album's parent, the track's grandparent (or its own artist credit)."""
+    name = {"album": m.get("parentTitle"), "track": m.get("originalTitle") or m.get("grandparentTitle")}.get(str(m.get("type")))
+    return str(name) if name else None
 
 
 async def delete_studio_collection(

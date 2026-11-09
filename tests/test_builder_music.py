@@ -1,4 +1,4 @@
-"""The collection builder in a music library: artist and album collections from Plex filters (music plan, Phase 1)."""
+"""The collection builder in a music library: artist, album and track collections from Plex filters, and square art (music plan)."""
 
 from __future__ import annotations
 
@@ -105,4 +105,31 @@ def test_music_refuses_lists_requests_and_movie_rules(root, plex):
         assert response.status_code == 422, response.text
     assert "Kometa has no lists for music" in listed.text
     assert "can't request music" in download.text
-    assert "artists and albums" in level_on_movies.text
+    assert "artists, albums and tracks" in level_on_movies.text
+
+
+def test_track_level_has_its_own_sorts_and_preview(root, plex):
+    with make_client(root, plex)[0] as client:
+        fields = client.get("/api/v1/builder/fields", params={"library": "Music"}).json()
+        preview = client.post("/api/v1/builder/preview", json={"library": "Music", "filters": ROCK, "level": "track", "sort_by": "duration.desc"}).json()
+    tracks = next(level for level in fields["levels"] if level["key"] == "track")
+    assert tracks["label"] == "Tracks" and "duration.desc" in [s["key"] for s in tracks["sorts"]]
+    assert preview["problems"] == [] and preview["count"] == 4
+    assert (preview["items"][0]["artist"], preview["items"][0]["album"]) == ("Radiohead", "OK Computer")
+    asked = next(r for r in reversed(plex.requests) if r.url.path == "/library/sections/3/all")
+    assert asked.url.params["type"] == "10" and asked.url.params["sort"] == "duration:desc"
+
+
+def test_a_track_collection_with_square_art(root, plex):
+    client, _, _ = make_client(root, plex)
+    art = {"kind": "url", "url": "https://example.com/square.png"}
+    with client:
+        wait_for_flags(client)
+        made = client.post("/api/v1/collections", json=music("Rock Tracks", level="track", square_art=art, build=False))
+        assert made.status_code == 201, made.text
+        assert (made.json()["level"], made.json()["square_art"]) == ("track", art)
+        on_movies = client.post("/api/v1/collections", json=body(square_art=art))
+    collection = built_music(root)["Rock Tracks"]
+    assert (collection["builder_level"], collection["url_square_art"]) == ("track", art["url"])
+    assert "smart_filter" not in collection and "minimum_items" not in collection
+    assert on_movies.status_code == 422 and "square art" in on_movies.text

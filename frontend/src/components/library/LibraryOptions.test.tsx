@@ -21,7 +21,7 @@ const configSchema = {
             },
             genre_mapper: { type: "object", properties: {}, patternProperties: { "^.*$": { type: "string" } } },
             mass_poster_update: { type: "boolean" },
-            update_blank_track_titles: { type: "boolean", description: "Used to fill blank track titles." },
+            remove_title_parentheses: { type: "boolean" },
           },
         },
         { type: "array", items: { type: "object" } },

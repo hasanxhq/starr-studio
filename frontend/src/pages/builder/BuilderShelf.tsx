@@ -85,7 +85,13 @@ function FilterPreviewBody({ preview, updating }: { preview: BuilderPreview | un
         <li key={item.rating_key} className="flex flex-col gap-1">
           <PlexPoster thumb={item.thumb} title={item.title} />
           <span className="line-clamp-2 text-xs font-medium">{item.title}</span>
-          {item.artist != null && item.artist !== "" && <span className="text-xs text-muted">{item.artist}</span>}
+          {(item.album != null && item.album !== "") || (item.artist != null && item.artist !== "") ? (
+            <span className="text-xs text-muted">
+              {item.album != null && item.album !== ""
+                ? [item.artist, item.album].filter((part) => part != null && part !== "").join(" · ")
+                : item.artist}
+            </span>
+          ) : null}
           {item.year != null && <span className="text-xs text-muted">{item.year}</span>}
         </li>
       ))}

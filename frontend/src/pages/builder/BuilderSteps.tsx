@@ -153,6 +153,17 @@ export function BuilderSteps({
                   {step === 3 && (
                     <div className="flex flex-col gap-4">
                       <PosterSection poster={draft.poster} kometaUrl={kometaUrl} onChange={(poster) => onDraft({ poster })} />
+                      {libraryType === "artist" && (
+                        <PosterSection
+                          poster={draft.square_art}
+                          kometaUrl={null}
+                          heading="Square art"
+                          help="Plex shows square art for collections in music libraries."
+                          radioName="square-art"
+                          squarePreview
+                          onChange={(square_art) => onDraft({ square_art })}
+                        />
+                      )}
                       <div className="flex flex-col gap-2">
                         <p className="text-sm font-medium">Where it shows</p>
                         <VisibleCheck

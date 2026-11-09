@@ -5,6 +5,7 @@ import pytest
 from starr_studio.smart_filters import (
     ALBUM_SORTS,
     ARTIST_SORTS,
+    TRACK_SORTS,
     SmartFilterError,
     fields,
     plex_query,
@@ -88,6 +89,15 @@ def test_sorts_artist_and_album():
     assert dict(sorts("artist", "album"))["album_artist.asc"] == "Artist (A–Z)"
 
 
+def test_track_level_sorts_and_validation():
+    assert [k for k, _ in sorts("artist", "track")] == list(TRACK_SORTS)
+    assert all(label != key for key, label in sorts("artist", "track"))  # every track sort has a label
+    rock = {"match": "all", "rules": [{"field": "album_genre", "modifier": "", "value": "Rock"}]}
+    assert validate("artist", rock, sort_by="duration.desc", level="track") == []
+    assert validate("artist", rock, sort_by="duration.desc", level="album")  # albums have no duration sort
+    assert validate("artist", rock, level="song")
+
+
 def test_validate_rejects_movie_field_in_music():
     spec = {"match": "all", "rules": [{"field": "resolution", "modifier": "", "value": "1080"}]}
     problems = validate("artist", spec)
@@ -114,7 +124,7 @@ def test_validate_accepts_music_spec():
 def test_validate_level_restrictions():
     spec = {"match": "all", "rules": [{"field": "artist_title", "modifier": "", "value": "Beatles"}]}
     assert any("Collection level is not used" in p for p in validate("movie", spec, level="album"))
-    assert any("Unknown collection level" in p for p in validate("artist", spec, level="track"))
+    assert any("Unknown collection level" in p for p in validate("artist", spec, level="song"))
 
     assert validate("artist", spec, sort_by="year.asc", level="album") == []
     bad_sort = validate("artist", spec, sort_by="bitrate.asc", level="album")

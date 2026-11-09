@@ -58,7 +58,7 @@ class FakePlex:
             {"ratingKey": "902", "type": "album", "title": "Kid A", "parentTitle": "Radiohead", "year": 2000},
             {"ratingKey": "903", "type": "album", "title": "Homogenic", "parentTitle": "Björk", "year": 1997},
         ]
-        tracks = [{"ratingKey": str(1001 + i), "type": "track", "title": f"Track {i + 1}"} for i in range(4)]
+        tracks = [{"ratingKey": str(1001 + i), "type": "track", "title": f"Track {i + 1}", "parentTitle": "OK Computer", "grandparentTitle": "Radiohead"} for i in range(4)]
         self.MUSIC[key] = {"8": artists, "9": albums, "10": tracks}
 
     def transport(self) -> httpx.MockTransport:

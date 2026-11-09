@@ -239,9 +239,9 @@ def render_built(
     (``tmdb_collection: 1234``, ``imdb_list: [a, b]``, ``tmdb_movie: [10196]``, ``plex_search: {any: …}``; Kometa adds
     up what they find) with ``sync_mode: sync``, so titles leaving the list leave the collection, and with Kometa's own Radarr/Sonarr
     requests off: only Studio requests missing titles. A music library (``artist``) has no Radarr/Sonarr key at all: Kometa
-    refuses them there. A music collection of albums is a ``plex_search`` with ``builder_level: album``, because Kometa
-    takes no ``builder_level`` on a smart collection and no ``minimum_items`` on an album one (builder.py ``smart_invalid``,
-    ``parts_collection_valid``).
+    refuses them there. A music collection of albums or tracks is a ``plex_search`` with ``builder_level: album``/``track``,
+    because Kometa takes no ``builder_level`` on a smart collection and no ``minimum_items`` on an album or track one
+    (builder.py ``smart_invalid``, ``parts_collection_valid``). Square art (music only) is ``file_square_art``/``url_square_art``.
 
     ``file_ref`` turns a config-relative poster path (``studio/posters/…``) into the path Kometa's working directory
     uses for ``file_poster`` (``ConfigWriter.reference``). Without it, a file poster is skipped.
@@ -254,10 +254,10 @@ def render_built(
     for title, definition in sorted(definitions, key=lambda pair: pair[0].casefold()):
         body = CommentedMap()
         sources = list_sources.sources_of(definition)
-        albums = library_type == "artist" and definition.get("level") == "album"
-        if albums:
+        parts = library_type == "artist" and definition.get("level") in ("album", "track")
+        if parts:
             body["plex_search"] = smart_filters.to_kometa(definition.get("filters") or {}, definition.get("sort_by"), definition.get("limit"))
-            body["builder_level"] = "album"
+            body["builder_level"] = str(definition["level"])
             body["sync_mode"] = "sync"
             if definition.get("sort_by"):
                 body["collection_order"] = "custom"  # keep the search's order
@@ -276,18 +276,19 @@ def render_built(
             value = visible.get(setting, default)
             if value is not None:  # None (an imported collection whose file didn't say): Plex keeps what it has
                 body[key] = bool(value)
-        if not albums:
+        if not parts:
             body["minimum_items"] = int(definition.get("minimum_items") or 1)
         if definition.get("summary"):
             body["summary"] = str(definition["summary"])
         if definition.get("sort_title"):
             body["sort_title"] = str(definition["sort_title"])
-        poster = definition.get("poster")
-        if isinstance(poster, dict):
-            if poster.get("kind") == "file" and poster.get("path") and file_ref is not None:
-                body["file_poster"] = file_ref(str(poster["path"]))
-            elif poster.get("kind") == "url" and poster.get("url"):
-                body["url_poster"] = str(poster["url"])
+        for name in ("poster", "square_art") if library_type == "artist" else ("poster",):
+            image = definition.get(name)
+            if isinstance(image, dict):
+                if image.get("kind") == "file" and image.get("path") and file_ref is not None:
+                    body[f"file_{name}"] = file_ref(str(image["path"]))
+                elif image.get("kind") == "url" and image.get("url"):
+                    body[f"url_{name}"] = str(image["url"])
         collections[title] = body
     document = CommentedMap([("collections", collections)])
     stream = io.StringIO()

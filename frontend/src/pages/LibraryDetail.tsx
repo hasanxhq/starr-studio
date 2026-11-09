@@ -367,10 +367,10 @@ function OverlaysTab({ config }: { config: ConfigLibrary }) {
   );
 }
 
-function OperationsTab({ config }: { config: ConfigLibrary }) {
+function OperationsTab({ config, libraryType }: { config: ConfigLibrary; libraryType?: string }) {
   return (
     <div className="flex flex-col gap-4">
-      <OperationsForm library={config.name} operations={config.operations} />
+      <OperationsForm library={config.name} operations={config.operations} libraryType={libraryType} />
       <LibrarySettingsForm library={config.name} settings={config.settings} />
     </div>
   );
@@ -435,7 +435,7 @@ export function LibraryDetail() {
       </p>
     );
   } else {
-    body = { overlays: <OverlaysTab config={config.data} />, operations: <OperationsTab config={config.data} /> }[tab];
+    body = { overlays: <OverlaysTab config={config.data} />, operations: <OperationsTab config={config.data} libraryType={entry.plex?.type} /> }[tab];
   }
 
   return (
