@@ -9,7 +9,7 @@ const aligned: OverlayLayout = {
   variables: { horizontal_align: "left", vertical_align: "top", horizontal_offset: 15, vertical_offset: 15, back_color: "#00000099" },
   conditionals: { back_width: { default: 305, conditions: [] }, back_height: { default: 105, conditions: [] } },
 };
-const positioned: OverlayLayout = { moved_by: "position", variables: { horizontal_position: "left", vertical_position: "center" }, conditionals: {} };
+const positioned: OverlayLayout = { moved_by: "position", variables: { horizontal_position: "left", vertical_position: "center", rating_alignment: "vertical" }, conditionals: {} };
 
 const entry = (name: string, title: string, layout: OverlayLayout, toggles: DefaultsCatalogue["overlays"][number]["toggles"] = [], types = ["movie", "show"]) => ({ name, group: "overlays" as const, types, title, docs_url: `https://kometa.wiki/${name}`, toggles, layout });
 
@@ -244,6 +244,36 @@ describe("The overlay studio", () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(screen.getByRole("region", { name: "Overlay changes" })).toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  it("keeps a saved right alignment when a box is dropped lower on the right", async () => {
+    // jsdom has no PointerEvent, so drags would carry no coordinates; a MouseEvent with a pointerId is enough here.
+    vi.stubGlobal("PointerEvent", class extends MouseEvent { pointerId: number; constructor(type: string, init: PointerEventInit = {}) { super(type, init); this.pointerId = init.pointerId ?? 1; } });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockApi({ ...routes, "POST /overlays/Movies/estimate": () => ({ posters: 1200, minutes: 18 }) });
+    renderAt("/overlays?library=Movies");
+    await layers();
+    const poster = await screen.findByRole("group", { name: /Overlays on Dune/ });
+    const box = within(poster).getByRole("button", { name: /4K.*Drag/ }); // resolution, saved with horizontal_align: right
+    vi.spyOn(poster, "getBoundingClientRect").mockReturnValue({ width: 340, height: 510, top: 200, left: 50, bottom: 710, right: 390, x: 50, y: 200, toJSON: () => ({}) } as DOMRect);
+    fireEvent.pointerDown(box, { clientX: 300, clientY: 240, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(box, { clientX: 300, clientY: 680, pointerId: 1, isPrimary: true });
+    fireEvent.pointerUp(box, { clientX: 300, clientY: 680, pointerId: 1, isPrimary: true });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(within(settings()).getByRole("button", { name: "Bottom right" })).toHaveAttribute("aria-pressed", "true");
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows ratings stacked as Kometa does, and Across writes rating_alignment", async () => {
+    mockApi(routes);
+    renderAt("/overlays?library=Movies");
+    await layers();
+    fireEvent.click(await screen.findByRole("button", { name: /Ratings.*Drag/ }));
+    expect(within(settings()).getByRole("button", { name: "Down" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(settings()).getByRole("button", { name: "Across" }));
+    expect(await within(settings()).findByRole("button", { name: "Across", pressed: true })).toBeInTheDocument();
+    expect(settings().querySelector("pre")?.textContent).toContain("rating_alignment: horizontal");
   });
 
   it("treats a short press on a box as select only", async () => {

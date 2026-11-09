@@ -330,7 +330,7 @@ def _template_parts(body: dict) -> list[tuple[str | None, dict]]:
     return parts
 
 
-LAYOUT_KEYS = ("horizontal_align", "vertical_align", "horizontal_offset", "vertical_offset", "horizontal_position", "vertical_position", "back_width", "back_height", "back_color", "back_radius")
+LAYOUT_KEYS = ("horizontal_align", "vertical_align", "horizontal_offset", "vertical_offset", "horizontal_position", "vertical_position", "rating_alignment", "back_width", "back_height", "back_color", "back_radius")
 
 
 @lru_cache(maxsize=64)

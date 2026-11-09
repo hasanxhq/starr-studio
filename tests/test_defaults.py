@@ -219,6 +219,7 @@ templates:
       back_radius: 30
       horizontal_position: left
       vertical_position: center
+      rating_alignment: vertical
 
 overlays:
   a: {}
@@ -238,7 +239,7 @@ def test_an_overlay_default_says_where_it_starts_and_what_moves_it():
 def test_ratings_place_themselves_from_position_variables():
     layout = _overlay_layout(POSITIONED)
     assert layout["moved_by"] == "position"
-    assert layout["variables"] == {"horizontal_position": "left", "vertical_position": "center", "back_color": "#00000099", "back_radius": 30}
+    assert layout["variables"] == {"horizontal_position": "left", "vertical_position": "center", "rating_alignment": "vertical", "back_color": "#00000099", "back_radius": 30}  # Kometa stacks ratings unless told otherwise
 
 
 def test_a_default_with_no_layout_still_lists():

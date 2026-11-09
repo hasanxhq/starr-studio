@@ -93,6 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Overlay studio:** dropping a badge on the poster no longer sends it to the left when the layer was saved on the right (or to the top when saved at the bottom). Studio left out any value that matched the saved one, so Kometa's default took over.
+- **Ratings run:** Across and Down now match Kometa, which stacks ratings unless told otherwise. Down was drawn while Across showed as picked, and choosing Across did nothing. Screen readers read the Across button as "Run Down"; the control is now a labelled group.
 - **A collection moved over from Kometa whose first run failed** can be fixed and built again. Studio used to refuse it because the Plex collection it's meant to take over didn't have the Studio label yet (the failed run never added it), so it said "A collection called … that Studio didn't make is already in Plex". After Undo, the name counts as taken again.
 - **Removing an overlay layer on a phone** no longer opens "Leave without saving?" and keeps the layer. A finger scrolling over the poster used to drag the badge under it (a hidden unsaved edit), and removing asked about it. Badges now drag by touch only once you've tapped to pick them, and removing a layer keeps your other unsaved edits.
 - **Posters Plex only links to** (it keeps a TMDb address, not the image) load again: Studio follows Plex's redirect to its own image service, without sending your Plex token there.

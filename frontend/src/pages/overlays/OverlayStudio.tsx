@@ -99,10 +99,12 @@ export function OverlayStudio({
     select(layerName);
     const layer = kometaLayers.find((entry) => entry.name === layerName);
     if (!layer) return;
-    const next = { ...draftValues(layer) };
-    for (const [key, value] of Object.entries(patch)) {
-      if (JSON.stringify(value) === JSON.stringify(layer.variables[key])) delete next[key];
-      else next[key] = value;
+    const next: Values = { ...draftValues(layer), ...patch };
+    // Leave a key out only when Kometa would pick the same value without it: a draft replaces the saved values, so a
+    // key left out falls back to Kometa's default, not to what's saved.
+    for (const key of Object.keys(patch)) {
+      const { [key]: _, ...without } = next;
+      if (JSON.stringify(resolveLayout(layer.entry?.layout, { ...libraryVariables, ...without })[key]) === JSON.stringify(next[key])) delete next[key];
     }
     setDraft(layerName, next);
   };

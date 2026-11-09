@@ -159,7 +159,9 @@ export function LayerSettings({
             }}
           />
           {layer.name === "ratings" && known.has("rating_alignment") && (
-            <Field label="Run">
+            // A fieldset, not Field: a label around buttons names the first one "Run Across".
+            <fieldset className="flex flex-col gap-1.5 text-sm">
+              <legend className="mb-1.5 text-muted">Run</legend>
               <div className="flex gap-2">
                 {[
                   ["horizontal", "Across"],
@@ -168,10 +170,10 @@ export function LayerSettings({
                   <button
                     key={value}
                     type="button"
-                    aria-pressed={(values.rating_alignment ?? starting.rating_alignment ?? "horizontal") === value}
-                    className={`min-h-11 flex-1 rounded-control border text-sm ${(values.rating_alignment ?? starting.rating_alignment ?? "horizontal") === value ? "border-accent bg-surface-2" : "border-border-strong hover:bg-surface-2"}`}
+                    aria-pressed={(values.rating_alignment ?? starting.rating_alignment ?? "vertical") === value}
+                    className={`min-h-11 flex-1 rounded-control border text-sm ${(values.rating_alignment ?? starting.rating_alignment ?? "vertical") === value ? "border-accent bg-surface-2" : "border-border-strong hover:bg-surface-2"}`}
                     onClick={() => {
-                      const defaultAlign = String(starting.rating_alignment ?? "horizontal");
+                      const defaultAlign = String(starting.rating_alignment ?? "vertical");
                       set("rating_alignment", value === defaultAlign ? undefined : value);
                     }}
                   >
@@ -179,7 +181,7 @@ export function LayerSettings({
                   </button>
                 ))}
               </div>
-            </Field>
+            </fieldset>
           )}
           {!position && (
             <Field label="Distance from the edge">
