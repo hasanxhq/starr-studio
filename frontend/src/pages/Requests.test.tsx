@@ -135,3 +135,58 @@ describe("Requests page", () => {
     await waitFor(() => expect(calls.filter((c) => c.route.startsWith("GET /requests?")).length).toBeGreaterThan(before));
   });
 });
+
+describe("Request music", () => {
+  const libs = {
+    "GET /config": () => ({ path: "/config/config.yml", libraries: [{ name: "Music", plex_name: "Music" }], playlist_files: [] }),
+    "GET /plex/libraries": () => ({ libraries: [{ key: "2", title: "Music", type: "artist", collections: 0, managed: 0 }] }),
+    "GET /requests?limit=200": () => list([]),
+  };
+  const album = (item: string, extra: object = {}) => ({ item, title: "Kid A", artist: "Radiohead", year: 2000, cover: null, in_lidarr: false, request: null, ...extra });
+  const on = { ...settingsOff, connected: { ...settingsOff.connected, lidarr: true } };
+
+  it("searches, requests an album into the music library, and shows In Lidarr without a button", async () => {
+    const calls = mockApi({
+      ...libs,
+      "GET /requests/settings": () => on,
+      "GET /requests/music/search?term=radiohead": () => ({ albums: [album("mb-album:1"), album("mb-album:2", { title: "OK Computer", year: 1997, in_lidarr: true })] }),
+      "POST /requests": () => ({ requested: 1, exists: 0, failed: 0, capped: 0, skipped: 0, items: [{ item: "mb-album:1", status: "requested", error: null }] }),
+    });
+    renderAt("/requests");
+
+    const form = await screen.findByRole("form", { name: "Search music" });
+    fireEvent.change(within(form).getByLabelText("Album or artist"), { target: { value: "radiohead" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Search" }));
+
+    const results = await screen.findByRole("list", { name: "Albums" });
+    expect(within(results).getByText("Radiohead · 2000")).toBeInTheDocument();
+    expect(within(results).getAllByRole("button")).toHaveLength(1);
+    expect(within(results).getByText("In Lidarr")).toBeInTheDocument();
+
+    fireEvent.click(within(results).getByRole("button", { name: "Request Kid A" }));
+    await waitFor(() => expect(calls.find((c) => c.route === "POST /requests")?.body).toEqual({ library: "Music", items: [{ item: "mb-album:1", title: "Kid A", year: 2000 }] }));
+  });
+
+  it("shows a failed album's error inline", async () => {
+    mockApi({
+      ...libs,
+      "GET /requests/settings": () => on,
+      "GET /requests/music/search?term=kid": () => ({ albums: [album("mb-album:1")] }),
+      "POST /requests": () => ({ requested: 0, exists: 0, failed: 1, capped: 0, skipped: 0, items: [{ item: "mb-album:1", status: "failed", error: "Root folder missing" }] }),
+    });
+    renderAt("/requests");
+    const form = await screen.findByRole("form", { name: "Search music" });
+    fireEvent.change(within(form).getByLabelText("Album or artist"), { target: { value: "kid" } });
+    fireEvent.submit(form);
+    fireEvent.click(await screen.findByRole("button", { name: "Request Kid A" }));
+    expect(await screen.findByText("Root folder missing")).toBeInTheDocument();
+  });
+
+  it("points to Settings → Connect when Lidarr isn't connected", async () => {
+    mockApi({ ...libs, "GET /requests/settings": () => settingsOff });
+    renderAt("/requests");
+    const link = await screen.findByRole("link", { name: "Connect Lidarr to request music." });
+    expect(link).toHaveAttribute("href", "/settings/connect");
+    expect(screen.queryByRole("form", { name: "Search music" })).toBeNull();
+  });
+});

@@ -280,3 +280,57 @@ describe("Tautulli", () => {
     expect(within(after).getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 });
+
+describe("Lidarr", () => {
+  const lidarrOff = { url: null, token: null, username: null, has_password: false, status: null, root_folder_path: null, quality_profile: null, metadata_profile: null };
+  const withLidarr: ArrState = { ...state, settings: { ...state.settings, lidarr: { ...off } }, connections: { ...state.connections, lidarr: lidarrOff }, skipped: { ...state.skipped, lidarr: [] } };
+  const lidarrRoutes = (extra: Record<string, (body: unknown) => unknown> = {}) =>
+    routes({
+      "GET /settings/arr": () => withLidarr,
+      "GET /config": () => ({ ...overview, libraries: [{ name: "Movies", plex_name: "Movies" }, { name: "Music", plex_name: "Music" }] }),
+      "GET /plex/libraries": () => ({ libraries: [{ key: "1", title: "Movies", type: "movie", collections: 0, managed: 0 }, { key: "2", title: "Music", type: "artist", collections: 0, managed: 0 }] }),
+      ...extra,
+    });
+
+  it("saves the connection with its metadata profile", async () => {
+    const calls = lidarrRoutes({
+      "POST /settings/arr/lidarr/test": () => ({ ok: true, app: "Lidarr", version: "2.9", root_folders: ["/music"], quality_profiles: ["Lossless"], metadata_profiles: ["Standard"] }),
+      "PUT /settings/arr/lidarr": () => withLidarr,
+    });
+    renderAt("/settings/connect");
+
+    const form = await screen.findByRole("form", { name: "Lidarr connection" });
+    expect(within(form).getByLabelText("URL")).toHaveAttribute("placeholder", "http://lidarr:8686");
+    fireEvent.change(within(form).getByLabelText("URL"), { target: { value: "http://lidarr:8686" } });
+    fireEvent.change(within(form).getByLabelText("API key"), { target: { value: "key" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Test" }));
+    await within(form).findByText("Lidarr 2.9 answered.");
+    fireEvent.change(within(form).getByLabelText(/Root folder/), { target: { value: "/music" } });
+    fireEvent.change(within(form).getByLabelText(/Quality profile/), { target: { value: "Lossless" } });
+    fireEvent.change(within(form).getByLabelText(/Metadata profile/), { target: { value: "Standard" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.route === "PUT /settings/arr/lidarr")?.body).toEqual({
+        url: "http://lidarr:8686",
+        api_key: "key",
+        username: null,
+        password: null,
+        root_folder_path: "/music",
+        quality_profile: "Lossless",
+        metadata_profile: "Standard",
+      }),
+    );
+  });
+
+  it("runs after imports for music libraries only, with no import filter", async () => {
+    lidarrRoutes();
+    renderAt("/settings/connect");
+
+    const runs = await screen.findByRole("form", { name: "Lidarr imports" });
+    fireEvent.click(within(runs).getByLabelText(/Run Kometa when Lidarr imports something/));
+    expect(within(runs).getByLabelText("Music")).toBeInTheDocument();
+    expect(within(runs).queryByLabelText("Movies")).toBeNull();
+    expect(within(runs).queryByText("Which imports")).toBeNull();
+  });
+});

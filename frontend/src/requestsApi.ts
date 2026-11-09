@@ -42,7 +42,7 @@ export type SeerrIn = {
 export type RequestsSettingsState = {
   settings: RequestSettings;
   seerr: SeerrJson | null;
-  connected: { radarr: boolean; sonarr: boolean; seerr: boolean };
+  connected: { radarr: boolean; sonarr: boolean; seerr: boolean; lidarr?: boolean };
 };
 
 export type ArrOptions = { quality_profiles: string[]; root_folders: string[] };
@@ -64,7 +64,7 @@ export type RequestStatus = "requested" | "downloading" | "imported" | "failed" 
 export type RequestRow = {
   id: number;
   item: string;
-  media: "movie" | "show";
+  media: "movie" | "show" | "album";
   title: string | null;
   year: number | null;
   library: string;
@@ -98,6 +98,16 @@ export type RequestOutcome = {
   capped: number;
   skipped: number;
   items: { item: string; status: string; error: string | null }[];
+};
+
+export type MusicAlbum = {
+  item: string; // "mb-album:<id>"
+  title: string;
+  artist: string;
+  year: number | null;
+  cover: string | null;
+  in_lidarr: boolean;
+  request: { id: number; status: RequestStatus } | null;
 };
 
 export type NeedsConfirm = { message: string; needs_confirm: true; count: number };
@@ -136,6 +146,8 @@ export const requestsApi = {
     params.set("limit", String(filters.limit ?? 200));
     return request<RequestsList>("GET", `/requests?${params}`);
   },
+  musicSearch: (term: string) => request<{ albums: MusicAlbum[] }>("GET", `/requests/music/search?term=${encodeURIComponent(term)}`),
+  requestItems: (library: string, items: { item: string; title: string; year: number | null }[]) => request<RequestOutcome>("POST", "/requests", { library, items }),
   refresh: () => request<Record<string, number>>("POST", "/requests/refresh"),
   cancel: (id: number) => request<RequestRow>("POST", `/requests/${id}/cancel`),
   requestMissing: (id: number) => request<RequestOutcome>("POST", `/collections/${id}/request-missing`),

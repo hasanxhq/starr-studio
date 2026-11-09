@@ -5,6 +5,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { RequestMusic } from "../components/requests/RequestMusic";
+import { useMusicLibraries } from "../components/requests/musicLibraries";
 import { Button, Card, Tag, type Tone } from "../components/ui";
 import { formatRelative, formatTime } from "../runs";
 import { requestsApi, type RequestRow, type RequestStatus } from "../requestsApi";
@@ -41,6 +43,7 @@ const VIA_LABEL: Record<string, string> = {
   radarr: "Radarr",
   sonarr: "Sonarr",
   seerr: "Seerr",
+  lidarr: "Lidarr",
 };
 
 function viaLabel(via: string): string {
@@ -101,6 +104,7 @@ export function Requests() {
     },
   });
 
+  const musicLibraries = useMusicLibraries();
   const counts = list.data?.counts;
   const rows = list.data?.requests ?? [];
   const allCount = counts ? Object.values(counts).reduce((sum, n) => sum + n, 0) : null;
@@ -125,6 +129,19 @@ export function Requests() {
           </Link>
         </p>
       )}
+
+      {musicLibraries.length > 0 &&
+        (settings.data?.connected.lidarr ? (
+          <RequestMusic />
+        ) : (
+          settings.data && (
+            <p className="text-sm text-muted">
+              <Link className="underline hover:text-text" to="/settings/connect">
+                Connect Lidarr to request music.
+              </Link>
+            </p>
+          )
+        ))}
 
       <Card title="Status">
         <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Status filter">

@@ -133,7 +133,7 @@ export type RunSummary = {
   added_to_sonarr?: number;
 };
 
-export type RunTrigger = "manual" | "schedule" | "catch_up" | "arr" | "maintainerr" | "ready-made" | "builder" | "requests" | "switch_over";
+export type RunTrigger = "manual" | "schedule" | "catch_up" | "arr" | "lidarr" | "maintainerr" | "ready-made" | "builder" | "requests" | "switch_over";
 
 export type Run = {
   id: number;
@@ -195,11 +195,13 @@ export type Schedules = {
 
 // Radarr and Sonarr (Settings → Connect). Their URL and key are Kometa's, in config.yml.
 export type ArrKind = "radarr" | "sonarr";
+// Lidarr is Studio's own connection (Kometa has no Lidarr), so it is not an ArrKind: add-missing and config.yml code stay Radarr/Sonarr-only.
+export type AppKind = ArrKind | "lidarr";
 
 /** When to run Kometa after one app's imports. */
 export type AppRuns = { enabled: boolean; trigger: "any" | "relevant"; mode: RunMode; wait_minutes: number; libraries: string[] };
 
-export type ArrSettings = Record<ArrKind, AppRuns>;
+export type ArrSettings = Record<ArrKind, AppRuns> & { lidarr?: AppRuns };
 
 export type ArrConnection = {
   url: string | null; // from config.yml
@@ -213,6 +215,17 @@ export type ArrConnection = {
   status: { checked_at: string; ok: boolean; error: string | null } | null;
 };
 
+export type LidarrConnection = {
+  url: string | null;
+  token: string | null; // masked
+  username: string | null;
+  has_password: boolean;
+  status: ArrConnection["status"];
+  root_folder_path: string | null;
+  quality_profile: string | null;
+  metadata_profile: string | null;
+};
+
 export type ArrConnectionInput = {
   url: string;
   api_key: string | null; // null: keep the key in config.yml
@@ -220,9 +233,12 @@ export type ArrConnectionInput = {
   password: string | null; // null: keep the saved one
   root_folder_path: string | null;
   quality_profile: string | null;
+  metadata_profile?: string | null; // Lidarr only
 };
 
-export type ArrTest = { ok: true; app: string; version: string; root_folders: string[]; quality_profiles: string[] } | { ok: false; error: string };
+export type ArrTest =
+  | { ok: true; app: string; version: string; root_folders: string[]; quality_profiles: string[]; metadata_profiles?: string[] }
+  | { ok: false; error: string };
 
 export type ArrPending = { first_at: string; last_at: string; due_at: string; imports: number; titles: string[] };
 
@@ -242,9 +258,9 @@ export type LibraryRelevance = {
 
 export type ArrState = {
   settings: ArrSettings;
-  connections: Record<ArrKind, ArrConnection>;
-  pending: Partial<Record<ArrKind, ArrPending>>;
-  skipped: Record<ArrKind, { at: string; title: string; libraries: string }[]>;
+  connections: Record<ArrKind, ArrConnection> & { lidarr?: LidarrConnection };
+  pending: Partial<Record<AppKind, ArrPending>>;
+  skipped: Record<ArrKind, { at: string; title: string; libraries: string }[]> & { lidarr?: { at: string; title: string; libraries: string }[] };
   libraries: LibraryRelevance[];
 };
 
@@ -776,10 +792,10 @@ export const api = {
   },
   arr: {
     get: () => request<ArrState>("GET", "/settings/arr"),
-    saveRuns: (kind: ArrKind, runs: AppRuns) => request<ArrState>("PUT", `/settings/arr/${kind}/runs`, runs),
-    connect: (kind: ArrKind, body: ArrConnectionInput) => request<ArrState>("PUT", `/settings/arr/${kind}`, body),
-    test: (kind: ArrKind, body: ArrConnectionInput) => request<ArrTest>("POST", `/settings/arr/${kind}/test`, body),
-    remove: (kind: ArrKind) => request<ArrState>("DELETE", `/settings/arr/${kind}`),
+    saveRuns: (kind: AppKind, runs: AppRuns) => request<ArrState>("PUT", `/settings/arr/${kind}/runs`, runs),
+    connect: (kind: AppKind, body: ArrConnectionInput) => request<ArrState>("PUT", `/settings/arr/${kind}`, body),
+    test: (kind: AppKind, body: ArrConnectionInput) => request<ArrTest>("POST", `/settings/arr/${kind}/test`, body),
+    remove: (kind: AppKind) => request<ArrState>("DELETE", `/settings/arr/${kind}`),
     turnOnReports: () => request<ArrState>("POST", "/settings/arr/reports"),
   },
   services: {
