@@ -23,10 +23,10 @@ def db(tmp_path):
 def test_the_connection_is_kept_encrypted_with_its_defaults(db):
     box = SecretBox(Fernet.generate_key())
     assert arr.lidarr_connection(db, box) is None and arr.lidarr_options(db) == LidarrOptions()
-    arr.save_lidarr(db, box, Connection(LIDARR_URL, LIDARR_KEY, ("seed", "pw")), LidarrOptions(root_folder_path="/music", quality_profile="Lossless", metadata_profile="Standard"))
+    arr.save_lidarr(db, box, Connection(LIDARR_URL, LIDARR_KEY, ("seed", "seedbox-pass")), LidarrOptions(root_folder_path="/music", quality_profile="Lossless", metadata_profile="Standard"))
     saved = get_setting(db, arr.LIDARR)
-    assert LIDARR_KEY not in str(saved) and "pw" not in str(saved)
-    assert arr.lidarr_connection(db, box) == Connection(LIDARR_URL, LIDARR_KEY, ("seed", "pw"))
+    assert LIDARR_KEY not in str(saved) and "seedbox-pass" not in str(saved)  # long enough not to turn up by chance in the ciphertext
+    assert arr.lidarr_connection(db, box) == Connection(LIDARR_URL, LIDARR_KEY, ("seed", "seedbox-pass"))
     assert arr.lidarr_options(db).quality_profile == "Lossless"
     assert arr.lidarr_connection(db, SecretBox(Fernet.generate_key())) is None  # the key changed: no connection, not a crash
     arr.remove_lidarr(db)
