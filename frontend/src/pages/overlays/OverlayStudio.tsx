@@ -3,16 +3,17 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent,
 import { Link } from "react-router";
 
 import { api, type ConfigLibrary, type DefaultEntry, type FileReference, type OverlayLibrary, type PlexItem } from "../../api";
-import { LeaveGuard, useLeaveEditor } from "../../components/LeaveGuard";
+import { LeaveGuard } from "../../components/LeaveGuard";
 import { OverlayPoster, pickTryOnSamples, TryItOnRow, useSamples } from "../../components/OverlayPreview";
-import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, GripIcon, LockIcon } from "../../components/icons";
-import { ActionBar, Button } from "../../components/ui";
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, EyeIcon, EyeOffIcon, GripIcon, LockIcon } from "../../components/icons";
+import { ActionBar, Button, ConfirmButton } from "../../components/ui";
 import { SaveError } from "../../components/ValidationReport";
 import { shortTitle } from "../../defaults";
 import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, whereItIs, type Box, resolveLayout } from "../../overlayLayout";
 import { loadSchema } from "../../yaml/schema";
 import { useSave, type Values } from "../../components/DefaultVariables";
 import { layerChangeSentence, studioChangeSentence } from "./changeSummary";
+import { POPULAR_LAYERS } from "./controls";
 import { LayerSettings } from "./LayerSettings";
 import type { Layer } from "./types";
 
@@ -47,6 +48,7 @@ export function OverlayStudio({
   const [showAllAddable, setShowAllAddable] = useState(false);
   const [titlePickerOpen, setTitlePickerOpen] = useState(false);
   const [dragRow, setDragRow] = useState<number | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null); // the row asking "Turn off …?"
   const [estimate, setEstimate] = useState<{ posters: number | null; minutes: number | null } | null>(null);
   const [batchError, setBatchError] = useState<Error | null>(null);
   const [saving, setSaving] = useState(false);
@@ -58,7 +60,10 @@ export function OverlayStudio({
   const ownFiles = config.overlay_files.filter((reference) => reference.kind !== "default");
   const selected = kometaLayers.find((layer) => layer.name === selectedName) ?? kometaLayers[0] ?? null;
   const libraryVariables = config.template_variables as Values;
-  const addable = (catalogue.data?.overlays ?? []).filter((entry) => !kometaLayers.some((layer) => layer.name === entry.name) && (!libraryType || !entry.types.length || entry.types.includes(libraryType)));
+  const popularity = (name: string) => (POPULAR_LAYERS.includes(name) ? POPULAR_LAYERS.indexOf(name) : POPULAR_LAYERS.length);
+  const addable = (catalogue.data?.overlays ?? [])
+    .filter((entry) => !kometaLayers.some((layer) => layer.name === entry.name) && (!libraryType || !entry.types.length || entry.types.includes(libraryType)))
+    .sort((a, b) => popularity(a.name) - popularity(b.name)); // stable: the rest stay alphabetical
 
   const add = useSave((name: string) => api.config.useDefault(library, "overlay", name, {}));
   const drop = useSave((name: string) => api.config.dropDefault(library, "overlay", name));
@@ -68,7 +73,6 @@ export function OverlayStudio({
   const draftValues = (layer: Layer) => drafts[layer.name] ?? layer.variables;
   const dirtyLayers = kometaLayers.filter((layer) => JSON.stringify(draftValues(layer)) !== JSON.stringify(savedValues(layer)));
   const unsaved = dirtyLayers.length > 0;
-  const { leave, dialog } = useLeaveEditor(unsaved);
 
   const variablesOf = (layer: Layer) => ({ ...libraryVariables, ...draftValues(layer) });
   const visibleLayers = kometaLayers.filter((layer) => !hidden.has(layer.name));
@@ -187,6 +191,15 @@ export function OverlayStudio({
 
   const undoAll = () => setDrafts({});
 
+  // Turning a layer off loses only that layer's own unsaved edits, so it doesn't ask about the others.
+  const removeLayer = (name: string) =>
+    drop.mutate(name, {
+      onSuccess: () => {
+        setRemoving(null);
+        setDrafts(({ [name]: _gone, ...rest }) => rest);
+      },
+    });
+
   const saveLayer = useMutation({
     mutationFn: ({ name, values }: { name: string; values: Values }) => api.config.useDefault(library, "overlay", name, values),
     onSuccess: () => {
@@ -257,8 +270,7 @@ export function OverlayStudio({
   return (
     <>
       <LeaveGuard dirty={unsaved} query />
-      {dialog}
-      <div className="grid items-start gap-6 xl:grid-cols-[17rem_minmax(0,1fr)_21rem]">
+      <div className="grid items-start gap-6 xl:grid-cols-[19rem_minmax(0,1fr)_21rem]">
         <section aria-labelledby="overlay-layers" className="flex flex-col gap-2">
           <h2 id="overlay-layers" className="text-[15px] font-semibold">
             Layers
@@ -276,29 +288,44 @@ export function OverlayStudio({
                 <span
                   draggable
                   aria-label={`Reorder ${layer.title}`}
-                  className="inline-flex size-11 shrink-0 cursor-grab items-center justify-center rounded-control text-muted hover:bg-surface-2 active:cursor-grabbing"
+                  className="inline-flex h-11 w-6 shrink-0 cursor-grab items-center justify-center rounded-control text-muted hover:bg-surface-2 active:cursor-grabbing"
                   onDragStart={(event) => onRowDragStart(event, displayIndex)}
                   onDragEnd={() => setDragRow(null)}
                 >
                   <GripIcon className="size-5" />
                 </span>
+                {removing === layer.name ? (
+                  <div className="min-w-0 flex-1">
+                    <ConfirmButton
+                      open
+                      label=""
+                      confirm="Turn off"
+                      warning={`Turn off ${layer.title}?`}
+                      onConfirm={() => removeLayer(layer.name)}
+                      onKeep={() => setRemoving(null)}
+                      busy={drop.isPending}
+                      busyLabel="Turning off…"
+                    />
+                  </div>
+                ) : (
+                <>
                 <button
                   type="button"
                   aria-pressed={layer.name === selected?.name}
                   onClick={() => select(layer.name)}
                   onKeyDown={(event) => onLayerKeyDown(event, displayIndex)}
-                  className={`flex min-h-11 min-w-0 flex-1 items-center justify-between gap-2 rounded-control border px-2.5 text-left text-sm ${layer.name === selected?.name ? "border-accent bg-surface-2" : "border-transparent text-muted hover:bg-surface-2"}`}
+                  className={`flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-control border px-2.5 py-1 text-left text-sm ${layer.name === selected?.name ? "border-accent bg-surface-2" : "border-transparent text-muted hover:bg-surface-2"}`}
                 >
-                  <span className="min-w-0 truncate" title={layer.title}>
+                  <span className="w-full truncate" title={layer.title}>
                     {layer.title}
                   </span>
-                  <span className="shrink-0 text-xs text-muted">{whereItIs(layer.entry?.layout, variablesOf(layer))}</span>
+                  <span className="text-xs text-muted">{whereItIs(layer.entry?.layout, variablesOf(layer))}</span>
                 </button>
                 <button
                   type="button"
                   aria-pressed={!hidden.has(layer.name)}
                   aria-label={hidden.has(layer.name) ? `Show ${layer.title} in the preview` : `Hide ${layer.title} in the preview`}
-                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2"
+                  className="inline-flex h-11 w-8 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2"
                   onClick={() =>
                     setHidden((current) => {
                       const next = new Set(current);
@@ -315,7 +342,7 @@ export function OverlayStudio({
                   aria-label={`Move ${layer.title} up`}
                   disabled={displayIndex === 0 || order.isPending}
                   onClick={() => moveLayer(displayIndex, 1)}
-                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2 disabled:opacity-30"
+                  className="inline-flex h-11 w-8 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2 disabled:opacity-30"
                 >
                   <ChevronUpIcon className="size-5" />
                 </button>
@@ -324,10 +351,20 @@ export function OverlayStudio({
                   aria-label={`Move ${layer.title} down`}
                   disabled={displayIndex === displayLayers.length - 1 || order.isPending}
                   onClick={() => moveLayer(displayIndex, -1)}
-                  className="inline-flex size-11 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2 disabled:opacity-30"
+                  className="inline-flex h-11 w-8 shrink-0 items-center justify-center rounded-control text-muted hover:bg-surface-2 disabled:opacity-30"
                 >
                   <ChevronDownIcon className="size-5" />
                 </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${layer.title}`}
+                  onClick={() => setRemoving(layer.name)}
+                  className="inline-flex h-11 w-8 shrink-0 items-center justify-center rounded-control text-err hover:bg-err/10"
+                >
+                  <CloseIcon className="size-4" />
+                </button>
+                </>
+                )}
               </li>
             ))}
             {ownFiles.map((reference, index) => (
@@ -445,7 +482,7 @@ export function OverlayStudio({
             root={schema.data?.root ?? null}
             values={draftValues(selected)}
             onChange={(values) => setDraft(selected.name, values)}
-            onRemove={() => leave(() => drop.mutate(selected.name))}
+            onRemove={() => removeLayer(selected.name)}
             removing={drop.isPending}
             noToggles={noToggles}
             whatChanges={selectedChange ? studioChangeSentence([selectedChange], [], []) : null}

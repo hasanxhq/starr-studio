@@ -7,7 +7,7 @@ import { ConfirmButton, Field } from "../../components/ui";
 import { Checkbox } from "../../components/ui";
 import { resolveLayout } from "../../overlayLayout";
 import { defaultVariablesSchema, mappingKeys, type JsonSchema } from "../../yaml/schema";
-import type { Values } from "../../components/DefaultVariables";
+import { MoreVariables, type Values } from "../../components/DefaultVariables";
 import { overlayFeatured, PLACEMENT } from "./controls";
 import type { Layer } from "./types";
 
@@ -104,6 +104,8 @@ export function LayerSettings({
   const distance = Number(values.horizontal_offset ?? offsets.horizontal_offset ?? 0);
 
   const startsOn = (toggle: (typeof toggles)[number]) => toggle.on && values.use_all !== false;
+  // Variables the tabs above have controls for; More variables lists the rest.
+  const handled = new Set([...PLACEMENT, ...featured.map((f) => f.key), ...toggles.map((t) => `use_${t.key}`)]);
 
   const preview = stringify([{ default: layer.name, ...(Object.keys(values).length > 0 && { template_variables: values }) }], { lineWidth: 0 }).trimEnd();
 
@@ -285,10 +287,6 @@ export function LayerSettings({
               </label>
             );
           })}
-          <details className="text-sm">
-            <summary className="min-h-11 cursor-pointer content-center text-muted hover:text-text">Show Advanced</summary>
-            <p className="mt-2 text-xs text-muted">More variables for {layer.title} sit in the panel below when you need them.</p>
-          </details>
         </div>
       )}
 
@@ -319,10 +317,7 @@ export function LayerSettings({
         <pre className="mt-2 overflow-x-auto rounded-control border border-border bg-bg p-3 font-mono text-xs leading-5 text-muted">{preview}</pre>
       </details>
 
-      <details className="text-sm">
-        <summary className="min-h-11 cursor-pointer content-center text-muted hover:text-text">More variables</summary>
-        <p className="mt-2 text-xs text-muted">Open Show Advanced on Place or Style, or edit the YAML above, for anything else Kometa accepts on this default.</p>
-      </details>
+      <MoreVariables root={root} schema={schema} values={values} set={set} handled={handled} />
 
       <ConfirmButton
         label="Remove layer"

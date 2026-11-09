@@ -10,7 +10,7 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -19,6 +19,7 @@ STUDIO_LABEL = "Studio"
 COLLECTION_TYPE = "18"  # Plex's metadata type for collections
 TIMEOUT = 20.0
 # Images the poster proxy may fetch: a collection's or item's own artwork, nothing else.
+PLEX_IMAGES = "images.plex.tv"
 IMAGE_PATH = re.compile(r"^/library/(?:collections|metadata)/\d+/(?:composite|thumb|art)/\d+$")
 
 
@@ -377,6 +378,10 @@ class PlexServer:
                 headers={"X-Plex-Token": self.token},
                 timeout=TIMEOUT,
             )
+            # Plex sends a poster it doesn't keep (only a TMDb link) to its own image service.
+            location = response.headers.get("location", "") if response.is_redirect else ""
+            if location and urlsplit(location).hostname == PLEX_IMAGES and urlsplit(location).scheme == "https":
+                response = await self.client.get(location, timeout=TIMEOUT)  # no token: it's Plex's public service
         except httpx.HTTPError as error:
             raise PlexUnavailable(f"Can't reach Plex: {error}") from None
         if response.status_code != 200:
