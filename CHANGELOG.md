@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Ratings overlay:** a new ratings layer starts with IMDb and Rotten Tomatoes (the score Plex already has, so no API key), and an empty rating slot says **None (no badge)** instead of "Kometa's default", since Kometa draws nothing there.
 - **A new sidebar:** nine entries with icons (Home, Collections, Requests, Overlays, Playlists, Activity, System, Settings), one **Library** picker at the top for the whole app, and badges for waiting requests and the library's collections. Libraries moved into Settings as a tab; the pages' own library pickers are gone.
 - **Collections** is one page with two tabs, **All** and **Ready-made**, a search box and filter chips (In Plex, Building, Not built, Failed, Fetching missing, Changed). One **Changes** bar builds your ready-made picks and edited collections in a single run. Ready-made pages moved to `/collections/ready-made`; old links redirect.
 - **All** lists every collection in the library again, not only Studio's: ready-made picks, collections from your Kometa files, Maintainerr's (marked protected) and ones made in Plex, with **Made by** chips to filter them. Collections Studio didn't make open read-only; Kometa-file ones link to Move over from Kometa.

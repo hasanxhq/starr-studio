@@ -14,7 +14,7 @@ import { layerBoxes, layerText, overlapPair, snapToAnchor, snapToPosition, where
 import { loadSchema } from "../../yaml/schema";
 import { useSave, type Values } from "../../components/DefaultVariables";
 import { layerChangeSentence, studioChangeSentence } from "./changeSummary";
-import { POPULAR_LAYERS } from "./controls";
+import { POPULAR_LAYERS, STARTING_VARIABLES } from "./controls";
 import { LayerSettings } from "./LayerSettings";
 import type { Layer } from "./types";
 
@@ -66,7 +66,7 @@ export function OverlayStudio({
     .filter((entry) => !kometaLayers.some((layer) => layer.name === entry.name) && (!libraryType || !entry.types.length || entry.types.includes(libraryType)))
     .sort((a, b) => popularity(a.name) - popularity(b.name)); // stable: the rest stay alphabetical
 
-  const add = useSave((name: string) => api.config.useDefault(library, "overlay", name, {}));
+  const add = useSave((name: string) => api.config.useDefault(library, "overlay", name, STARTING_VARIABLES[name] ?? {}));
   const drop = useSave((name: string) => api.config.dropDefault(library, "overlay", name));
   const order = useSave((names: string[]) => api.config.setOverlayOrder(library, names));
 
