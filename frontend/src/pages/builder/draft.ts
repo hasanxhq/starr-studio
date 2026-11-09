@@ -210,17 +210,10 @@ export function clearStoredDraft(key: string): void {
   }
 }
 
-function posterSame(a: Poster, b: Poster): boolean {
-  if (a === b) return true;
-  if (!a || !b) return !a && !b;
-  if (a.kind !== b.kind) return false;
-  return a.kind === "file" ? a.path === (b as { kind: "file"; path: string }).path : a.url === (b as { kind: "url"; url: string }).url;
-}
-
 export function draftsDiffer(a: Draft, b: Draft, modeA: StartMode, modeB: StartMode): boolean {
   if (skipRequestsChanged(a.skip_requests, b.skip_requests)) return true;
   if ((a.level ?? null) !== (b.level ?? null)) return true;
-  if (!posterSame(a.square_art, b.square_art)) return true;
+  if (JSON.stringify(a.square_art ?? null) !== JSON.stringify(b.square_art ?? null)) return true;
   return JSON.stringify(toInput(a, modeA)) !== JSON.stringify(toInput(b, modeB));
 }
 

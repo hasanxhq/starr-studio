@@ -3,7 +3,7 @@
 A plan to add Plex music library management to Starr Studio. Starr Studio owns Kometa's configuration and uses Kometa as its run engine. Today Studio handles movie and TV show libraries; this plan extends management to music libraries.
 
 - **Where things stand:** `dev` at `4a7c2f6` (PR #122), 2026-11-09. Where this plan and the code disagree about what exists, the code wins: check it and adjust.
-- **Status:** Phase 1 built on 2026-11-09 (music libraries in Studio, artist and album collections). Phases 2 and 3 not started.
+- **Status:** Phase 1 built on 2026-11-09 (music libraries in Studio, artist and album collections). Phase 2 built on 2026-11-09 (track collections, square art, music operations; `album_sorting` dropped, see Step 2.2). Phase 3 not started.
 - **Phase 1 as built differs in one way:** album collections are a `plex_search` with `builder_level: album`, not a `smart_filter`: Kometa refuses `builder_level` on smart collections and `minimum_items` on album ones (`kometa/modules/builder.py` `smart_invalid`, `parts_collection_valid`).
 
 ## Working rules
@@ -237,6 +237,7 @@ Enables Kometa music operations and artwork management.
   - Builder allows choosing Track level; the preview lists tracks.
   - Builder allows setting square art (`file_square_art` / `url_square_art`).
   - Album collections allow setting `album_sorting` (`release.asc`, `release.desc`, etc.).
+- **As built (2026-11-09):** `album_sorting` was dropped. In Kometa it is `item_album_sorting` (`kometa/modules/plex.py:378`): it edits each artist's album order (`albumSort`) in Plex, so it changes Plex items rather than ordering the collection, and a collection's order already comes from its sort. Track-only search fields (`folder_location`, `audio_codec`…) are left out too. Music operations landed in the Operations tab (`OperationsForm`), not in the files listed in Step 2.1.
   - Generated YAML passes Kometa check.
 
 ---
