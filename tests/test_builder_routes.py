@@ -102,6 +102,27 @@ def test_bad_filters_and_taken_names_are_refused(root):
         assert col.built_rows(client.app.state.db, "Movies")[0]["title"] == "Action Picks"
 
 
+def test_a_moved_over_collection_can_be_fixed_after_its_first_run_failed(root):
+    # Switch over moved "Hand Made" in from Kometa; its run failed, so Plex's collection never got the Studio label.
+    plex = FakePlex()
+    plex.add_collection("1", "Hand Made", labels=[], items=2)
+    plex.add_collection("1", "Someone Else's", labels=[], items=1)
+    client, _, _ = make_client(root, plex)
+    with client:
+        wait_for_flags(client)
+        db = client.app.state.db
+        with db:
+            row_id = col.insert_built(db, "Movies", "abc123", "Hand Made", {"filters": ACTION})
+            db.execute("INSERT INTO switch_overs (created_at, backup, summary, created_rows) VALUES ('t', 'b.zip', '{}', ?)", (json.dumps([row_id]),))
+        fixed = client.put(f"/api/v1/collections/{row_id}", json=body(title="Hand Made", build=False))
+        assert fixed.status_code == 200, fixed.text
+        renamed = client.put(f"/api/v1/collections/{row_id}", json=body(title="Someone Else's", build=False))
+        assert renamed.status_code == 409 and "didn't make" in renamed.json()["detail"]["message"]
+        with db:
+            db.execute("UPDATE switch_overs SET undone_at = 't'")  # after Undo it's an ordinary clash again
+        assert client.put(f"/api/v1/collections/{row_id}", json=body(title="Hand Made", build=False)).status_code == 409
+
+
 def test_update_without_build_marks_changed_and_queues_nothing(root):
     client, _, _ = make_client(root)
     with client:

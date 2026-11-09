@@ -118,6 +118,12 @@ def active(db: sqlite3.Connection) -> sqlite3.Row | None:
     return db.execute("SELECT * FROM switch_overs WHERE undone_at IS NULL ORDER BY id DESC LIMIT 1").fetchone()
 
 
+def adopting(db: sqlite3.Connection, row_id: int) -> bool:
+    """Whether collection ``row_id`` came in with the switch-over still in place, so its run adopts Plex's one by title."""
+    row = active(db)
+    return row is not None and row_id in json.loads(row["created_rows"])
+
+
 def describe(row: sqlite3.Row | None) -> dict | None:
     if row is None:
         return None
