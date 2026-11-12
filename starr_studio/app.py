@@ -16,6 +16,7 @@ from . import __version__
 from .arr import Arr
 from .generated_sync import GeneratedFiles
 from .maintainerr import Maintainerr
+from .overlay_engine.kometa_hold import KometaOverlayHold
 from . import log_redaction, network, studio_log
 from .arr_routes import router as arr_router
 from .network import NetworkTransport
@@ -172,6 +173,7 @@ def create_app(
         # First, so Kometa and the other hooks see Studio's own generated files, never a hand-edited copy.
         runner.hooks.append(GeneratedFiles(app.state.db, settings, app.state.writer, app.state.http))
         runner.hooks.append(maintainerr)
+        runner.hooks.append(KometaOverlayHold(app.state.db, settings, app.state.http))
         runner.hooks.append(WantedRecorder(app.state.db, runner, settings.kometa_config, kometa_root))
         runner.hooks.append(ReadyMadeRecorder(app.state.db, runner, settings, app.state.http, tasks))
         runner.hooks.append(MissingRequester(app.state.db, app.state.writer, app.state.requests))  # after WantedRecorder fills `wanted`
