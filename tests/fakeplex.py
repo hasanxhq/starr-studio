@@ -64,6 +64,21 @@ class FakePlex:
         self.MUSIC: dict[str, dict[str, list[dict]]] = {}  # music section key -> Plex type ("8", "9", "10") -> its items
         self.OVERLAY_METADATA = {k: dict(v) for k, v in OVERLAY_METADATA.items()}
         self.OVERLAY_LISTING = [dict(m) for m in OVERLAY_LISTING]
+        self.posters = {k: overlay_poster() for k in OVERLAY_METADATA}
+        self.poster_versions = {k: 1_700_000_000 for k in OVERLAY_METADATA}
+        self.uploads: list[tuple[str, bytes]] = []
+        self.poster_http_errors: set[str] = set()  # metadata/thumb for these keys answer 500
+
+    def replace_poster(self, key: str, data: bytes) -> None:
+        """Set a title's poster and bump its thumb version, as if someone else changed it in Plex."""
+        self.posters[key] = data
+        self.poster_versions[key] += 1
+
+    @staticmethod
+    def _poster_content_type(data: bytes) -> str:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return "image/png"
+        return "image/jpeg"
 
     def add_overlay_section(self, key: str = "90", title: str = "Overlay fixtures") -> None:
         """Movies section backed by ``fixtures/overlay_facts`` for overlay-engine tests."""
@@ -395,11 +410,31 @@ class FakePlex:
             if what == "all" and request.url.params.get("type") == "18":
                 keys = self.LABELLED.get(request.url.params.get("label", ""), [])
                 return httpx.Response(200, json={"MediaContainer": {"Metadata": [{"ratingKey": k} for k in keys]}})
+        if (
+            request.method == "POST"
+            and len(parts) == 4
+            and parts[1] == "metadata"
+            and parts[3] == "posters"
+            and parts[2] in self.OVERLAY_METADATA
+        ):
+            key = parts[2]
+            self.posters[key] = request.content
+            self.poster_versions[key] += 1
+            self.uploads.append((key, request.content))
+            return httpx.Response(200)
         if len(parts) == 5 and parts[1] == "metadata" and parts[3] == "thumb" and parts[2] in self.OVERLAY_METADATA:
-            return httpx.Response(200, content=overlay_poster(), headers={"Content-Type": "image/jpeg"})
+            if parts[2] in self.poster_http_errors:
+                return httpx.Response(500)
+            data = self.posters[parts[2]]
+            return httpx.Response(200, content=data, headers={"Content-Type": self._poster_content_type(data)})
         if len(parts) == 3 and parts[1] == "metadata" and parts[2] in self.OVERLAY_METADATA:
+            if parts[2] in self.poster_http_errors:
+                return httpx.Response(500)
             meta = dict(self.OVERLAY_METADATA[parts[2]])
             meta.setdefault("librarySectionID", 90)
+            if parts[2] in self.poster_versions:
+                ver = self.poster_versions[parts[2]]
+                meta["thumb"] = f"/library/metadata/{parts[2]}/thumb/{ver}"
             return httpx.Response(200, json={"MediaContainer": {"size": 1, "Metadata": [meta]}})
         if len(parts) == 3 and parts[1] == "metadata" and parts[2] in self.COLLECTION_META:
             meta = next(c for c in self.COLLECTIONS["1"] if c["ratingKey"] == parts[2]) | self.COLLECTION_META[parts[2]] | {"type": "collection"}
