@@ -60,11 +60,4 @@ async def restore(ctx: Context, rating_keys: list[str], *, dry_run: bool = False
 
 def studio_posters(db: sqlite3.Connection, library_key: str | None = None) -> list[str]:
     """Rating keys whose poster in Plex is Studio's now (uploaded_sha256 set), in one library or all."""
-    if library_key is None:
-        rows = db.execute("SELECT rating_key FROM overlay_applied WHERE uploaded_sha256 IS NOT NULL").fetchall()
-    else:
-        rows = db.execute(
-            "SELECT rating_key FROM overlay_applied WHERE library_key = ? AND uploaded_sha256 IS NOT NULL",
-            (library_key,),
-        ).fetchall()
-    return [row["rating_key"] for row in rows]
+    raise NotImplementedError
