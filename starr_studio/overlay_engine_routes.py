@@ -174,8 +174,8 @@ async def restore_route(body: RestoreRequest, request: Request, settings: AppSet
 
 @router.get("/titles")
 async def titles(library: str, request: Request, settings: AppSettings) -> list[dict]:
-    server = kometa_plex(settings, request.app.state.http)
     _library(settings, library)
+    server = kometa_plex(settings, request.app.state.http)
     try:
         library_key = await _plex_read(section_key_for_library(settings, server, library))
     except ValueError as error:

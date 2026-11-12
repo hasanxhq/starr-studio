@@ -7,7 +7,6 @@ import httpx
 
 from ..config_sections import read_section
 from ..kometa_command import RunRequest
-from ..overlays_routes import _library
 from ..plex_library import PlexServer, PlexUnavailable
 from ..plex_routes import kometa_plex
 from ..runner import RunHeld
@@ -18,7 +17,8 @@ from .apply import studio_posters
 
 async def section_key_for_library(settings: Settings, server: PlexServer, library: str) -> str:
     """The Plex section key for a config.yml library (``library_name`` when set, else the library's name)."""
-    plex_name = str(_library(settings, library).get("library_name") or library)
+    body = (read_section(settings.kometa_config, "libraries") or {}).get(library)
+    plex_name = str(body.get("library_name") or library) if isinstance(body, dict) else library
     for found in await server.libraries():
         if found.title == plex_name:
             return found.key
