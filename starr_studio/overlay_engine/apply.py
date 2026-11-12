@@ -148,8 +148,11 @@ async def _apply_one(ctx: Context, rating_key: str, style: Style, style_name: st
     else:
         backup = find_backup(ctx.kometa_backups, rating_key) if ctx.kometa_backups else None
         candidate = backup.read_bytes() if backup else poster.data  # Kometa's untouched backup, not its overlaid poster
-        # After a restore Plex shows the kept original (maybe re-encoded): keep the first copy rather than a lossier one.
-        new_original = None if kept is not None and same_image(candidate, kept.path.read_bytes()) else candidate
+        uploaded = _uploaded_path(ctx, rating_key)
+        # Keep the first original when Plex shows it again after a restore (maybe re-encoded), or shows Studio's last
+        # upload because Studio stopped before saving its row: never take Studio's own poster for an original.
+        ours = uploaded.is_file() and same_image(candidate, uploaded.read_bytes())
+        new_original = None if kept is not None and (ours or same_image(candidate, kept.path.read_bytes())) else candidate
         kind, message = "draw", "Drawn on Kometa's untouched poster." if backup else "Drawn on the poster Plex shows."
 
     if dry_run:
@@ -159,11 +162,11 @@ async def _apply_one(ctx: Context, rating_key: str, style: Style, style_name: st
         raise ValueError("No original poster is kept for this title, so Studio won't draw on it")
     work = ctx.originals.working_copy(original)
     jpeg = await asyncio.get_running_loop().run_in_executor(_render_pool(), render_poster, elements, work)
-    thumb = await upload_poster(ctx.server, rating_key, jpeg)
-    # Atomic: a half-written copy would make Studio's own poster look like someone else's, and become an "original".
+    # Kept before the upload, atomically, so Studio's own poster is recognised even if Studio stops before the row is saved.
     part = _uploaded_path(ctx, rating_key).with_suffix(f".part.{os.getpid()}")
     part.write_bytes(jpeg)
     part.replace(_uploaded_path(ctx, rating_key))
+    thumb = await upload_poster(ctx.server, rating_key, jpeg)
     now = int(time.time())
     ctx.db.execute(
         """INSERT INTO overlay_applied (rating_key, library_key, title, original_sha256, uploaded_sha256, plex_thumb, fingerprint, style,

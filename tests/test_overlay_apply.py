@@ -141,3 +141,13 @@ def test_modern_streaming_applies(ctx, fake):
     style = load_style((STYLES / "modern-streaming.yml").read_text())
     [outcome] = run(apply(ctx, ["8586"], style, "modern-streaming", None, set()))
     assert outcome.done and Image.open(BytesIO(fake.uploads[-1][1])).size == (1000, 1500)
+
+
+def test_studio_stopping_before_its_row_is_saved_keeps_the_original(ctx, fake):
+    go(ctx, ["4635"])
+    first = ctx.originals.current("4635")
+    ctx.db.execute("DELETE FROM overlay_applied")  # as if Studio stopped right after the upload
+    ctx.db.commit()
+    [outcome] = go(ctx, ["4635"])
+    assert outcome.done and ctx.originals.current("4635") == first
+    assert near(pixel(fake.uploads[-1][1], (500, 700)), (40, 90, 160))
