@@ -160,7 +160,10 @@ async def _apply_one(ctx: Context, rating_key: str, style: Style, style_name: st
     work = ctx.originals.working_copy(original)
     jpeg = await asyncio.get_running_loop().run_in_executor(_render_pool(), render_poster, elements, work)
     thumb = await upload_poster(ctx.server, rating_key, jpeg)
-    _uploaded_path(ctx, rating_key).write_bytes(jpeg)
+    # Atomic: a half-written copy would make Studio's own poster look like someone else's, and become an "original".
+    part = _uploaded_path(ctx, rating_key).with_suffix(f".part.{os.getpid()}")
+    part.write_bytes(jpeg)
+    part.replace(_uploaded_path(ctx, rating_key))
     now = int(time.time())
     ctx.db.execute(
         """INSERT INTO overlay_applied (rating_key, library_key, title, original_sha256, uploaded_sha256, plex_thumb, fingerprint, style,
@@ -204,7 +207,7 @@ async def _restore_one(ctx: Context, rating_key: str, *, dry_run: bool) -> Outco
         # Never overwrite a poster someone else put there; Studio just stops counting this title as its own.
         if not dry_run:
             _mark_restored(ctx, rating_key, poster.thumb)
-        return Outcome(rating_key, title, "unchanged", "Plex already shows another poster, so it was left alone.", not dry_run)
+        return Outcome(rating_key, title, "unchanged", "Plex already shows another poster, so it was left alone.", False)
     if dry_run:
         return Outcome(rating_key, title, "restore", "The original poster would go back.", False)
     data = original.path.read_bytes()
