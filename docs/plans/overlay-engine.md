@@ -261,6 +261,12 @@ Each step is one branch and one PR.
 2. Upload, hash, fingerprint and skip; noticing replaced posters; restore; dry run; per-title Apply / Restore / Repair.
 3. Proved on titles the maintainer names, then on one library they choose.
 
+**Phase 2 results** (2026-11-12, PR #139):
+- `originals.py`, `plex_posters.py`, `apply.py`, `kometa_hold.py`, routes `/apply`, `/restore`, `/titles`; migration 0020 `overlay_applied`. API only: the per-title Apply / Restore / Repair buttons come with Phase 3's gallery (Repair is `force: true`).
+- Plex serves back exactly the bytes Studio uploaded, and its thumb path number is the title's `updatedAt` (it moves on any metadata refresh), so Studio compares poster bytes, then pixels (`same_image`), never the path.
+- Proved on the maintainer's Plex on Slumdog Millionaire (Plex's poster as the original) and Moonlight (Kometa's untouched backup, so Kometa's 1080P badge is gone): dry run, apply, a second apply skipped both, and after a facts fix (Plex calls DTS `dca`) only Slumdog was redrawn, from the same kept original. Both stay on Studio's posters, so Kometa overlay runs on Movies are held until they're restored.
+- Not yet: whole-library passes (the pool and gate are ready; Phase 5 adds the triggers), restore through the UI.
+
 ### Phase 3: style files, Modern streaming and the gallery
 The style format (3.6) with its JSON Schema and loader; Modern streaming as the first shipped style; the gallery on the user's own posters; options per library; Apply; the YAML view behind a disclosure; export and import.
 
