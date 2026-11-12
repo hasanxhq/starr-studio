@@ -85,6 +85,17 @@ describe("A collection's titles", () => {
     expect(calls.filter((c) => c.route.startsWith("GET /plex/libraries/1/collections/101"))).toHaveLength(2);
   });
 
+  it("doesn't warn about missing IDs on music", async () => {
+    mockApi({
+      ...base,
+      "GET /plex/libraries/1/collections/101?start=0&size=100": () => ({ collection: marvel, items: [{ ...film(1, null, {}), type: "artist" }], start: 0, total: 1 }),
+    });
+    renderAt("/libraries/Movies/collections/101");
+    const titles = await screen.findByRole("list", { name: "Titles" });
+    expect(within(titles).getByText("Film 1")).toBeInTheDocument();
+    expect(titles).not.toHaveTextContent("No TMDb");
+  });
+
   it("searches and sorts what's loaded", async () => {
     mockApi({
       ...base,

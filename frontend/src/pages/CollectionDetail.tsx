@@ -63,7 +63,10 @@ function Item({ item }: { item: PlexItem }) {
             {link.label}
           </a>
         ))}
-        {idLinks(item).length === 0 && <span className="text-warn">No TMDb, IMDb or TheTVDB ID in Plex</span>}
+        {/* Music has none of these IDs, and its builders don't match on them. */}
+        {idLinks(item).length === 0 && (item.type === "movie" || item.type === "show") && (
+          <span className="text-warn">No TMDb, IMDb or TheTVDB ID in Plex</span>
+        )}
       </span>
     </li>
   );
