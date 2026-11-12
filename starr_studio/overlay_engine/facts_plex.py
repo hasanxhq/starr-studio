@@ -18,6 +18,8 @@ _CODEC_NAMES = {
     "eac3": "DD+",
     "ac3": "DD",
     "dca-ma": "DTS-HD MA",
+    "dca": "DTS",  # Plex's name for DTS
+    "dts": "DTS",
     "aac": "AAC",
     "flac": "FLAC",
     "opus": "OPUS",
@@ -58,8 +60,8 @@ def _audio_codec_name(codec: str | None, profile: str | None = None) -> str | No
     if not codec:
         return None
     key = codec.lower()
-    if key in ("dca", "dts") and (profile or "").lower() == "hra":
-        return "DTS-HD HRA"
+    if key in ("dca", "dts") and (profile or "").lower() in ("hra", "ma"):
+        return "DTS-HD HRA" if profile.lower() == "hra" else "DTS-HD MA"
     if key in _CODEC_NAMES:
         return _CODEC_NAMES[key]
     return codec.upper()

@@ -192,3 +192,12 @@ def test_stale_cache_json_refetch(db, overlay_server):
             await server.client.aclose()
 
     asyncio.run(run())
+
+
+def test_plex_dts_names():
+    from starr_studio.overlay_engine.facts_plex import _audio_codec_name
+
+    assert _audio_codec_name("dca", "dts") == "DTS"  # Slumdog Millionaire on the maintainer's Plex
+    assert _audio_codec_name("dca", "ma") == "DTS-HD MA"
+    assert _audio_codec_name("dca", "hra") == "DTS-HD HRA"
+    assert _audio_codec_name("dca-ma") == "DTS-HD MA"
