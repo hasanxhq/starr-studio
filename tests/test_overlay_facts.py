@@ -163,12 +163,12 @@ def test_overlay_facts_migration_on_fresh_db(tmp_path):
 
 
 def test_overlay_facts_migration_on_existing_chain(tmp_path):
-    """Migration 0019 applies after the existing chain (same as a running install)."""
+    """Migration 0019 applies after 0018 (same as a running install)."""
     conn = connect(tmp_path / "studio.db")
     migrations = load_migrations()
     from starr_studio.db import apply_migrations, schema_version
 
-    apply_migrations(conn, migrations[:-1])
+    apply_migrations(conn, migrations[:18])
     assert "overlay_facts" not in {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     apply_migrations(conn, migrations)
     assert schema_version(conn) == len(migrations)
