@@ -21,7 +21,7 @@ class TitleFacts:
     atmos: bool = False  # Dolby Atmos on the main audio track
     dts_x: bool = False  # DTS:X on the main audio track
     channels: str | None = None  # "7.1", "5.1", "2.0", "1.0"
-    edition: str | None = None  # Plex's edition title, e.g. "Extended"
+    edition: str | None = None  # Plex's Edition field, else what the file name says (editions.py), e.g. "Extended"
     imdb: float | None = None  # 0–10, Plex's IMDb rating
     rt_critic: int | None = None  # 0–100, Plex's Rotten Tomatoes critic score
     rt_audience: int | None = None  # 0–100, Plex's Rotten Tomatoes audience score

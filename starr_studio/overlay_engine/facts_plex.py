@@ -6,6 +6,7 @@ import json
 import sqlite3
 import time
 
+from starr_studio.overlay_engine.editions import edition as edition_from_metadata
 from starr_studio.overlay_engine.facts import TitleFacts
 from starr_studio.plex_library import PlexServer
 
@@ -143,7 +144,7 @@ def facts_from_metadata(m: dict) -> TitleFacts:
     content_rating = m.get("contentRating") or None
     duration = m.get("duration")
     runtime_minutes = round(duration / 60000) if duration else None
-    edition = m.get("editionTitle") or None
+    edition = edition_from_metadata(m)
     imdb, rt_critic, rt_audience, tmdb = _ratings(m)
 
     resolution = hdr = audio_codec = channels = None
