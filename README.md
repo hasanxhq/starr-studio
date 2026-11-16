@@ -11,7 +11,7 @@ Group titles into collections, give them posters and overlays, and let Radarr, S
 
 > **Unofficial.** Starr Studio is an independent project. It is not made by, endorsed by, or affiliated with the Kometa team. It runs an unmodified Kometa install and never changes Kometa's code.
 
-**Status: alpha.** It's new and has only been tested on one setup, so expect rough edges. It edits your Kometa config, and Kometa changes your Plex library. Studio backs up every file it changes, and you can restore from System → Backup.
+**Status: alpha.** It's new and has only been tested on one setup, so expect rough edges. It edits your Kometa config, and Kometa changes your Plex library. Studio backs up every file it changes, and you can restore from System → Backup. First Beta release coming soon - the old alpha is no longer representative of the current state of the project. Will be cleaning up soon.
 
 ## What it does
 
