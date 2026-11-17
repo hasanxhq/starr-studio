@@ -248,6 +248,14 @@ def test_broken_config(kometa):
         reader(kometa).read()
 
 
+def test_flow_style_secrets_are_masked():
+    text = "plex: {url: http://x, token: abc}\n"
+    masked, secrets = mask_secrets(text)
+    assert "abc" not in masked
+    assert secrets == ["abc"]
+    assert "token: ••••(1)" in masked
+
+
 def test_secrets_are_masked_with_numbered_placeholders():
     masked, secrets = mask_secrets(CONFIG)
     for secret in ("abcdefgh12345678", "tmdb-secret", "studio-secret", "discord-secret"):
