@@ -31,7 +31,9 @@ class ServiceProblem(Exception):
 
 
 def mask(secret: str | None) -> str | None:
-    return f"…{secret[-4:]}" if secret else None
+    if not secret:
+        return None
+    return "…" + secret[-4:] if len(secret) > 8 else "••••"
 
 
 def saved_key(config: Path | None, service: Service) -> str | None:

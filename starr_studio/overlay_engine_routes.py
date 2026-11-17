@@ -12,7 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
 
@@ -26,17 +26,11 @@ from .overlay_engine.style import Style, StyleError, load_style
 from .overlay_originals import find_backup
 from .overlays_routes import _library, backup_folder
 from .plex_routes import _plex_read, kometa_plex
+from .services import AppSettings
 from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/overlay-engine", tags=["overlay-engine"])
 STYLES = Path(__file__).parent / "overlay_engine" / "styles"
-
-
-def _settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-AppSettings = Annotated[Settings, Depends(_settings)]
 
 
 def _load_style(style: str | None, yaml: str | None, values: dict[str, Any] | None) -> tuple[Style, str]:

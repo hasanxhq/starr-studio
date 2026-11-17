@@ -21,6 +21,7 @@ from . import plex
 from .crypto import SecretBox
 from .db import delete_setting, get_setting, set_setting
 from .kometa_config import read_plex, write_plex
+from .services import mask
 from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
 from .settings import Settings
 
@@ -74,12 +75,6 @@ def account_token(db: sqlite3.Connection, box: SecretBox) -> str | None:
 def sign_out(db: sqlite3.Connection) -> None:
     delete_setting(db, ACCOUNT_TOKEN)
     delete_setting(db, ACCOUNT_NAME)
-
-
-def mask(token: str | None) -> str | None:
-    if not token:
-        return None
-    return "…" + token[-4:] if len(token) > 8 else "••••"
 
 
 def config_path(settings: Settings) -> Path:

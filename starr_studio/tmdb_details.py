@@ -17,6 +17,8 @@ from typing import Any
 
 import httpx
 
+from .kometa_config import write_atomic
+
 log = logging.getLogger(__name__)
 
 API = "https://api.themoviedb.org/3"
@@ -51,10 +53,7 @@ class TMDbDetails:
         if self._cache is None:
             return
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self._cache), encoding="utf-8")
-            tmp.replace(self.path)
+            write_atomic(self.path, json.dumps(self._cache))
         except OSError as error:
             log.warning("Couldn't keep TMDb's answers: %s", error)
 
