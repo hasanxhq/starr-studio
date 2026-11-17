@@ -17,9 +17,10 @@ function mockCommon(extra: Record<string, (body: unknown) => unknown> = {}) {
       libraries: [{ name: "Movies", plex_name: "Movies" }, { name: "TV Shows", plex_name: "TV Shows" }],
       playlist_files: [],
     }),
-    "GET /requests?limit=200": () => ({
+    "GET /requests?limit=2": () => ({
       requests: [],
       counts: { requested: 0, downloading: 0, imported: 0, failed: 0, cancelled: 0, exists: 0 },
+      arrived_today: 0,
     }),
     "GET /collections?library=Movies": () => ({ collections: [] }),
     "GET /collections?library=TV%20Shows": () => ({ collections: [] }),
@@ -78,9 +79,10 @@ describe("Layout", () => {
 
   it("shows Requests and Collections badges with counts and hides them at 0", async () => {
     mockCommon({
-      "GET /requests?limit=200": () => ({
+      "GET /requests?limit=2": () => ({
         requests: [],
         counts: { requested: 2, downloading: 1, imported: 0, failed: 0, cancelled: 0, exists: 0 },
+        arrived_today: 0,
       }),
       "GET /collections?library=Movies": () => ({
         collections: [
@@ -102,9 +104,10 @@ describe("Layout", () => {
 
     // With counts at 0
     mockCommon({
-      "GET /requests?limit=200": () => ({
+      "GET /requests?limit=2": () => ({
         requests: [],
         counts: { requested: 0, downloading: 0, imported: 0, failed: 0, cancelled: 0, exists: 0 },
+        arrived_today: 0,
       }),
       "GET /collections?library=Movies": () => ({ collections: [] }),
     });

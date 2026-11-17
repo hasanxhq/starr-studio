@@ -122,7 +122,7 @@ const requestRow = (partial: Partial<RequestRow> & Pick<RequestRow, "id" | "stat
   ...partial,
 });
 
-const requestList = (requests: RequestRow[]): RequestsList => ({
+const requestList = (requests: RequestRow[], arrived_today = 0): RequestsList => ({
   requests,
   counts: {
     requested: requests.filter((r) => r.status === "requested").length,
@@ -132,6 +132,7 @@ const requestList = (requests: RequestRow[]): RequestsList => ({
     cancelled: requests.filter((r) => r.status === "cancelled").length,
     exists: requests.filter((r) => r.status === "exists").length,
   },
+  arrived_today,
 });
 
 function baseRoutes(overrides: Record<string, (body: unknown) => unknown> = {}) {
@@ -159,7 +160,7 @@ function baseRoutes(overrides: Record<string, (body: unknown) => unknown> = {}) 
     }),
     "GET /libraries/Movies/other-collections": () => ({ others: [], plex_error: null }),
     "GET /requests/settings": () => requestsSettings,
-    "GET /requests?limit=200": () => requestList([]),
+    "GET /requests?limit=2": () => requestList([]),
     "GET /kometa/full-check": () => ({
       last: { ok: true, errors: [], warnings: [], existing_errors: [], checked_by_kometa: true, crashed: false, output: "", at: hoursAgo(1) },
     }),
@@ -227,7 +228,9 @@ describe("Home", () => {
           ...status,
           health: [{ source: "plex", level: "error", message: "Can't reach Plex.", link: "/settings/plex" }],
         }),
-        "GET /requests?limit=200": () => requestList([requestRow({ id: 9, title: "X", status: "failed" }), requestRow({ id: 8, title: "Y", status: "failed" })]),
+        "GET /requests?limit=2": () => requestList([requestRow({ id: 9, title: "X", status: "failed" }), requestRow({ id: 8, title: "Y", status: "failed" })]),
+        "GET /requests?limit=200": () =>
+          requestList([requestRow({ id: 9, title: "X", status: "failed" }), requestRow({ id: 8, title: "Y", status: "failed" })]),
       }),
     );
     renderAt("/?library=Movies");
@@ -252,11 +255,22 @@ describe("Home", () => {
     expect(within(card).getByText("And 1 more")).toBeInTheDocument();
   });
 
+  it("loads the home requests peek with limit 2", async () => {
+    const calls = mockApi(baseRoutes());
+    renderAt("/?library=Movies");
+    await screen.findByRole("heading", { name: "Movies", level: 2 });
+    await waitFor(() => {
+      const limit2 = calls.filter((c) => c.route === "GET /requests?limit=2");
+      expect(limit2.length).toBeGreaterThanOrEqual(1);
+      expect(limit2.length).toBeLessThanOrEqual(2);
+    });
+  });
+
   it("hides Coming in when requests are off and empty", async () => {
     mockApi(
       baseRoutes({
         "GET /requests/settings": () => ({ ...requestsSettings, settings: { ...requestsSettings.settings, enabled: false } }),
-        "GET /requests?limit=200": () => requestList([]),
+        "GET /requests?limit=2": () => requestList([]),
       }),
     );
     renderAt("/?library=Movies");

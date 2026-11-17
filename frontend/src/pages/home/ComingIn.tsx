@@ -27,16 +27,6 @@ function titleLine(row: RequestRow): string {
   return row.year != null ? `${name} (${row.year})` : name;
 }
 
-function isToday(iso: string, now = Date.now()): boolean {
-  const day = new Date(iso);
-  const today = new Date(now);
-  return day.getFullYear() === today.getFullYear() && day.getMonth() === today.getMonth() && day.getDate() === today.getDate();
-}
-
-function arrivedToday(requests: RequestRow[]): number {
-  return requests.filter((row) => row.imported_at !== null && isToday(row.imported_at)).length;
-}
-
 function countsAny(counts: Record<string, number> | undefined): boolean {
   if (!counts) return false;
   return Object.values(counts).some((n) => n > 0);
@@ -44,7 +34,7 @@ function countsAny(counts: Record<string, number> | undefined): boolean {
 
 export function ComingIn() {
   const settings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
-  const list = useQuery({ queryKey: ["requests", "list", ""], queryFn: () => requestsApi.list({ status: "", limit: 200 }) });
+  const list = useQuery({ queryKey: ["requests", "list", "", 2], queryFn: () => requestsApi.list({ status: "", limit: 2 }) });
   const enabled = settings.data?.settings.enabled ?? false;
   const counts = list.data?.counts;
   const rows = list.data?.requests ?? [];
@@ -52,8 +42,8 @@ export function ComingIn() {
 
   const downloading = counts?.downloading ?? 0;
   const requested = counts?.requested ?? 0;
-  const today = arrivedToday(rows);
-  const newest = [...rows].sort((a, b) => Date.parse(b.requested_at) - Date.parse(a.requested_at)).slice(0, 2);
+  const today = list.data?.arrived_today ?? 0;
+  const newest = rows;
 
   return (
     <Card
