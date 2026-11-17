@@ -754,6 +754,8 @@ export const api = {
     defaultCoverUrl: (name: string) => `${urlBase}/api/v1/config/defaults/${encodeURIComponent(name)}/cover`,
     useDefault: (library: string, kind: DefaultKind, name: string, variables: Record<string, unknown>) =>
       request<SaveResult>("PUT", `/config/libraries/${encodeURIComponent(library)}/defaults/${kind}/${encodeURIComponent(name)}`, { template_variables: variables }),
+    useDefaults: (library: string, layers: { name: string; template_variables: Record<string, unknown> }[]) =>
+      request<SaveResult>("PUT", `/config/libraries/${encodeURIComponent(library)}/defaults/overlay`, { layers }),
     dropDefault: (library: string, kind: DefaultKind, name: string) =>
       request<SaveResult>("DELETE", `/config/libraries/${encodeURIComponent(library)}/defaults/${kind}/${encodeURIComponent(name)}`),
     setOverlayOrder: (library: string, names: string[]) => request<SaveResult>("PUT", `/config/libraries/${encodeURIComponent(library)}/overlay-order`, { names }),

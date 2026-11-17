@@ -163,7 +163,7 @@ describe("The overlay studio", () => {
     const calls = mockApi({
       ...routes,
       "POST /overlays/Movies/estimate": () => ({ posters: 1200, minutes: 18 }),
-      "PUT /config/libraries/Movies/defaults/overlay/resolution": () => saved,
+      "PUT /config/libraries/Movies/defaults/overlay": () => saved,
       "POST /overlays/Movies/apply": () => ({ run_id: 12 }),
     });
     renderAt("/overlays?library=Movies");
@@ -174,8 +174,8 @@ describe("The overlay studio", () => {
     expect(await screen.findByRole("region", { name: "Overlay changes" })).toHaveTextContent(/1 layer changed/);
     fireEvent.click(screen.getByRole("button", { name: "Save for tonight" }));
     await waitFor(() =>
-      expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay/resolution")?.body).toEqual({
-        template_variables: { horizontal_align: "right", vertical_align: "bottom" },
+      expect(calls.find((c) => c.route === "PUT /config/libraries/Movies/defaults/overlay")?.body).toEqual({
+        layers: [{ name: "resolution", template_variables: { horizontal_align: "right", vertical_align: "bottom" } }],
       }),
     );
     expect(calls.some((c) => c.route === "POST /overlays/Movies/apply")).toBe(false);
