@@ -7,6 +7,7 @@ every .yml/.yaml in it, ``default`` names a file in Kometa's own defaults folder
 """
 
 import ast
+import copy
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -60,8 +61,21 @@ def _yaml() -> YAML:
     return YAML(typ="safe", pure=True)
 
 
+_parsed_file_cache: dict[str, tuple[tuple[int, int], Any]] = {}
+
+
+def _cached_yaml_parse(path: Path) -> Any:
+    """Parse once per file version (mtime + size); one entry per path, so the cache never grows past the files read."""
+    stat = path.stat()
+    key, version = str(path.resolve()), (stat.st_mtime_ns, stat.st_size)
+    cached = _parsed_file_cache.get(key)
+    if cached is None or cached[0] != version:
+        cached = _parsed_file_cache[key] = (version, _yaml().load(path.read_text(encoding="utf-8")))
+    return copy.deepcopy(cached[1])
+
+
 def load_yaml(path: Path) -> Any:
-    return _yaml().load(path.read_text(encoding="utf-8"))
+    return _cached_yaml_parse(path)
 
 
 @dataclass
@@ -276,7 +290,7 @@ class ConfigReader:
         summary = FileSummary(self.display_path(path))
         try:
             text = path.read_text(encoding="utf-8")
-            data = _yaml().load(text) or {}
+            data = _cached_yaml_parse(path) or {}
         except (OSError, YAMLError) as error:
             summary.error = f"Can't read {summary.path}: {error}"
             return summary
@@ -481,9 +495,26 @@ def _overlay(name: str, body: Any) -> dict:
 
 # --- Showing raw files --------------------------------------------------------------
 
+_SECRET_KEY_NAMES = (
+    "token",
+    "apikey",
+    "api_key",
+    "password",
+    "client_secret",
+    "client_id",
+    "access_token",
+    "refresh_token",
+    "secret",
+    "pin",
+    "session",
+)
 SECRET_KEYS = re.compile(
-    r"^(?P<key>\s*-?\s*(?:token|apikey|api_key|password|client_secret|client_id|access_token|refresh_token|secret|pin|session)\s*:\s*)"
+    r"^(?P<key>\s*-?\s*(?:" + "|".join(_SECRET_KEY_NAMES) + r")\s*:\s*)"
     r"(?P<value>[^#\s][^#]*?)(?P<rest>\s+#.*)?$",
+    re.IGNORECASE,
+)
+SECRET_INLINE = re.compile(
+    r"(?P<key>\b(?:" + "|".join(_SECRET_KEY_NAMES) + r")\s*:\s*)(?P<value>[^,}#\s][^,}#]*)",
     re.IGNORECASE,
 )
 SECRET_URL_PARTS = [
@@ -513,6 +544,8 @@ def mask_secrets(text: str) -> tuple[str, list[str]]:
         match = SECRET_KEYS.match(body)
         if match:
             body = f"{match['key']}{hide(match['value'])}{match['rest'] or ''}"
+        else:
+            body = SECRET_INLINE.sub(lambda m: f"{m['key']}{hide(m['value'])}", body)
         for pattern in SECRET_URL_PARTS:
             body = pattern.sub(lambda m: m["key"] + hide(m["value"]), body)
         lines.append(body + ending)

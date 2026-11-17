@@ -4,8 +4,10 @@ Lists categories and collection entries from Kometa's shipped defaults,
 without modifying or importing Kometa internals.
 """
 
+import copy
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -349,11 +351,20 @@ def _expand_file_dynamic(
     return entries
 
 
+@lru_cache(maxsize=32)
+def _categories_cached(kometa_root: str, library_type: str) -> tuple[Category, ...]:
+    return tuple(_categories_list(Path(kometa_root), library_type))
+
+
 def categories(kometa_root: Path, library_type: str) -> list[Category]:
     """Categories and collection entries known from default files alone."""
     library_type = library_type.lower()
     if library_type not in ("movie", "show"):
         return []
+    return copy.deepcopy(list(_categories_cached(str(kometa_root.resolve()), library_type)))
+
+
+def _categories_list(kometa_root: Path, library_type: str) -> list[Category]:
     defaults_folder = kometa_root / "defaults" if (kometa_root / "defaults").is_dir() else kometa_root
     if not defaults_folder.is_dir():
         return []
@@ -763,8 +774,17 @@ async def count(
     return categories_list
 
 
+@lru_cache(maxsize=256)
+def _customisable_cached(kometa_root: str, name: str, library_type: str) -> bool:
+    return _customisable_impl(Path(kometa_root), name, library_type)
+
+
 def customisable(kometa_root: Path, name: str, library_type: str) -> bool:
     """True when the category's collections are Plex filters (genre, decade, people…), so each can open in the builder."""
+    return _customisable_cached(str(kometa_root.resolve()), name, library_type)
+
+
+def _customisable_impl(kometa_root: Path, name: str, library_type: str) -> bool:
     defaults_folder = kometa_root / "defaults" if (kometa_root / "defaults").is_dir() else kometa_root
     for folder in (library_type, "both", "chart", "award"):
         path = defaults_folder / folder / f"{name}.yml"
@@ -781,8 +801,17 @@ def customisable(kometa_root: Path, name: str, library_type: str) -> bool:
     return False
 
 
+@lru_cache(maxsize=512)
+def _dynamic_source_cached(kometa_root: str, name: str, block: str, library_type: str) -> str | None:
+    return _dynamic_source_impl(Path(kometa_root), name, block, library_type)
+
+
 def dynamic_source(kometa_root: Path, name: str, block: str, library_type: str) -> str | None:
     """Where one dynamic block's collections come from ("plex", "people", "tmdb", "file", "external"), or None."""
+    return _dynamic_source_cached(str(kometa_root.resolve()), name, block, library_type)
+
+
+def _dynamic_source_impl(kometa_root: Path, name: str, block: str, library_type: str) -> str | None:
     defaults_folder = kometa_root / "defaults" if (kometa_root / "defaults").is_dir() else kometa_root
     for folder in (library_type, "both", "chart", "award"):
         path = defaults_folder / folder / f"{name}.yml"
