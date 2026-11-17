@@ -29,6 +29,7 @@ from starr_studio.requesting import (
     seerr_default_server,
 )
 from starr_studio.db import apply_migrations, connect, get_setting, load_migrations, set_setting
+from starr_studio.scheduler import utc_text
 
 RADARR_URL = "http://radarr.test:7878"
 SONARR_URL = "http://sonarr.test:8989"
@@ -497,15 +498,18 @@ async def test_show_request_to_sonarr(env):
     assert outcome1.requested == 1
     created_series = next(iter(mock.sonarr_series.values()))
     assert created_series["tvdbId"] == 81189
+    row = db.execute("SELECT alt_item FROM requests WHERE item = 'tvdb:81189'").fetchone()
+    assert row["alt_item"] == "tmdb-show:1399"
 
-    # 2. By tmdb-show mapped to tvdb
+    # 2. The TMDb twin key is not filed again (fake TMDb maps every TVDb id to 1399).
     outcome2 = await service.request(
         [Item(item="tmdb-show:1399", title="Game of Thrones", year=2011)],
         library="TV Shows",
         collection_id=2,
         now=T0,
     )
-    assert outcome2.requested == 1
+    assert outcome2.skipped == 1
+    assert len(mock.sonarr_series) == 1
 
     # 3. Unmapped show fails with clear message
     outcome3 = await service.request(
@@ -1218,3 +1222,95 @@ async def test_daily_cap_resets_at_local_midnight(env):
     assert outcome3.requested == 1
     assert outcome3.capped == 0
     assert outcome3.items[0].status == "requested"
+
+
+@pytest.mark.anyio
+async def test_label_imported_skips_stale_unlabelled(env):
+    service, mock, db, box, config, client = env
+    stale_at = utc_text(T0 - timedelta(days=8))
+    fresh_at = utc_text(T0 - timedelta(days=1))
+    server = service.plex_server()
+
+    db.execute(
+        """
+        INSERT INTO requests (item, media, title, library, via, status, requested_at, updated_at, imported_at)
+        VALUES ('tmdb-movie:999', 'movie', 'Stale', 'Movies', 'radarr', 'imported', ?, ?, ?)
+        """,
+        (stale_at, stale_at, stale_at),
+    )
+    db.commit()
+    mock.plex.requests.clear()
+    assert await service.label_imported(server, T0) == 0
+    assert not any("includeGuids=1" in str(r.url) for r in mock.plex.requests)
+
+    mock.plex.TITLES["1"].append({
+        "ratingKey": "201",
+        "title": "Marvel film 1",
+        "type": "movie",
+        "Guid": [{"id": "tmdb://1726"}],
+        "Label": [],
+    })
+    db.execute(
+        """
+        INSERT INTO requests (item, media, title, library, via, status, requested_at, updated_at, imported_at)
+        VALUES ('tmdb-movie:1726', 'movie', 'Fresh', 'Movies', 'radarr', 'imported', ?, ?, ?)
+        """,
+        (fresh_at, fresh_at, fresh_at),
+    )
+    db.commit()
+    mock.plex.requests.clear()
+
+    assert await service.label_imported(server, T0) == 1
+    library_scans = [r for r in mock.plex.requests if "includeGuids=1" in str(r.url)]
+    assert len(library_scans) == 1
+
+
+@pytest.mark.anyio
+async def test_show_alt_item_skips_duplicate_key_request(env):
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    first = await service.request([Item(item="tmdb-show:1399", title="Game of Thrones", year=2011)], library="TV Shows", collection_id=2, now=T0)
+    assert first.requested == 1
+    row = db.execute("SELECT * FROM requests WHERE item = 'tmdb-show:1399'").fetchone()
+    assert row["alt_item"] == "tvdb:121361"
+
+    second = await service.request([Item(item="tvdb:121361", title="Game of Thrones", year=2011)], library="TV Shows", collection_id=2, now=T0)
+    assert second.skipped == 1
+    assert db.execute("SELECT count(*) FROM requests WHERE item LIKE '%1399%' OR item LIKE '%121361%'").fetchone()[0] == 1
+
+
+@pytest.mark.anyio
+async def test_refresh_marks_removed_radarr_movie_failed(env):
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    await service.request([Item(item="tmdb-movie:603", title="The Matrix")], library="Movies", collection_id=1, now=T0)
+    mid = int(db.execute("SELECT external_id FROM requests WHERE item = 'tmdb-movie:603'").fetchone()[0])
+    mock.radarr_movies.pop(mid)
+
+    await service.refresh(T0 + timedelta(minutes=5))
+    row = db.execute("SELECT * FROM requests WHERE item = 'tmdb-movie:603'").fetchone()
+    assert row["status"] == "failed"
+    assert row["error"] == "Removed from Radarr"
+
+
+@pytest.mark.anyio
+async def test_refresh_marks_removed_sonarr_series_failed(env):
+    service, mock, db, box, config, client = env
+    settings = service.load_settings()
+    settings.enabled = True
+    service.save_settings(settings)
+
+    await service.request([Item(item="tvdb:81189", title="Breaking Bad")], library="TV Shows", collection_id=1, now=T0)
+    sid = int(db.execute("SELECT external_id FROM requests WHERE item = 'tvdb:81189'").fetchone()[0])
+    mock.sonarr_series.pop(sid)
+
+    await service.refresh(T0 + timedelta(minutes=5))
+    row = db.execute("SELECT * FROM requests WHERE item = 'tvdb:81189'").fetchone()
+    assert row["status"] == "failed"
+    assert row["error"] == "Removed from Sonarr"
