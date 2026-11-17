@@ -302,9 +302,10 @@ class SeerrServer:
         return next((pid for pid, pname in self.profiles if pname.casefold() == wanted), None)
 
 
-async def _seerr_get(http: httpx.AsyncClient, conn: SeerrConnection, path: str) -> Any:
+async def _seerr_request(http: httpx.AsyncClient, conn: SeerrConnection, path: str, *, post: bool = False) -> Any:
     try:
-        res = await http.get(
+        request = http.post if post else http.get
+        res = await request(
             f"{conn.url.rstrip('/')}{path}",
             headers={"X-Api-Key": conn.api_key, "Accept": "application/json"},
             auth=conn.login or httpx.USE_CLIENT_DEFAULT,
@@ -316,34 +317,55 @@ async def _seerr_get(http: httpx.AsyncClient, conn: SeerrConnection, path: str) 
         raise ArrProblem(f"Can't connect to Seerr: {error}") from None
     if res.status_code in (401, 403):
         raise ArrProblem("Seerr rejected the API key")
-    if res.status_code != 200:
+    ok = (200, 201) if post else (200,)
+    if res.status_code not in ok:
         raise ArrProblem(f"Seerr answered HTTP {res.status_code}")
     try:
         return res.json()
     except ValueError:
+        if post:
+            return None
         raise ArrProblem("Seerr's answer wasn't JSON") from None
 
 
-async def _seerr_post(http: httpx.AsyncClient, conn: SeerrConnection, path: str) -> Any:
+async def _ensure_starr_tag(http: httpx.AsyncClient, conn: Connection, tag_path: str) -> int:
+    tags = await arr._get(http, conn, tag_path)
+    if isinstance(tags, list):
+        for t in tags:
+            if isinstance(t, dict) and str(t.get("label", "")).lower() == "starr":
+                return int(t["id"])
+    created = await arr._post(http, conn, tag_path, json={"label": "starr"})
+    if isinstance(created, dict) and "id" in created:
+        return int(created["id"])
+    raise ArrProblem("Could not create tag 'starr'")
+
+
+async def _fetch_arr_queue_ids(
+    http: httpx.AsyncClient,
+    conn: Connection | None,
+    *,
+    service: str,
+    path: str,
+    params: dict[str, str] | None,
+    id_field: str,
+    nested_field: str | None = None,
+    as_int: bool = False,
+) -> set:
+    ids: set = set()
+    if conn is None:
+        return ids
     try:
-        res = await http.post(
-            f"{conn.url.rstrip('/')}{path}",
-            headers={"X-Api-Key": conn.api_key, "Accept": "application/json"},
-            auth=conn.login or httpx.USE_CLIENT_DEFAULT,
-            timeout=TIMEOUT,
-        )
-    except httpx.TimeoutException:
-        raise ArrProblem(f"Seerr didn't answer within {TIMEOUT:g} s") from None
-    except httpx.HTTPError as error:
-        raise ArrProblem(f"Can't connect to Seerr: {error}") from None
-    if res.status_code in (401, 403):
-        raise ArrProblem("Seerr rejected the API key")
-    if res.status_code not in (200, 201):
-        raise ArrProblem(f"Seerr answered HTTP {res.status_code}")
-    try:
-        return res.json()
-    except ValueError:
-        return None
+        queue_data = await arr._get(http, conn, path, params or {})
+        records = queue_data.get("records", []) if isinstance(queue_data, dict) else (queue_data if isinstance(queue_data, list) else [])
+        for r in records:
+            rid = r.get(id_field) if isinstance(r, dict) else None
+            if rid is None and nested_field and isinstance(r, dict):
+                rid = (r.get(nested_field) or {}).get("id")
+            if rid is not None:
+                ids.add(int(rid) if as_int else rid)
+    except Exception as e:
+        log.warning("Could not fetch %s queue: %s", service, e)
+    return ids
 
 
 # Seerr's MediaRequestStatus: 1 pending approval, 2 approved, 3 declined, 4 failed, 5 completed.
@@ -353,14 +375,14 @@ SEERR_RETRIED = "Seerr couldn't hand it to {app} at first; Studio asked Seerr to
 
 async def seerr_default_server(http: httpx.AsyncClient, conn: SeerrConnection, app: Kind) -> SeerrServer | None:
     """The Radarr or Sonarr server Seerr sends requests to by default (4K servers are ignored), or None if it has none."""
-    servers = await _seerr_get(http, conn, f"/api/v1/service/{app}")
+    servers = await _seerr_request(http, conn, f"/api/v1/service/{app}")
     default = next(
         (s for s in servers if isinstance(s, dict) and s.get("isDefault") and not s.get("is4k") and isinstance(s.get("id"), int)),
         None,
     ) if isinstance(servers, list) else None
     if default is None:
         return None
-    details = await _seerr_get(http, conn, f"/api/v1/service/{app}/{default['id']}")
+    details = await _seerr_request(http, conn, f"/api/v1/service/{app}/{default['id']}")
     raw = details.get("profiles") if isinstance(details, dict) else None
     profiles = tuple(
         (p["id"], str(p["name"])) for p in (raw if isinstance(raw, list) else []) if isinstance(p, dict) and isinstance(p.get("id"), int) and p.get("name")
@@ -567,29 +589,6 @@ class RequestService:
             return f"tmdb-show:{tmdb_id}" if tmdb_id else None
         return None
 
-    async def _ensure_tag(self, conn: Connection) -> int:
-        tags = await arr._get(self.http, conn, "/api/v3/tag")
-        if isinstance(tags, list):
-            for t in tags:
-                if isinstance(t, dict) and str(t.get("label", "")).lower() == "starr":
-                    return int(t["id"])
-        created = await arr._post(self.http, conn, "/api/v3/tag", json={"label": "starr"})
-        if isinstance(created, dict) and "id" in created:
-            return int(created["id"])
-        raise ArrProblem("Could not create tag 'starr'")
-
-    async def _ensure_lidarr_tag(self, conn: Connection) -> int:
-        """Lidarr.Api.V1/Tags/TagResource — same starr label as Radarr/Sonarr."""
-        tags = await arr._get(self.http, conn, "/api/v1/tag")
-        if isinstance(tags, list):
-            for t in tags:
-                if isinstance(t, dict) and str(t.get("label", "")).lower() == "starr":
-                    return int(t["id"])
-        created = await arr._post(self.http, conn, "/api/v1/tag", json={"label": "starr"})
-        if isinstance(created, dict) and "id" in created:
-            return int(created["id"])
-        raise ArrProblem("Could not create tag 'starr'")
-
     @staticmethod
     def _album_year(album: dict) -> int | None:
         release = album.get("releaseDate")
@@ -674,7 +673,7 @@ class RequestService:
                 return "failed", None, "Album not found in Lidarr's metadata", None, None
 
             qp_id, mp_id, rf_path = await self._resolve_lidarr_options(conn, options)
-            starr_tag = await self._ensure_lidarr_tag(conn)
+            starr_tag = await _ensure_starr_tag(self.http, conn, "/api/v1/tag")
             artist = album_data.get("artist") or {}
             foreign_artist = artist.get("foreignArtistId")
             if not foreign_artist:
@@ -733,62 +732,40 @@ class RequestService:
             })
         return albums
 
-    async def _resolve_radarr_options(self, conn: Connection, radarr_settings: RadarrRequestSettings, profile: str | None = None) -> tuple[int, str]:
+    async def _resolve_arr_options(
+        self,
+        conn: Connection,
+        service: Literal["Radarr", "Sonarr"],
+        default_quality: str | None,
+        root_folder: str | None,
+        profile: str | None = None,
+    ) -> tuple[int, str]:
         profiles = await arr._get(self.http, conn, "/api/v3/qualityprofile")
         if not isinstance(profiles, list) or not profiles:
-            raise ArrProblem("No quality profile available in Radarr")
+            raise ArrProblem(f"No quality profile available in {service}")
         folders = await arr._get(self.http, conn, "/api/v3/rootfolder")
         if not isinstance(folders, list) or not folders:
-            raise ArrProblem("No root folder available in Radarr")
+            raise ArrProblem(f"No root folder available in {service}")
 
         qp_id = _profile_id(profiles, profile)
         if qp_id is None and profile:
-            log.info("The collection's quality profile %r isn't in Radarr any more; using the default", profile)
+            log.info("The collection's quality profile %r isn't in %s any more; using the default", profile, service)
         if qp_id is None:
-            qp_id = _profile_id(profiles, radarr_settings.quality_profile)
+            qp_id = _profile_id(profiles, default_quality)
         if qp_id is None:
             qp_id = profiles[0].get("id")
 
         rf_path = None
-        if radarr_settings.root_folder:
+        if root_folder:
             for f in folders:
-                if isinstance(f, dict) and f.get("path") == radarr_settings.root_folder:
+                if isinstance(f, dict) and f.get("path") == root_folder:
                     rf_path = f.get("path")
                     break
         if rf_path is None:
             rf_path = folders[0].get("path")
 
         if qp_id is None or rf_path is None:
-            raise ArrProblem("Invalid Radarr quality profile or root folder")
-        return int(qp_id), str(rf_path)
-
-    async def _resolve_sonarr_options(self, conn: Connection, sonarr_settings: SonarrRequestSettings, profile: str | None = None) -> tuple[int, str]:
-        profiles = await arr._get(self.http, conn, "/api/v3/qualityprofile")
-        if not isinstance(profiles, list) or not profiles:
-            raise ArrProblem("No quality profile available in Sonarr")
-        folders = await arr._get(self.http, conn, "/api/v3/rootfolder")
-        if not isinstance(folders, list) or not folders:
-            raise ArrProblem("No root folder available in Sonarr")
-
-        qp_id = _profile_id(profiles, profile)
-        if qp_id is None and profile:
-            log.info("The collection's quality profile %r isn't in Sonarr any more; using the default", profile)
-        if qp_id is None:
-            qp_id = _profile_id(profiles, sonarr_settings.quality_profile)
-        if qp_id is None:
-            qp_id = profiles[0].get("id")
-
-        rf_path = None
-        if sonarr_settings.root_folder:
-            for f in folders:
-                if isinstance(f, dict) and f.get("path") == sonarr_settings.root_folder:
-                    rf_path = f.get("path")
-                    break
-        if rf_path is None:
-            rf_path = folders[0].get("path")
-
-        if qp_id is None or rf_path is None:
-            raise ArrProblem("Invalid Sonarr quality profile or root folder")
+            raise ArrProblem(f"Invalid {service} quality profile or root folder")
         return int(qp_id), str(rf_path)
 
     async def _request_radarr(
@@ -811,8 +788,8 @@ class RequestService:
             if movies:
                 return "exists", str(movies[0]["id"]), None
 
-            qp_id, rf_path = await self._resolve_radarr_options(conn, radarr_settings, profile)
-            starr_tag = await self._ensure_tag(conn)
+            qp_id, rf_path = await self._resolve_arr_options(conn, "Radarr", radarr_settings.quality_profile, radarr_settings.root_folder, profile)
+            starr_tag = await _ensure_starr_tag(self.http, conn, "/api/v3/tag")
 
             lookup = await arr._get(self.http, conn, "/api/v3/movie/lookup/tmdb", {"tmdbId": tmdb_id})
             movie_data = lookup[0] if isinstance(lookup, list) and lookup else (lookup if isinstance(lookup, dict) else None)
@@ -866,8 +843,8 @@ class RequestService:
             if series_list:
                 return "exists", str(series_list[0]["id"]), None
 
-            qp_id, rf_path = await self._resolve_sonarr_options(conn, sonarr_settings, profile)
-            starr_tag = await self._ensure_tag(conn)
+            qp_id, rf_path = await self._resolve_arr_options(conn, "Sonarr", sonarr_settings.quality_profile, sonarr_settings.root_folder, profile)
+            starr_tag = await _ensure_starr_tag(self.http, conn, "/api/v3/tag")
 
             lookup = await arr._get(self.http, conn, "/api/v3/series/lookup", {"term": f"tvdb:{tvdb_id}"})
             series_data = lookup[0] if isinstance(lookup, list) and lookup else (lookup if isinstance(lookup, dict) else None)
@@ -1236,53 +1213,30 @@ class RequestService:
         sonarr_conn = arr.connection(self.db, self.box, self.config, "sonarr")
         lidarr_conn = lidarr_connection(self.db, self.box)
 
-        radarr_queue_movie_ids = set()
-        if radarr_conn:
-            try:
-                queue_data = await arr._get(self.http, radarr_conn, "/api/v3/queue", {"includeMovie": "true"})
-                records = queue_data.get("records", []) if isinstance(queue_data, dict) else (queue_data if isinstance(queue_data, list) else [])
-                for r in records:
-                    mid = r.get("movieId") or (r.get("movie") or {}).get("id")
-                    if mid:
-                        radarr_queue_movie_ids.add(mid)
-            except Exception as e:
-                log.warning("Could not fetch Radarr queue: %s", e)
-
-        sonarr_queue_series_ids = set()
-        if sonarr_conn:
-            try:
-                queue_data = await arr._get(self.http, sonarr_conn, "/api/v3/queue", {"includeSeries": "true"})
-                records = queue_data.get("records", []) if isinstance(queue_data, dict) else (queue_data if isinstance(queue_data, list) else [])
-                for r in records:
-                    sid = r.get("seriesId") or (r.get("series") or {}).get("id")
-                    if sid:
-                        sonarr_queue_series_ids.add(sid)
-            except Exception as e:
-                log.warning("Could not fetch Sonarr queue: %s", e)
-
-        lidarr_queue_album_ids = set()
-        if lidarr_conn:
-            try:
-                queue_data = await arr._get(self.http, lidarr_conn, "/api/v1/queue")
-                records = queue_data.get("records", []) if isinstance(queue_data, dict) else (queue_data if isinstance(queue_data, list) else [])
-                for r in records:
-                    aid = r.get("albumId")
-                    if aid:
-                        lidarr_queue_album_ids.add(int(aid))
-            except Exception as e:
-                log.warning("Could not fetch Lidarr queue: %s", e)
+        radarr_queue_movie_ids = await _fetch_arr_queue_ids(
+            self.http, radarr_conn, service="Radarr", path="/api/v3/queue", params={"includeMovie": "true"},
+            id_field="movieId", nested_field="movie",
+        )
+        sonarr_queue_series_ids = await _fetch_arr_queue_ids(
+            self.http, sonarr_conn, service="Sonarr", path="/api/v3/queue", params={"includeSeries": "true"},
+            id_field="seriesId", nested_field="series",
+        )
+        lidarr_queue_album_ids = await _fetch_arr_queue_ids(
+            self.http, lidarr_conn, service="Lidarr", path="/api/v1/queue", params=None,
+            id_field="albumId", as_int=True,
+        )
 
         radarr_starr_tag_id = None
         if radarr_conn:
             try:
-                radarr_starr_tag_id = await self._ensure_tag(radarr_conn)
+                radarr_starr_tag_id = await _ensure_starr_tag(self.http, radarr_conn, "/api/v3/tag")
             except Exception:
                 pass
 
         sonarr_starr_tag_id = None
         if sonarr_conn:
             try:
-                sonarr_starr_tag_id = await self._ensure_tag(sonarr_conn)
+                sonarr_starr_tag_id = await _ensure_starr_tag(self.http, sonarr_conn, "/api/v3/tag")
             except Exception:
                 pass
 
@@ -1433,7 +1387,7 @@ class RequestService:
             if not entries:
                 return
             entry = entries[0]
-            starr = await self._ensure_tag(conn)
+            starr = await _ensure_starr_tag(self.http, conn, "/api/v3/tag")
             if starr not in (entry.get("tags") or []) or not entry.get("monitored"):
                 return  # not Studio's to change, or already unmonitored
             entry["monitored"] = False
@@ -1453,7 +1407,7 @@ class RequestService:
         if conn is None or not external_id:
             return
         try:
-            request = await _seerr_get(self.http, conn, f"/api/v1/request/{external_id}")
+            request = await _seerr_request(self.http, conn, f"/api/v1/request/{external_id}")
         except ArrProblem as error:
             log.warning("Could not check request %s in Seerr: %s", external_id, error)
             return
@@ -1464,7 +1418,7 @@ class RequestService:
         note = row.get("error") or ""
         if retried_note not in note:
             try:
-                retried = await _seerr_post(self.http, conn, f"/api/v1/request/{external_id}/retry")
+                retried = await _seerr_request(self.http, conn, f"/api/v1/request/{external_id}/retry", post=True)
             except ArrProblem as error:
                 log.warning("Could not retry request %s in Seerr: %s", external_id, error)
                 retried = None
