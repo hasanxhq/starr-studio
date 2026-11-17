@@ -1,8 +1,13 @@
 // Studio's own overlay engine (docs/plans/overlay-engine.md, Phase 3): style files, each library's chosen style,
 // the poster gallery, and apply / restore. Routes in starr_studio/overlay_engine_routes.py.
 
-import { errorFrom, request } from "./api";
+import { errorFrom, request, SIGNED_OUT_EVENT } from "./api";
 import { urlBase } from "./base";
+
+async function failed(response: Response): Promise<never> {
+  if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
+  throw await errorFrom(response);
+}
 
 const BASE = "/overlay-engine";
 const enc = encodeURIComponent;
@@ -77,7 +82,7 @@ export const overlayEngine = {
         headers: { "Content-Type": file.name.toLowerCase().endsWith(".zip") ? "application/zip" : "application/yaml" },
         body: file,
       });
-      if (!response.ok) throw await errorFrom(response);
+      if (!response.ok) await failed(response);
       return (await response.json()) as StyleDetail;
     },
   },
@@ -101,7 +106,7 @@ export const overlayEngine = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw await errorFrom(response);
+    if (!response.ok) await failed(response);
     return response.blob();
   },
 };

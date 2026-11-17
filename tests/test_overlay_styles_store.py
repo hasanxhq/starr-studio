@@ -36,6 +36,7 @@ def test_list_get_save_duplicate_delete(tmp_path):
         saved = client.put(f"{API}/styles/mine", json={"yaml": MINIMAL}).json()
         assert saved["name"] == "Mine" and not saved["shipped"]
         assert (user_dir / "mine.yml").read_text() == MINIMAL
+        assert client.get(f"{API}/styles/mine").json()["yaml"] == MINIMAL
 
         copy = client.post(f"{API}/styles/modern-streaming/duplicate", json={}).json()
         assert copy["id"] == "modern-streaming-copy" and copy["name"] == "Modern streaming (copy)"

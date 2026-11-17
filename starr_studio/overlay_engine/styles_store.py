@@ -72,7 +72,7 @@ class StyleStore:
         for folder, shipped in ((self.shipped_dir, True), (self.user_dir, False)):
             if folder.is_dir():
                 for path in sorted(folder.glob("*.yml")):
-                    if STYLE_ID.match(path.stem) and path.stem not in found:  # a shipped id wins over a user file
+                    if path.is_file() and STYLE_ID.match(path.stem) and path.stem not in found:  # a shipped id wins over a user file
                         found[path.stem] = self._read(path, shipped)
         return list(found.values())
 
