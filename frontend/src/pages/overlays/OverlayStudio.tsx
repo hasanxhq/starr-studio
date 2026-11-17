@@ -216,22 +216,18 @@ export function OverlayStudio({
       },
     });
 
-  const saveLayer = useMutation({
-    mutationFn: ({ name, values }: { name: string; values: Values }) => api.config.useDefault(library, "overlay", name, values),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["config"] });
-      queryClient.invalidateQueries({ queryKey: ["backups"] });
-    },
-  });
   const applyRun = useMutation({ mutationFn: () => api.overlays.apply(library) });
 
   const saveAll = async (thenApply: boolean) => {
     setBatchError(null);
     setSaving(true);
     try {
-      for (const layer of dirtyLayers) {
-        await saveLayer.mutateAsync({ name: layer.name, values: draftValues(layer) });
-      }
+      await api.config.useDefaults(
+        library,
+        dirtyLayers.map((layer) => ({ name: layer.name, template_variables: draftValues(layer) })),
+      );
+      queryClient.invalidateQueries({ queryKey: ["config"] });
+      queryClient.invalidateQueries({ queryKey: ["backups"] });
       setDrafts({});
       if (thenApply) await applyRun.mutateAsync();
     } catch (error) {

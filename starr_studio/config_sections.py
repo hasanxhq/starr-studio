@@ -318,10 +318,32 @@ def with_library_variables(text: str, library: str, variables: dict) -> str:
     return render(text, document, indent)
 
 
-async def set_library_default(writer: ConfigWriter, library: str, kind: str, name: str, variables: dict | None) -> dict:
+def _with_library_defaults(text: str, library: str, files: str, layers: list[tuple[str, dict]]) -> str:
+    for name, variables in layers:
+        text = with_library_default(text, library, files, name, variables)
+    return text
+
+
+async def set_library_defaults(writer: ConfigWriter, library: str, kind: str, layers: list[tuple[str, dict]]) -> dict:
     files = "overlay_files" if kind == "overlay" else "collection_files"
-    action = f"Turned off the {name} default" if variables is None else f"Set the {name} default"
-    return await writer.save([_config_edit(writer, lambda text: with_library_default(text or "", library, files, name, variables))], f"{action} for {library}")
+    if len(layers) == 1:
+        action = f"Set the {layers[0][0]} default"
+    else:
+        action = f"Set the {', '.join(name for name, _ in layers)} defaults"
+    return await writer.save(
+        [_config_edit(writer, lambda text: _with_library_defaults(text or "", library, files, layers))],
+        f"{action} for {library}",
+    )
+
+
+async def set_library_default(writer: ConfigWriter, library: str, kind: str, name: str, variables: dict | None) -> dict:
+    if variables is None:
+        files = "overlay_files" if kind == "overlay" else "collection_files"
+        return await writer.save(
+            [_config_edit(writer, lambda text: with_library_default(text or "", library, files, name, None))],
+            f"Turned off the {name} default for {library}",
+        )
+    return await set_library_defaults(writer, library, kind, [(name, variables)])
 
 
 async def set_overlay_order(writer: ConfigWriter, library: str, names: list[str]) -> dict:

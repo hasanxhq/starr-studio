@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from . import backups
 from .config_items import ItemProblem, read_item, schema_kind
@@ -19,6 +19,7 @@ from .config_sections import (
     read_document,
     read_section,
     set_library_default,
+    set_library_defaults,
     set_library_operations,
     set_library_settings,
     set_library_variables,
@@ -265,6 +266,24 @@ def _known_default(reader: ConfigReader, kind: str, name: str) -> None:
         raise HTTPException(404, "Defaults are collection or overlay defaults")
     if name not in {entry["name"] for entry in catalogue["collections" if kind == "collection" else "overlays"]}:
         raise HTTPException(404, f"The installed Kometa has no {kind} default called {name}")
+
+
+class OverlayLayerIn(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    template_variables: dict = {}
+
+
+class OverlayDefaultsIn(BaseModel):
+    layers: list[OverlayLayerIn] = Field(min_length=1)
+
+
+@router.put("/config/libraries/{library}/defaults/overlay")
+async def use_overlay_defaults(library: str, body: OverlayDefaultsIn, reader: Reader, writer: Writer) -> dict:
+    """Set every changed overlay default for a library in one Kometa check and backup."""
+    for layer in body.layers:
+        _known_default(reader, "overlay", layer.name)
+    pairs = [(layer.name, layer.template_variables) for layer in body.layers]
+    return await _write_call(set_library_defaults(writer, library, "overlay", pairs))
 
 
 @router.put("/config/libraries/{library}/defaults/{kind}/{name}")
