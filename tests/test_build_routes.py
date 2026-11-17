@@ -194,6 +194,77 @@ def test_changed_clears_after_run_end(root):
         assert row["changed_at"] is None
 
 
+def test_library_build_confirm_requests(root):
+    from test_collection_requests import dune, requests_on
+    from test_list_sources import tmdb_client
+
+    with tmdb_client(root, []) as client:
+        wait_for_flags(client)
+        requests_on(client, confirm_over=0)
+        saved = client.post("/api/v1/collections", json=dune(download_missing=True, request_cap=3, build=False))
+        assert saved.status_code == 201, saved.text
+        row_id = saved.json()["id"]
+        ask = client.post("/api/v1/libraries/Movies/build", json={"collections": [row_id]})
+        assert ask.status_code == 409 and ask.json()["detail"]["needs_confirm"] is True
+        ok = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={"collections": [row_id], "confirm_requests": True},
+        )
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["run_id"] is not None
+
+
+def test_refused_build_leaves_unrelated_rows_alone(root, monkeypatch):
+    from starr_studio import studio_files
+
+    broken = root / "kometa" / "defaults" / "chart" / "broken.yml"
+    broken.write_text(
+        "#####\n# Broken #\n#####\n\ncollections:\n  Broken Pick:\n    tmdb_movie: BROKEN\n"
+    )
+    client, _, _ = make_client(root)
+    with client:
+        wait_for_flags(client)
+        saved = client.post("/api/v1/collections", json=body(title="Keeps Definition", build=False)).json()
+        before = col.built_row(client.app.state.db, saved["id"])["definition"]
+        other = client.post("/api/v1/collections", json=body(title="Saved Elsewhere", build=False))
+        assert other.status_code == 201, other.text
+        other_id = other.json()["id"]
+        other_before = col.built_row(client.app.state.db, other_id)["definition"]
+        concurrent = col.Ref("basic", "", "Concurrent Pick")
+        real_write = studio_files.write_from_db
+
+        async def write_with_concurrent_row(*args, **kwargs):
+            db = args[2]
+            with db:
+                col.mark_present(
+                    db,
+                    "Movies",
+                    [col.Pick(concurrent, "Concurrent Pick", "Concurrent Pick")],
+                )
+            return await real_write(*args, **kwargs)
+
+        monkeypatch.setattr(studio_files, "write_from_db", write_with_concurrent_row)
+        response = client.post(
+            "/api/v1/libraries/Movies/build",
+            json={
+                "ready_made": {"add": [{"category": "broken", "block": "", "key": "Broken Pick"}], "remove": []},
+                "collections": [saved["id"]],
+            },
+        )
+        assert response.status_code == 422
+        db = client.app.state.db
+        assert col.built_row(db, saved["id"])["definition"] == before
+        assert col.built_row(db, other_id)["definition"] == other_before
+        assert db.execute(
+            "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
+            ("Movies", "basic", "", "Concurrent Pick"),
+        ).fetchone()
+        assert db.execute(
+            "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
+            ("Movies", "broken", "", "Broken Pick"),
+        ).fetchone() is None
+
+
 def test_refused_build_restores_builder_definition(root):
     broken = root / "kometa" / "defaults" / "chart" / "broken.yml"
     broken.write_text(

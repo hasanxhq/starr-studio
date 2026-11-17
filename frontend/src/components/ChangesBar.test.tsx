@@ -79,4 +79,43 @@ describe("ChangesBar", () => {
       download_missing: false,
     });
   });
+
+  it("shows confirm dialog and resends with confirm_requests on needs_confirm", async () => {
+    const calls = mockApi({
+      "GET /requests/settings": () => ({ settings: { enabled: true, confirm_over: 0 } }),
+      "GET /collections?library=Movies": () => ({
+        collections: [{ id: 7, title: "Big List", changed: true, download_missing: true }],
+      }),
+      "POST /libraries/Movies/build": (body) => {
+        const req = body as { confirm_requests?: boolean };
+        if (!req.confirm_requests) {
+          return new Response(
+            JSON.stringify({ detail: { message: "This would request 3 titles now", needs_confirm: true, count: 3 } }),
+            { status: 409, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return { build: [{ kind: "collection", title: "Big List" }], remove: [], blocked: [], run_id: 1 };
+      },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <ReadyMadePicksProvider>
+            <ChangesBar library="Movies" changedCollectionIds={[7]} />
+          </ReadyMadePicksProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Build all" }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /Request missing titles/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Request 3" }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.route === "POST /libraries/Movies/build").some((c) => (c.body as { confirm_requests?: boolean }).confirm_requests === true)).toBe(
+        true,
+      ),
+    );
+    const confirmed = calls.filter((c) => c.route === "POST /libraries/Movies/build").find((c) => (c.body as { confirm_requests?: boolean }).confirm_requests === true);
+    expect(confirmed?.body).toMatchObject({ confirm_requests: true, dry_run: false, collections: [7] });
+  });
 });

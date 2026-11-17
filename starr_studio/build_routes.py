@@ -29,8 +29,8 @@ from .kometa_command import RunRequest
 from .ready_made_routes import (
     RefIn,
     _library_type,
-    _restore_rows,
     _snapshot_rows,
+    _undo_build_rows,
     apply_ready_made_removals,
     plan_ready_made_build,
     plan_run_scope,
@@ -50,6 +50,7 @@ class LibraryBuildIn(BaseModel):
     ready_made: ReadyMadePart = Field(default_factory=ReadyMadePart)
     collections: list[int] = Field(default_factory=list)
     download_missing: bool = False
+    confirm_requests: bool = False
     dry_run: bool = False
 
 
@@ -147,9 +148,9 @@ async def library_build(
     remove_list, remove_blocked = _split_remove_plan(remove_plan)
     blocked = _response_blocked(ready_blocked, builder_blocked) + remove_blocked
     build_list = _response_build(add_entries, builder_rows)
-    run_plan = plan_run_scope(db, library, add_entries, [row["kometa_name"] for row in builder_rows])
+    run_plan = plan_run_scope(library, add_entries, [row["kometa_name"] for row in builder_rows])
 
-    will_build = bool(run_plan["collections"] or run_plan["files"])
+    will_build = bool(run_plan["collections"])
     will_remove = any(item["deletable"] for item in remove_plan)
 
     plan = {"build": build_list, "remove": remove_list, "blocked": blocked}
@@ -163,13 +164,15 @@ async def library_build(
     missing_by_row: dict[int, list] = {}
     for row in builder_rows:
         if row["download_missing"]:
-            item = _collection_in_from_row(row)
+            item = _collection_in_from_row(row).model_copy(update={"confirm_requests": body.confirm_requests})
             missing_by_row[int(row["id"])] = await _missing_now(request, settings, context, item, db)
             _check_requests(request, db, item, missing_by_row[int(row["id"])], already_on=True)
 
     snapshot = _snapshot_rows(db, library)
     picks = [col.Pick(ref, entry.kometa_name, entry.title) for ref, entry in add_entries]
+    add_refs = [ref for ref, _ in add_entries]
     try:
+        added_ids: list[int] = []
         with db:
             if picks:
                 added_ids = col.mark_present(db, library, picks)
@@ -181,11 +184,11 @@ async def library_build(
         )
     except SaveRefused as refused:
         with db:
-            _restore_rows(db, library, snapshot)
+            _undo_build_rows(db, library, snapshot, add_refs, remove_refs)
         raise HTTPException(refused.status, refused.detail()) from None
     except Exception:
         with db:
-            _restore_rows(db, library, snapshot)
+            _undo_build_rows(db, library, snapshot, add_refs, remove_refs)
         raise
 
     with db:
@@ -205,18 +208,10 @@ async def library_build(
                 mode="collections",
                 libraries=run_plan["libraries"],
                 collections=run_plan["collections"],
-                files=run_plan["files"],
             ),
             trigger="build",
         )
-        row_ids: list[int] = [int(row["id"]) for row in builder_rows]
-        for ref, _ in add_entries:
-            found = db.execute(
-                "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
-                (library, ref.category, ref.block, ref.key),
-            ).fetchone()
-            if found:
-                row_ids.append(int(found["id"]))
+        row_ids: list[int] = [int(row["id"]) for row in builder_rows] + added_ids
         with db:
             col.set_run(db, row_ids, run_id)
             col.clear_changed(db, row_ids)

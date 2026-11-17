@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal
 
 from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -379,15 +379,46 @@ def _snapshot_rows(db: sqlite3.Connection, library: str) -> list[dict]:
     return [dict(row) for row in col.rows(db, library)]
 
 
-def _restore_rows(db: sqlite3.Connection, library: str, snapshot: list[dict]) -> None:
-    db.execute("DELETE FROM collections WHERE library = ?", (library,))
-    if not snapshot:
-        return
-    cols = list(snapshot[0].keys())
-    col_list = ", ".join(cols)
-    placeholders = ", ".join(f":{c}" for c in cols)
-    for row in snapshot:
-        db.execute(f"INSERT INTO collections ({col_list}) VALUES ({placeholders})", row)
+def _undo_build_rows(
+    db: sqlite3.Connection,
+    library: str,
+    snapshot: list[dict],
+    add_refs: list[col.Ref],
+    remove_refs: list[col.Ref],
+) -> None:
+    """Undo only the collection rows this build touched; leave everything else as-is."""
+    by_ref = {(r["category"], r["block"], r["key"]): r for r in snapshot}
+    cols = [c for c in (list(snapshot[0].keys()) if snapshot else []) if c != "id"]
+
+    def restore(saved: dict, row_id: int) -> None:
+        if not cols:
+            return
+        assignments = ", ".join(f"{c} = :{c}" for c in cols)
+        params = {c: saved[c] for c in cols}
+        params["id"] = row_id
+        db.execute(f"UPDATE collections SET {assignments} WHERE id = :id", params)
+
+    for ref in add_refs:
+        key = (ref.category, ref.block, ref.key)
+        current = db.execute(
+            "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
+            (library, ref.category, ref.block, ref.key),
+        ).fetchone()
+        if key not in by_ref:
+            if current:
+                db.execute("DELETE FROM collections WHERE id = ?", (current["id"],))
+        elif current:
+            restore(by_ref[key], int(current["id"]))
+    for ref in remove_refs:
+        key = (ref.category, ref.block, ref.key)
+        if key not in by_ref:
+            continue
+        current = db.execute(
+            "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
+            (library, ref.category, ref.block, ref.key),
+        ).fetchone()
+        if current:
+            restore(by_ref[key], int(current["id"]))
 
 
 async def _remove_plan(
@@ -489,7 +520,6 @@ async def apply_ready_made_removals(
 
 
 def plan_run_scope(
-    db: sqlite3.Connection,
     library: str,
     add_entries: list[tuple[col.Ref, ready_made.Entry]],
     builder_kometa_names: list[str],
@@ -497,7 +527,7 @@ def plan_run_scope(
     """Collection names for one Kometa run in ``library``."""
     names = [entry.kometa_name for _, entry in add_entries]
     names.extend(builder_kometa_names)
-    return {"libraries": [library], "collections": sorted(set(names)), "files": []}
+    return {"libraries": [library], "collections": sorted(set(names))}
 
 
 async def _not_taken(
@@ -710,7 +740,7 @@ async def build(
         body.dry_run,
     )
 
-    run_plan = plan_run_scope(db, body.library, add_entries, []) if add_entries else None
+    run_plan = plan_run_scope(body.library, add_entries, []) if add_entries else None
 
     plan = {
         "build": [{"category": ref.category, "title": entry.title} for ref, entry in add_entries],
@@ -725,7 +755,9 @@ async def build(
     picks = [
         col.Pick(ref, entry.kometa_name, entry.title) for ref, entry in add_entries
     ]
+    add_refs = [ref for ref, _ in add_entries]
     try:
+        added_ids: list[int] = []
         with db:
             if picks:
                 added_ids = col.mark_present(db, body.library, picks)
@@ -738,11 +770,11 @@ async def build(
         )
     except SaveRefused as refused:
         with db:
-            _restore_rows(db, body.library, snapshot)
+            _undo_build_rows(db, body.library, snapshot, add_refs, remove_refs)
         raise HTTPException(refused.status, refused.detail()) from None
     except Exception:
         with db:
-            _restore_rows(db, body.library, snapshot)
+            _undo_build_rows(db, body.library, snapshot, add_refs, remove_refs)
         raise
 
     with db:
@@ -761,33 +793,13 @@ async def build(
             mode="collections",
             libraries=run_plan["libraries"],
             collections=run_plan["collections"],
-            files=run_plan["files"],
         )
         run_id = runner.enqueue(request_run, trigger="ready-made")
         with db:
-            # Re-read added ids (mark_present already returned them).
-            if picks:
-                ids = []
-                for ref, _ in add_entries:
-                    found = db.execute(
-                        "SELECT id FROM collections WHERE library = ? AND category = ? AND block = ? AND key = ?",
-                        (body.library, ref.category, ref.block, ref.key),
-                    ).fetchone()
-                    if found:
-                        ids.append(int(found["id"]))
-                col.set_run(db, ids, run_id)
+            if added_ids:
+                col.set_run(db, added_ids, run_id)
 
     return {**plan, "run_id": run_id, "removed": removed, "kept": kept}
-
-
-@router.post("/count")
-async def start_count(tasks: AppTasks, response: Response) -> dict:
-    if tasks.running("ready_made_counts"):
-        response.status_code = 200
-        return {"started": False}
-    started = tasks.start("ready_made_counts")
-    response.status_code = 202 if started else 200
-    return {"started": started}
 
 
 def needs_count(db: sqlite3.Connection) -> bool:

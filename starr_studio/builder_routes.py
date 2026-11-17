@@ -580,12 +580,7 @@ async def _delete_from_plex(context: Context, title: str) -> tuple[bool, str | N
 
 
 async def _save_and_run(db: sqlite3.Connection, settings, writer, runner, context: Context, row_id: int, reason: str) -> int:
-    root = _kometa_root(settings)
-    if root is None:
-        raise HTTPException(409, "Studio doesn't know where Kometa is. Set STUDIO_KOMETA_ENTRY.")
-    written = await studio_files.write_from_db(writer, root, db, context.library.name, context.library_type, context.all_libraries, reason)
-    with db:
-        studio_files.record(db, written)
+    await _save_only(db, settings, writer, context, row_id, reason)
     row = col.built_row(db, row_id)
     run_id = runner.enqueue(RunRequest(mode="collections", libraries=[context.library.name], collections=[row["kometa_name"]]), trigger="builder")
     with db:
