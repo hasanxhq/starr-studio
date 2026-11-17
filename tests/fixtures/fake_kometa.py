@@ -48,7 +48,7 @@ def validate() -> int:
         calls.write(json.dumps({"args": sys.argv[1:], "cwd": os.getcwd(), "files": seen}) + "\n")
     if "--validate-dir" in sys.argv:
         folder = Path(sys.argv[sys.argv.index("--validate-dir") + 1])
-        bad = [path for path in sorted(folder.iterdir()) if "SCHEMA-BAD" in path.read_text()]
+        bad = [path for path in sorted(folder.rglob("*.yml")) if "SCHEMA-BAD" in path.read_text()]
         for path in bad:
             report(["=" * 62, f" File: {path}", " Schema: collection-schema.json", " Errors (1):", "   [collection-schema.json] at collections: not allowed"])
         report(["=" * 98])
