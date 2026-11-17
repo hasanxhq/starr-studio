@@ -65,7 +65,7 @@ describe("Overlays", () => {
     expect(screen.getByRole("tab", { name: "Kometa overlays" })).toHaveAttribute("aria-selected", "true");
     fireEvent.click(studioTab);
     expect(studioTab).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByText(/Poster gallery for TV Shows/)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Poster gallery" })).toBeInTheDocument();
   });
 
   it("shows a plain message for a music library", async () => {
