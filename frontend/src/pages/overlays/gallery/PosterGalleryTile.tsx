@@ -47,6 +47,7 @@ export function PosterGalleryTile({ item, library }: { item: GalleryPoster; libr
         void queryClient.invalidateQueries({ queryKey: ["overlay-engine", "posters", library] });
       }
     },
+    onError: (error) => setStatus({ kind: "error", message: error.message }),
   });
 
   const busy = run.isPending;

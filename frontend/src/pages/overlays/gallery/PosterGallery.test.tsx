@@ -144,6 +144,18 @@ describe("PosterGallery", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("shows the server's refusal when the dry run fails", async () => {
+    mockApi({
+      [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48`]: () => postersPage([noStudio], 0, 1),
+      "POST /overlay-engine/apply": () => new Response(JSON.stringify({ detail: "Can't apply overlays while Maintainerr's collections can't be read" }), { status: 503 }),
+    });
+    renderGallery();
+    const tile = await screen.findByRole("listitem", { name: "Moonlight" });
+    fireEvent.click(within(tile).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(within(tile).getByRole("alert")).toHaveTextContent("Maintainerr"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("Repair sends force true", async () => {
     const redrawDry: OutcomeList = {
       dry_run: true,
