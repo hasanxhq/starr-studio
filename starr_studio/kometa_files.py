@@ -61,19 +61,17 @@ def _yaml() -> YAML:
     return YAML(typ="safe", pure=True)
 
 
-_parsed_file_cache: dict[tuple[str, int, int], Any] = {}
-
-
-def _parse_yaml_text(text: str) -> Any:
-    return _yaml().load(text)
+_parsed_file_cache: dict[str, tuple[tuple[int, int], Any]] = {}
 
 
 def _cached_yaml_parse(path: Path) -> Any:
+    """Parse once per file version (mtime + size); one entry per path, so the cache never grows past the files read."""
     stat = path.stat()
-    key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
-    if key not in _parsed_file_cache:
-        _parsed_file_cache[key] = _parse_yaml_text(path.read_text(encoding="utf-8"))
-    return copy.deepcopy(_parsed_file_cache[key])
+    key, version = str(path.resolve()), (stat.st_mtime_ns, stat.st_size)
+    cached = _parsed_file_cache.get(key)
+    if cached is None or cached[0] != version:
+        cached = _parsed_file_cache[key] = (version, _yaml().load(path.read_text(encoding="utf-8")))
+    return copy.deepcopy(cached[1])
 
 
 def load_yaml(path: Path) -> Any:

@@ -10,12 +10,12 @@ from tests.test_config_read import CONFIG, kometa, reader
 def test_config_read_parses_each_file_once(kometa):
     parses = 0
 
-    def counting_parse(text: str):
+    def counting_yaml():
         nonlocal parses
         parses += 1
-        return config_yaml().load(text)
+        return config_yaml()
 
-    with patch("starr_studio.kometa_files._parse_yaml_text", side_effect=counting_parse):
+    with patch("starr_studio.kometa_files._yaml", side_effect=counting_yaml):
         r = reader(kometa)
         r.read()
         after_first = parses
