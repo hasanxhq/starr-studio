@@ -682,7 +682,7 @@ export type KometaInfo = {
 
 // FastAPI puts the reason in `detail`: a string from most errors, a list from request validation,
 // and {message, path, validation} from a refused save.
-async function errorFrom(response: Response): Promise<ApiError> {
+export async function errorFrom(response: Response): Promise<ApiError> {
   let detail: unknown;
   try {
     detail = ((await response.json()) as { detail?: unknown }).detail;

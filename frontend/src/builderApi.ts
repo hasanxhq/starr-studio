@@ -1,6 +1,6 @@
 // Collection builder API: fields, live preview, and Studio-built collections.
 
-import { ApiError, SIGNED_OUT_EVENT, request, type ReadyMadeRef } from "./api";
+import { SIGNED_OUT_EVENT, errorFrom, request, type ReadyMadeRef } from "./api";
 import { urlBase } from "./base";
 import type { RequestSummary } from "./requestsApi";
 
@@ -242,20 +242,6 @@ export function posterPreviewSrc(poster: Poster): string | null {
   if (poster.kind === "url") return poster.url;
   const name = poster.path.split("/").pop();
   return name ? `${urlBase}/api/v1/builder/posters/${encodeURIComponent(name)}` : null;
-}
-
-async function errorFrom(response: Response): Promise<ApiError> {
-  let detail: unknown;
-  try {
-    detail = ((await response.json()) as { detail?: unknown }).detail;
-  } catch {
-    // not JSON
-  }
-  let message = `${response.status} ${response.statusText}`;
-  if (typeof detail === "string") message = detail;
-  else if (Array.isArray(detail)) message = detail.map((item: { msg?: string }) => item.msg ?? "").join("; ");
-  else if (detail && typeof detail === "object" && "message" in detail) message = String((detail as { message: unknown }).message);
-  return new ApiError(response.status, message, detail);
 }
 
 export const builderApi = {

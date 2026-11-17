@@ -9,51 +9,9 @@ import { LeaveGuard } from "../LeaveGuard";
 import { Button, Card } from "../ui";
 import { SaveError, ValidationReport } from "../ValidationReport";
 import { loadSchema, type JsonSchema } from "../../yaml/schema";
-import { formableKeys, MappingFields, ReadOnlyFields, type Values } from "./schemaFields";
+import { formableKeys, MappingFields, ReadOnlyFields, settingsGroups, type Values } from "./schemaFields";
 
 const WIKI = "https://kometa.wiki/en/latest/config/settings/";
-
-// Same groups as Settings → Kometa; a library only overrides what it sets.
-const groups: { title: string; keys: string[] }[] = [
-  {
-    title: "Collections",
-    keys: [
-      "sync_mode",
-      "minimum_items",
-      "delete_below_minimum",
-      "delete_not_scheduled",
-      "default_collection_order",
-      "missing_only_released",
-      "only_filter_missing",
-      "run_again_delay",
-      "item_refresh_delay",
-      "ignore_ids",
-      "ignore_imdb_ids",
-      "auto_sort_hubs",
-      "hub_priority",
-    ],
-  },
-  {
-    title: "Assets (your own posters)",
-    keys: [
-      "asset_directory",
-      "asset_folders",
-      "asset_depth",
-      "create_asset_folders",
-      "prioritize_assets",
-      "dimensional_asset_rename",
-      "download_url_assets",
-      "show_missing_assets",
-      "show_missing_season_assets",
-      "show_missing_episode_assets",
-      "show_asset_not_needed",
-    ],
-  },
-  { title: "Overlays", keys: ["overlay_artwork_filetype", "overlay_artwork_quality"] },
-  { title: "Playlists", keys: ["playlist_sync_to_users", "playlist_exclude_users", "playlist_report"] },
-  { title: "Reports and log detail", keys: ["save_report", "show_missing", "show_unmanaged", "show_unconfigured", "show_filtered", "show_unfiltered", "show_options"] },
-  { title: "How Kometa runs", keys: ["run_order", "cache", "cache_expiration", "threading", "verify_ssl", "tvdb_language", "custom_repo"] },
-];
 
 function SettingsEditor({ library, saved, root, schema }: { library: string; saved: Values; root: JsonSchema | null; schema: JsonSchema | undefined }) {
   const [values, setValues] = useState<Values>(saved);
@@ -69,9 +27,9 @@ function SettingsEditor({ library, saved, root, schema }: { library: string; sav
   const known = useMemo(() => formableKeys(root, schema), [root, schema]);
   const sections = useMemo(() => {
     const byName = new Map(known.map((key) => [key.name, key]));
-    const grouped = new Set(groups.flatMap((group) => group.keys));
+    const grouped = new Set(settingsGroups.flatMap((group) => group.keys));
     const other = known.map((key) => key.name).filter((key) => !grouped.has(key));
-    const listed = groups
+    const listed = settingsGroups
       .map((group) => ({ title: group.title, keys: group.keys.map((name) => byName.get(name)).filter((key): key is NonNullable<typeof key> => !!key) }))
       .filter((group) => group.keys.length > 0);
     return [...listed, ...(other.length ? [{ title: "Other", keys: other.map((name) => byName.get(name)!).filter(Boolean) }] : [])];

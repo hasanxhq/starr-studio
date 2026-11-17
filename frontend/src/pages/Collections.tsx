@@ -14,6 +14,7 @@ import { DownloadMissingBadge, RequestCountsLine, RequestWaitingButton } from ".
 import { PlexPoster } from "../components/PlexPoster";
 import { PosterTile, StatusBadge, badgeFor } from "../components/PosterTile";
 import { RetryButton } from "../components/RetryButton";
+import { tabClass } from "../components/SectionTabs";
 import { Button, Tag } from "../components/ui";
 import { importApi, type UploadAddResult, type UploadStaging } from "../importApi";
 import { ReadyMadeTab } from "./ReadyMade";
@@ -39,13 +40,6 @@ const CHIP_FILTERS: { key: ShowFilter; label: string; hideAtZero?: boolean }[] =
   { key: "fetching", label: "Fetching missing", hideAtZero: true },
   { key: "changed", label: "Changed", hideAtZero: true },
 ];
-
-function tabClass({ isActive }: { isActive: boolean }) {
-  return [
-    "flex min-h-11 shrink-0 items-center border-b-2 px-4 text-sm transition-colors",
-    isActive ? "border-accent text-text" : "border-transparent text-muted hover:text-text",
-  ].join(" ");
-}
 
 function libraryQs(library: string, extra?: Record<string, string | null>) {
   const params = new URLSearchParams();

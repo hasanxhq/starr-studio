@@ -61,6 +61,24 @@ export type SeerrTest = { ok: true; title?: string | null; version?: string | nu
 
 export type RequestStatus = "requested" | "downloading" | "imported" | "failed" | "cancelled" | "exists";
 
+export const STATUS_LABEL: Record<RequestStatus, string> = {
+  requested: "Requested",
+  downloading: "Downloading",
+  imported: "Imported",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  exists: "Already there",
+};
+
+export const STATUS_TONE: Record<RequestStatus, "info" | "ok" | "err" | "muted"> = {
+  requested: "info",
+  downloading: "info",
+  imported: "ok",
+  failed: "err",
+  cancelled: "muted",
+  exists: "muted",
+};
+
 export type RequestRow = {
   id: number;
   item: string;

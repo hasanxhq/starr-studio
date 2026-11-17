@@ -7,6 +7,48 @@ import { deref, mappingKeys, type JsonSchema, type KeyInfo } from "../../yaml/sc
 
 export type Values = Record<string, unknown>;
 
+/** Grouping for Kometa's settings form (global and per-library overrides). */
+export const settingsGroups: { title: string; keys: string[] }[] = [
+  {
+    title: "Collections",
+    keys: [
+      "sync_mode",
+      "minimum_items",
+      "delete_below_minimum",
+      "delete_not_scheduled",
+      "default_collection_order",
+      "missing_only_released",
+      "only_filter_missing",
+      "run_again_delay",
+      "item_refresh_delay",
+      "ignore_ids",
+      "ignore_imdb_ids",
+      "auto_sort_hubs",
+      "hub_priority",
+    ],
+  },
+  {
+    title: "Assets (your own posters)",
+    keys: [
+      "asset_directory",
+      "asset_folders",
+      "asset_depth",
+      "create_asset_folders",
+      "prioritize_assets",
+      "dimensional_asset_rename",
+      "download_url_assets",
+      "show_missing_assets",
+      "show_missing_season_assets",
+      "show_missing_episode_assets",
+      "show_asset_not_needed",
+    ],
+  },
+  { title: "Overlays", keys: ["overlay_artwork_filetype", "overlay_artwork_quality"] },
+  { title: "Playlists", keys: ["playlist_sync_to_users", "playlist_exclude_users", "playlist_report"] },
+  { title: "Reports and log detail", keys: ["save_report", "show_missing", "show_unmanaged", "show_unconfigured", "show_filtered", "show_unfiltered", "show_options"] },
+  { title: "How Kometa runs", keys: ["run_order", "cache", "cache_expiration", "threading", "verify_ssl", "tvdb_language", "custom_repo"] },
+];
+
 export function label(key: string): string {
   const words = key.replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -37,6 +79,13 @@ export function hint(info: KeyInfo | undefined): string | undefined {
   const description = info?.description?.split("\n")[0]?.replace(/^Used to /, "") ?? "";
   if (!description) return undefined;
   return description.charAt(0).toUpperCase() + description.slice(1).replace(/\.?$/, ".");
+}
+
+/** Schema hint plus Kometa's installed default (Settings → Kometa). */
+export function kometaSettingHint(info: KeyInfo | undefined, defaults: Values, key: string, describeDefault: (value: unknown) => string): string | undefined {
+  const sentence = hint(info) ?? "";
+  const fallback = key in defaults ? `Kometa's default: ${describeDefault(defaults[key])}.` : "";
+  return [sentence, fallback].filter(Boolean).join(" ") || undefined;
 }
 
 export function unsetLabel(root: JsonSchema | null, schema: JsonSchema | undefined): string {

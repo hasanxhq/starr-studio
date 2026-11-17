@@ -7,9 +7,9 @@ import { Link } from "react-router";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RequestMusic } from "../components/requests/RequestMusic";
 import { useMusicLibraries } from "../components/requests/musicLibraries";
-import { Button, Card, Tag, type Tone } from "../components/ui";
+import { Button, Card, Tag } from "../components/ui";
 import { formatRelative, formatTime } from "../runs";
-import { requestsApi, type RequestRow, type RequestStatus } from "../requestsApi";
+import { requestsApi, STATUS_LABEL, STATUS_TONE, type RequestRow, type RequestStatus } from "../requestsApi";
 
 const STATUS_FILTERS: { value: RequestStatus | ""; label: string }[] = [
   { value: "", label: "All" },
@@ -20,24 +20,6 @@ const STATUS_FILTERS: { value: RequestStatus | ""; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
   { value: "exists", label: "Already there" },
 ];
-
-const STATUS_TONE: Record<RequestStatus, Tone> = {
-  requested: "info",
-  downloading: "info",
-  imported: "ok",
-  failed: "err",
-  cancelled: "muted",
-  exists: "muted",
-};
-
-const STATUS_LABEL: Record<RequestStatus, string> = {
-  requested: "Requested",
-  downloading: "Downloading",
-  imported: "Imported",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  exists: "Already there",
-};
 
 const VIA_LABEL: Record<string, string> = {
   radarr: "Radarr",

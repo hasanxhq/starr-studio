@@ -1,6 +1,6 @@
 // Move over from Kometa: report, switch-over, undo, export, and uploading a collection file.
 
-import { ApiError, SIGNED_OUT_EVENT, request } from "./api";
+import { SIGNED_OUT_EVENT, errorFrom, request } from "./api";
 import { urlBase } from "./base";
 
 export type Landing = {
@@ -90,20 +90,6 @@ export type UploadAddResult = {
   run_id: number;
   studio?: string[];
 };
-
-async function errorFrom(response: Response): Promise<ApiError> {
-  let detail: unknown;
-  try {
-    detail = ((await response.json()) as { detail?: unknown }).detail;
-  } catch {
-    // not JSON
-  }
-  let message = `${response.status} ${response.statusText}`;
-  if (typeof detail === "string") message = detail;
-  else if (Array.isArray(detail)) message = detail.map((item: { msg?: string }) => item.msg ?? "").join("; ");
-  else if (detail && typeof detail === "object" && "message" in detail) message = String((detail as { message: unknown }).message);
-  return new ApiError(response.status, message, detail);
-}
 
 export const importApi = {
   report: () => request<ImportReport>("GET", "/import"),

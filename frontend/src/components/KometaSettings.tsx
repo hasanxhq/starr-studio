@@ -5,73 +5,19 @@ import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@
 import { useMemo, useState } from "react";
 
 import { api, type SaveResult } from "../api";
-import { mappingKeys, loadSchema, type JsonSchema, type KeyInfo } from "../yaml/schema";
+import { mappingKeys, loadSchema, type JsonSchema } from "../yaml/schema";
+import { kometaSettingHint, label, settingsGroups, type Values } from "./library/schemaFields";
 import { SettingField } from "./forms/fields";
 import { Button, Card, StickyActions } from "./ui";
 import { SaveError, ValidationReport } from "./ValidationReport";
 
-type Values = Record<string, unknown>;
-
 const WIKI = "https://kometa.wiki/en/latest/config/settings/";
-
-const groups: { title: string; keys: string[] }[] = [
-  {
-    title: "Collections",
-    keys: [
-      "sync_mode",
-      "minimum_items",
-      "delete_below_minimum",
-      "delete_not_scheduled",
-      "default_collection_order",
-      "missing_only_released",
-      "only_filter_missing",
-      "run_again_delay",
-      "item_refresh_delay",
-      "ignore_ids",
-      "ignore_imdb_ids",
-      "auto_sort_hubs",
-      "hub_priority",
-    ],
-  },
-  {
-    title: "Assets (your own posters)",
-    keys: [
-      "asset_directory",
-      "asset_folders",
-      "asset_depth",
-      "create_asset_folders",
-      "prioritize_assets",
-      "dimensional_asset_rename",
-      "download_url_assets",
-      "show_missing_assets",
-      "show_missing_season_assets",
-      "show_missing_episode_assets",
-      "show_asset_not_needed",
-    ],
-  },
-  { title: "Overlays", keys: ["overlay_artwork_filetype", "overlay_artwork_quality"] },
-  { title: "Playlists", keys: ["playlist_sync_to_users", "playlist_exclude_users", "playlist_report"] },
-  { title: "Reports and log detail", keys: ["save_report", "show_missing", "show_unmanaged", "show_unconfigured", "show_filtered", "show_unfiltered", "show_options"] },
-  { title: "How Kometa runs", keys: ["run_order", "cache", "cache_expiration", "threading", "verify_ssl", "tvdb_language", "custom_repo"] },
-];
-
-function label(key: string): string {
-  const words = key.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
 
 export function describeDefault(value: unknown): string {
   if (value === null) return "none";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) return value.join(", ");
   return String(value);
-}
-
-function hint(info: KeyInfo | undefined, defaults: Values, key: string): string | undefined {
-  const description = info?.description?.split("\n")[0]?.replace(/^Used to /, "") ?? "";
-  const sentence = description ? description.charAt(0).toUpperCase() + description.slice(1).replace(/\.?$/, ".") : "";
-  const fallback = key in defaults ? `Kometa's default: ${describeDefault(defaults[key])}.` : "";
-  return [sentence, fallback].filter(Boolean).join(" ") || undefined;
 }
 
 type Save = UseMutationResult<SaveResult, Error, { base: Values; values: Values }>;
@@ -85,9 +31,9 @@ function SettingsForm({ saved, defaults, root, save }: { saved: Values; defaults
   }, [root]);
   // Every setting Kometa's schema or its source knows, or config.yml has, in a group; the ungrouped ones under Other.
   const sections = useMemo(() => {
-    const grouped = new Set(groups.flatMap((group) => group.keys));
+    const grouped = new Set(settingsGroups.flatMap((group) => group.keys));
     const other = [...new Set([...known.keys(), ...Object.keys(defaults), ...Object.keys(saved)])].filter((key) => !grouped.has(key)).sort();
-    return [...groups, ...(other.length ? [{ title: "Other", keys: other }] : [])];
+    return [...settingsGroups, ...(other.length ? [{ title: "Other", keys: other }] : [])];
   }, [known, defaults, saved]);
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
   const set = (key: string, value: unknown) =>
@@ -140,7 +86,7 @@ function SettingsForm({ saved, defaults, root, save }: { saved: Values; defaults
                   value={values[key]}
                   onChange={(next) => set(key, next)}
                   onValidity={(ok) => validity(key, ok)}
-                  hint={hint(known.get(key), defaults, key)}
+                  hint={kometaSettingHint(known.get(key), defaults, key, describeDefault)}
                   unset={key in defaults ? `Default (${describeDefault(defaults[key])})` : undefined}
                 />
               ))}

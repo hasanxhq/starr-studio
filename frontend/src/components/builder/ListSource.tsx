@@ -5,20 +5,12 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "../../api";
 import { builderApi, type SourceKind, type SourceSearchResult } from "../../builderApi";
+import { useDebounced } from "../../useDebounced";
 import { Button, Field, inputClass } from "../ui";
 
 export type ListSourceValue = { builder: string; value: string; label: string | null };
 
 const GROUP_ORDER: SourceKind["group"][] = ["TMDb", "IMDb", "Letterboxd", "MDBList"];
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
 
 function groupSources(sources: SourceKind[]): { group: SourceKind["group"]; kinds: SourceKind[] }[] {
   const map = new Map<SourceKind["group"], SourceKind[]>();

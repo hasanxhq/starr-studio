@@ -4,15 +4,11 @@ import { Link } from "react-router";
 import { api } from "../../api";
 import { PlusIcon } from "../../components/icons";
 import { useHeaderTitle } from "../../components/HeaderTitle";
-import { mergeLibraries } from "../../libraries";
+import { mergeLibraries, plural } from "../../libraries";
 
 const itemWords: Record<string, string> = { movie: "movie", show: "show", artist: "artist" };
 import { phraseNextRun } from "./nextRun";
 import { libraryQs } from "./collectionShelf";
-
-function plural(count: number, word: string): string {
-  return `${count.toLocaleString()} ${word}${count === 1 ? "" : "s"}`;
-}
 
 export function HomeHeader({
   library,
@@ -30,8 +26,8 @@ export function HomeHeader({
   const entry = entries.find((e) => e.name === library);
   const inPlex = entry?.plex;
   const parts: string[] = [];
-  if (inPlex?.items != null && inPlex.type && itemWords[inPlex.type]) parts.push(plural(inPlex.items, itemWords[inPlex.type]));
-  if (collectionCount && collectionCount > 0) parts.push(plural(collectionCount, "collection"));
+  if (inPlex?.items != null && inPlex.type && itemWords[inPlex.type]) parts.push(plural(inPlex.items, itemWords[inPlex.type], true));
+  if (collectionCount && collectionCount > 0) parts.push(plural(collectionCount, "collection", true));
   if (nextAt) parts.push(`next run ${phraseNextRun(nextAt)}`);
 
   return (

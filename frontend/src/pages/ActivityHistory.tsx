@@ -1,12 +1,13 @@
 // Activity → History: what each Kometa run changed, collection by collection, from its webhooks (handoff v2 §8).
 
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 
 import { api, type HistoryEvent, type HistoryItem } from "../api";
 import { Button, Card, Field, Tag, inputClass } from "../components/ui";
 import { formatTime } from "../runs";
+import { useDebounced } from "../useDebounced";
 
 function itemLink(item: HistoryItem): string | null {
   if (item.tmdb_id) return `https://www.themoviedb.org/movie/${item.tmdb_id}`;
@@ -91,15 +92,6 @@ function EventRow({ event }: { event: HistoryEvent }) {
       )}
     </li>
   );
-}
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
 }
 
 export function ActivityHistory() {

@@ -2,25 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 
 import { Card, Tag } from "../../components/ui";
-import { requestsApi, type RequestRow, type RequestStatus } from "../../requestsApi";
-
-const STATUS_LABEL: Record<RequestStatus, string> = {
-  requested: "Requested",
-  downloading: "Downloading",
-  imported: "Imported",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  exists: "Already there",
-};
-
-const STATUS_TONE: Record<RequestStatus, "info" | "ok" | "err" | "muted"> = {
-  requested: "info",
-  downloading: "info",
-  imported: "ok",
-  failed: "err",
-  cancelled: "muted",
-  exists: "muted",
-};
+import { requestsApi, STATUS_LABEL, STATUS_TONE, type RequestRow } from "../../requestsApi";
 
 function titleLine(row: RequestRow): string {
   const name = row.title?.trim() || row.item;
