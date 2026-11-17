@@ -103,6 +103,24 @@ class PlexServer:
         except (ValueError, KeyError):
             raise PlexUnavailable("Plex sent something Studio can't read") from None
 
+    async def _mutate(self, method: str, url: str, *, not_found: str, action: str, target: str, **kwargs) -> None:
+        headers = {"Accept": "application/json", "X-Plex-Token": self.token}
+        try:
+            if method == "DELETE":
+                response = await self.client.delete(url, headers=headers, timeout=TIMEOUT, **kwargs)
+            else:
+                response = await self.client.put(url, headers=headers, timeout=TIMEOUT, **kwargs)
+        except httpx.TimeoutException:
+            raise PlexUnavailable(f"Plex didn't answer within {TIMEOUT:g} s") from None
+        except httpx.HTTPError as error:
+            raise PlexUnavailable(f"Can't reach Plex: {error}") from None
+        if response.status_code == 401:
+            raise PlexUnavailable("Plex rejected the token in config.yml. Connect again in Settings → Plex.")
+        if response.status_code == 404:
+            raise PlexNotFound(not_found)
+        if response.status_code not in (200, 204):
+            raise PlexUnavailable(f"Plex answered HTTP {response.status_code} {action} {target}")
+
     async def libraries(self) -> list[PlexLibrary]:
         container = await self._get("/library/sections")
         return [PlexLibrary(str(d["key"]), str(d["title"]), str(d.get("type", ""))) for d in container.get("Directory", [])]
@@ -210,22 +228,13 @@ class PlexServer:
 
     async def delete_collection(self, rating_key: str) -> None:
         """Delete a collection. Callers must re-check its labels on this rating key first."""
-        try:
-            response = await self.client.delete(
-                f"{self.url}/library/metadata/{rating_key}",
-                headers={"Accept": "application/json", "X-Plex-Token": self.token},
-                timeout=TIMEOUT,
-            )
-        except httpx.TimeoutException:
-            raise PlexUnavailable(f"Plex didn't answer within {TIMEOUT:g} s") from None
-        except httpx.HTTPError as error:
-            raise PlexUnavailable(f"Can't reach Plex: {error}") from None
-        if response.status_code == 401:
-            raise PlexUnavailable("Plex rejected the token in config.yml. Connect again in Settings → Plex.")
-        if response.status_code == 404:
-            raise PlexNotFound(f"Plex has no collection {rating_key}")
-        if response.status_code not in (200, 204):
-            raise PlexUnavailable(f"Plex answered HTTP {response.status_code} deleting {rating_key}")
+        await self._mutate(
+            "DELETE",
+            f"{self.url}/library/metadata/{rating_key}",
+            not_found=f"Plex has no collection {rating_key}",
+            action="deleting",
+            target=rating_key,
+        )
 
     async def add_label(self, rating_key: str, label: str, media: str, library_key: str | None = None) -> bool:
         """Add a label to a movie or show, keeping its other labels. False if it already had it.
@@ -246,46 +255,28 @@ class PlexServer:
         params = {"type": "1" if media == "movie" else "2", "id": rating_key, "label.locked": "1"}
         for i, tag in enumerate([*current, label]):
             params[f"label[{i}].tag.tag"] = tag
-        try:
-            response = await self.client.put(
-                f"{self.url}/library/sections/{section}/all",
-                params=params,
-                headers={"Accept": "application/json", "X-Plex-Token": self.token},
-                timeout=TIMEOUT,
-            )
-        except httpx.TimeoutException:
-            raise PlexUnavailable(f"Plex didn't answer within {TIMEOUT:g} s") from None
-        except httpx.HTTPError as error:
-            raise PlexUnavailable(f"Can't reach Plex: {error}") from None
-        if response.status_code == 401:
-            raise PlexUnavailable("Plex rejected the token in config.yml. Connect again in Settings → Plex.")
-        if response.status_code == 404:
-            raise PlexNotFound(f"Plex has no section {section}")
-        if response.status_code not in (200, 204):
-            raise PlexUnavailable(f"Plex answered HTTP {response.status_code} labelling {rating_key}")
+        await self._mutate(
+            "PUT",
+            f"{self.url}/library/sections/{section}/all",
+            not_found=f"Plex has no section {section}",
+            action="labelling",
+            target=rating_key,
+            params=params,
+        )
         return True
 
     async def remove_collection_label(self, rating_key: str, label: str, library_key: str) -> None:
         """Take one label off a collection, keeping its others: Plex's ``label[].tag.tag-`` edit, as python-plexapi's
         ``removeLabel`` sends it (``type=18`` is a collection)."""
         params = {"type": "18", "id": rating_key, "label[].tag.tag-": label, "label.locked": "1"}
-        try:
-            response = await self.client.put(
-                f"{self.url}/library/sections/{library_key}/all",
-                params=params,
-                headers={"Accept": "application/json", "X-Plex-Token": self.token},
-                timeout=TIMEOUT,
-            )
-        except httpx.TimeoutException:
-            raise PlexUnavailable(f"Plex didn't answer within {TIMEOUT:g} s") from None
-        except httpx.HTTPError as error:
-            raise PlexUnavailable(f"Can't reach Plex: {error}") from None
-        if response.status_code == 401:
-            raise PlexUnavailable("Plex rejected the token in config.yml. Connect again in Settings → Plex.")
-        if response.status_code == 404:
-            raise PlexNotFound(f"Plex has no section {library_key}")
-        if response.status_code not in (200, 204):
-            raise PlexUnavailable(f"Plex answered HTTP {response.status_code} unlabelling {rating_key}")
+        await self._mutate(
+            "PUT",
+            f"{self.url}/library/sections/{library_key}/all",
+            not_found=f"Plex has no section {library_key}",
+            action="unlabelling",
+            target=rating_key,
+            params=params,
+        )
 
     async def collection(self, rating_key: str) -> tuple[str, PlexCollection]:
         """One collection and the key of the library it's in. Managed by Kometa if it carries Kometa's label."""

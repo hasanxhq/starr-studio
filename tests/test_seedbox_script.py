@@ -35,3 +35,25 @@ def test_dry_run_sets_sign_in_before_the_first_start(tmp_path):
     proxy = out.index("set-proxy --url-base /starr-studio --trusted 127.0.0.1")
     start = out.index("systemctl --user restart starr-studio")
     assert create < proxy < start  # never a moment without a password
+
+
+def test_an_update_without_port_uses_the_saved_port(tmp_path):
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    for name in ("git", "systemctl"):
+        (stubs / name).write_text("#!/bin/sh\nexit 0\n")
+        (stubs / name).chmod(0o755)
+    home = tmp_path / "home"
+    conf = home / ".config" / "starr-studio"
+    conf.mkdir(parents=True)
+    (conf / "studio.env").write_text("STUDIO_PORT=34567\n")
+    env = {"PATH": f"{stubs}:{os.environ['PATH']}", "HOME": str(home)}
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--dry-run", "--wheel", "studio.whl", "--python", sys.executable],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "give Studio's port with --port" not in result.stderr
+    assert "127.0.0.1:34567" in result.stdout

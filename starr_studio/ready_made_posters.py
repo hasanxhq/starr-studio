@@ -16,7 +16,6 @@ import asyncio
 import hashlib
 import io
 import logging
-import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -26,7 +25,7 @@ from PIL import Image
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
-from starr_studio.default_covers import DEFAULT_IMAGES
+from starr_studio.default_covers import DEFAULT_IMAGES, cache_on_disk
 from starr_studio.kometa_files import _read
 
 logger = logging.getLogger(__name__)
@@ -200,27 +199,22 @@ class ReadyMadePosters:
         if not url.startswith(ALLOWED):
             return None
         path = self.path(url)
-        if path.is_file():
-            return path
-        async with self.locks.setdefault(url, asyncio.Lock()):
-            if path.is_file():
-                return path
-            if time.monotonic() - self.failed.get(url, -RETRY_AFTER) < RETRY_AFTER:
-                return None
-            try:
-                async with self.slots:
-                    response = await self.http.get(url, timeout=TIMEOUT)
-                response.raise_for_status()
-                if len(response.content) > MAX_BYTES:
-                    raise ValueError(f"{url} is larger than any poster should be")
-                data = await asyncio.to_thread(shrink, response.content)
-                self.folder.mkdir(parents=True, exist_ok=True)
-                partial = path.with_suffix(".part")
-                partial.write_bytes(data)
-                partial.replace(path)
-            except (httpx.HTTPError, OSError, ValueError, Image.DecompressionBombError) as error:
-                logger.info("No ready-made poster from %s: %s", url, error)
-                self.failed[url] = time.monotonic()
-                return None
-            self.failed.pop(url, None)
-            return path
+
+        async def produce() -> bytes:
+            async with self.slots:
+                response = await self.http.get(url, timeout=TIMEOUT)
+            response.raise_for_status()
+            if len(response.content) > MAX_BYTES:
+                raise ValueError(f"{url} is larger than any poster should be")
+            return await asyncio.to_thread(shrink, response.content)
+
+        return await cache_on_disk(
+            path,
+            self.folder,
+            self.locks,
+            self.failed,
+            url,
+            RETRY_AFTER,
+            produce,
+            f"No ready-made poster from {url}",
+        )

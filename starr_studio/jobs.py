@@ -17,6 +17,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from . import arr as arr_module
 from . import maintainerr as maintainerr_module
 from .db import get_setting
 from .runner import read_tail
@@ -147,7 +148,7 @@ def collect(db: sqlite3.Connection, runner, tasks, arr, maintainerr) -> list[dic
                 found.append(job)
 
     for kind, pending in (arr.pending() if arr else {}).items():
-        name = "Radarr" if kind == "radarr" else "Sonarr"
+        name = arr_module.NAMES[kind]
         found.append(
             {
                 "id": f"arr-pending-{kind}",
@@ -171,7 +172,7 @@ def collect(db: sqlite3.Connection, runner, tasks, arr, maintainerr) -> list[dic
         skipped = get_setting(db, f"arr.skipped.{kind}") or []
         if arr and skipped:
             last = skipped[-1]
-            name = "Radarr" if kind == "radarr" else "Sonarr"
+            name = arr_module.NAMES[kind]
             found.append(
                 {
                     "id": f"arr-skipped-{kind}",

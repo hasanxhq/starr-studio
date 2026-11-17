@@ -89,6 +89,10 @@ if [[ -z "$PYTHON" ]]; then
 fi
 [[ -n "$PYTHON" ]] || die "Python 3.12 or newer is needed. On Ultra.cc, install it with pyenv (see their Python guide), then pass --python"
 
+if [[ -z "$PORT" ]] && [[ -f "$ENV_FILE" ]]; then
+  PORT="$(sed -n 's/^STUDIO_PORT=//p' "$ENV_FILE" | tail -n 1)"
+fi
+
 [[ "$PORT" =~ ^[0-9]+$ ]] || {
   command -v app-ports >/dev/null && { echo "Free ports on this slot:"; app-ports free || true; }
   die "give Studio's port with --port"

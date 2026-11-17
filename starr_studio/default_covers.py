@@ -10,6 +10,7 @@ import hashlib
 import io
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from urllib.parse import quote
 
@@ -129,6 +130,38 @@ def compose(posters: list[bytes]) -> bytes:
     return out.getvalue()
 
 
+async def cache_on_disk(
+    path: Path,
+    folder: Path,
+    locks: dict[str, asyncio.Lock],
+    failed: dict[str, float],
+    key: str,
+    retry_after: float,
+    produce: Callable[[], Awaitable[bytes]],
+    failure_log: str,
+) -> Path | None:
+    """Fetch or build image bytes once, write them to ``path``, and remember failures briefly."""
+    if path.is_file():
+        return path
+    async with locks.setdefault(key, asyncio.Lock()):
+        if path.is_file():
+            return path
+        if time.monotonic() - failed.get(key, -retry_after) < retry_after:
+            return None
+        try:
+            data = await produce()
+            folder.mkdir(parents=True, exist_ok=True)
+            partial = path.with_suffix(".part")
+            partial.write_bytes(data)
+            partial.replace(path)
+        except (httpx.HTTPError, OSError, ValueError, Image.DecompressionBombError) as error:
+            logger.info("%s: %s", failure_log, error)
+            failed[key] = time.monotonic()
+            return None
+        failed.pop(key, None)
+        return path
+
+
 class DefaultCovers:
     def __init__(self, http: httpx.AsyncClient, folder: Path):
         self.http = http
@@ -146,26 +179,21 @@ class DefaultCovers:
         if name not in COVERS:
             return None
         path = self.path(name)
-        if path.is_file():
-            return path
-        async with self.locks.setdefault(name, asyncio.Lock()):  # the page's lazy images can ask twice
-            if path.is_file():
-                return path
-            if time.monotonic() - self.failed.get(name, -RETRY_AFTER) < RETRY_AFTER:
-                return None
-            try:
-                posters = await asyncio.gather(*(self._poster(url) for url in COVERS[name]))
-                data = await asyncio.to_thread(compose, posters)
-                self.folder.mkdir(parents=True, exist_ok=True)
-                partial = path.with_suffix(".part")
-                partial.write_bytes(data)
-                partial.replace(path)
-            except (httpx.HTTPError, OSError, ValueError, Image.DecompressionBombError) as error:
-                logger.info("No cover for the %s default: %s", name, error)
-                self.failed[name] = time.monotonic()
-                return None
-            self.failed.pop(name, None)
-            return path
+
+        async def produce() -> bytes:
+            posters = await asyncio.gather(*(self._poster(url) for url in COVERS[name]))
+            return await asyncio.to_thread(compose, posters)
+
+        return await cache_on_disk(
+            path,
+            self.folder,
+            self.locks,
+            self.failed,
+            name,
+            RETRY_AFTER,
+            produce,
+            f"No cover for the {name} default",
+        )
 
     async def _poster(self, url: str) -> bytes:
         async with self.slots:
