@@ -11,6 +11,7 @@ Preview and apply take a style id, a whole style file, or neither, which means t
 """
 
 import asyncio
+import re
 from dataclasses import asdict
 from typing import Annotated, Any
 
@@ -24,8 +25,9 @@ from .overlay_engine.kometa_hold import section_key_for_library
 from .overlay_engine.originals import OriginalsStore
 from .overlay_engine.render import render_poster
 from .overlay_engine.rules import resolve
+from .overlay_engine.share import export_zip, read_upload
 from .overlay_engine.style import Style, StyleError, load_style
-from .overlay_engine.styles_store import StyleStore, library_style, set_library_style, style_schema
+from .overlay_engine.styles_store import STYLE_ID, StyleStore, library_style, set_library_style, style_schema
 from .overlay_originals import find_backup
 from .overlays_routes import _library, backup_folder
 from .plex_routes import _plex_read, kometa_plex
@@ -361,6 +363,44 @@ async def delete_style(style_id: StyleId, request: Request, settings: AppSetting
     except ValueError as error:
         raise HTTPException(409, str(error)) from None
     return Response(status_code=204)
+
+
+@router.get("/styles/{style_id}/export")
+async def export_style(style_id: StyleId, settings: AppSettings) -> Response:
+    stored = _stored(settings, style_id)
+    return Response(export_zip(stored), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{style_id}.zip"'})
+
+
+def _default_id(filename: str) -> str:
+    """Lower-cased stem, runs of non-[a-z0-9] collapsed to one '-', trimmed, capped at 64."""
+    stem = filename.rsplit(".", 1)[0]
+    return re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")[:64]
+
+
+@router.post("/styles/import")
+async def import_style(request: Request, settings: AppSettings, filename: str = Query(...), id: str | None = Query(None)) -> dict:
+    data = await request.body()
+    try:
+        text = read_upload(data, filename)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    style_id = id if id is not None else _default_id(filename)
+    if not style_id:
+        raise HTTPException(422, "Can't work out a style id from the filename; pass one in the id parameter")
+    if not STYLE_ID.fullmatch(style_id):  # match() lets a trailing newline through
+        raise HTTPException(422, f"{style_id!r} isn't a valid style id (lower-case letters, digits and -, up to 64 characters)")
+    store = style_store(settings)
+    existing = store.get(style_id)
+    if existing is not None:
+        kind = "shipped" if existing.shipped else "user"
+        raise HTTPException(409, f"A {kind} style called {style_id!r} already exists")
+    try:
+        stored = store.save(style_id, text)
+    except StyleError as error:
+        raise HTTPException(422, str(error)) from None
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from None
+    return {**stored.summary(), "yaml": stored.text}
 
 
 @router.get("/libraries/{library}/style")
