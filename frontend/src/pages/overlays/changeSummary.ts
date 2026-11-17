@@ -41,14 +41,19 @@ export function layerChangeSentence(
   }
 
   const color = (v: unknown) => (typeof v === "string" ? v.slice(0, 7).toLowerCase() : "");
-  const alpha = (v: unknown) => (typeof v === "string" && v.length >= 9 ? v.slice(7, 9) : "");
+  const alpha = (v: unknown) => {
+    if (typeof v !== "string" || v.length < 9) return 255;
+    return Number.parseInt(v.slice(7, 9), 16);
+  };
   const savedColor = saved.back_color ?? was.back_color;
   const draftColor = draft.back_color ?? now.back_color;
   if (color(savedColor) !== color(draftColor)) {
     const name = color(draftColor) === "#ffffff" ? "white" : color(draftColor) === "#000000" ? "black" : "a new colour";
     parts.push(`${title} get${name === "a new colour" ? " " : " a "}${name} background`);
   } else if (alpha(savedColor) !== alpha(draftColor)) {
-    parts.push(`${title} become more see-through`);
+    parts.push(
+      alpha(draftColor) < alpha(savedColor) ? `${title} become more see-through` : `${title} become less see-through`,
+    );
   }
 
   if (String(was.rating_alignment ?? "") !== String(now.rating_alignment ?? "")) {

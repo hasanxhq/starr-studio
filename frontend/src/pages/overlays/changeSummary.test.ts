@@ -31,6 +31,15 @@ describe("layerChangeSentence", () => {
   it("describes colour moves", () => {
     expect(layerChangeSentence("Resolution", aligned, {}, {}, { back_color: "#FFFFFFCC" })).toBe("Resolution get a white background");
   });
+
+  it("describes lower alpha as more see-through and higher as less", () => {
+    expect(layerChangeSentence("Resolution", aligned, {}, { back_color: "#000000CC" }, { back_color: "#00000066" })).toBe(
+      "Resolution become more see-through",
+    );
+    expect(layerChangeSentence("Resolution", aligned, {}, { back_color: "#00000066" }, { back_color: "#000000CC" })).toBe(
+      "Resolution become less see-through",
+    );
+  });
 });
 
 describe("studioChangeSentence", () => {
