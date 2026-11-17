@@ -21,10 +21,10 @@ import re
 from datetime import datetime
 from json import loads
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
