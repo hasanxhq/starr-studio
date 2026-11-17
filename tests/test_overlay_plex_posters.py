@@ -1,7 +1,9 @@
 """Overlay engine: reading and uploading full-size posters through Plex."""
 
 import asyncio
+import json
 from io import BytesIO
+from pathlib import Path
 
 import httpx
 import pytest
@@ -9,6 +11,10 @@ from fakeplex import REMOTE_URI, SERVER_TOKEN, FakePlex, overlay_poster
 from PIL import Image
 
 from starr_studio.overlay_engine import plex_posters
+from starr_studio.overlay_engine.facts_plex import facts_from_metadata
+from starr_studio.overlay_engine.render import render_poster
+from starr_studio.overlay_engine.rules import resolve
+from starr_studio.overlay_engine.style import load_style
 from starr_studio.plex_library import PlexNotFound, PlexServer, PlexUnavailable
 
 
@@ -48,6 +54,20 @@ def test_same_image_different_colour():
 
 def test_same_image_garbage_bytes():
     assert not plex_posters.same_image(b"not an image", overlay_poster())
+
+
+def test_same_image_dark_poster_badge_vs_plain_and_reencoded():
+    meta = json.loads((Path(__file__).parent / "fixtures" / "overlay_facts" / "metadata.json").read_text())["4635"]
+    buf = BytesIO()
+    Image.open(BytesIO(overlay_poster((5, 5, 8)))).resize((1000, 1500), Image.Resampling.LANCZOS).save(buf, "JPEG", quality=95)
+    plain = buf.getvalue()
+    style = load_style((Path(__file__).parent.parent / "starr_studio" / "overlay_engine" / "styles" / "modern-streaming.yml").read_text())
+    with_badge = render_poster(resolve(style, facts_from_metadata(meta), {"band": 50}), plain)
+    rebuf = BytesIO()
+    Image.open(BytesIO(plain)).save(rebuf, "JPEG", quality=50)
+    reencoded = rebuf.getvalue()
+    assert not plex_posters.same_image(with_badge, plain)
+    assert plex_posters.same_image(reencoded, plain)
 
 
 def test_current_poster_returns_bytes_and_thumb():

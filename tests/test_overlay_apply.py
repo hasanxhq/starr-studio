@@ -151,3 +151,27 @@ def test_studio_stopping_before_its_row_is_saved_keeps_the_original(ctx, fake):
     [outcome] = go(ctx, ["4635"])
     assert outcome.done and ctx.originals.current("4635") == first
     assert near(pixel(fake.uploads[-1][1], (500, 700)), (40, 90, 160))
+
+
+def test_render_pool_recovers_from_broken_process_pool(ctx, fake, monkeypatch):
+    import starr_studio.overlay_engine.apply as apply_mod
+    from concurrent.futures import Future
+    from concurrent.futures.process import BrokenProcessPool
+
+    class Pool:
+        def __init__(self, *, broken: bool) -> None:
+            self._broken = broken
+
+        def submit(self, fn, *args):
+            if self._broken:
+                raise BrokenProcessPool("dead worker")
+            future = Future()
+            future.set_result(fn(*args))
+            return future
+
+    pools = iter([Pool(broken=True), Pool(broken=False)])
+    monkeypatch.setattr(apply_mod, "_pool", None)
+    monkeypatch.setattr(apply_mod, "_render_pool", lambda: next(pools))
+    [outcome] = go(ctx, ["4635"])
+    assert (outcome.kind, outcome.done) == ("draw", True)
+    assert len(fake.uploads) == 1

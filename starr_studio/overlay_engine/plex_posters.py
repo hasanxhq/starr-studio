@@ -23,7 +23,7 @@ def sha256(data: bytes) -> str:
 def _grayscale_small(data: bytes) -> Image.Image | None:
     try:
         with Image.open(BytesIO(data)) as im:
-            return im.convert("L").resize((32, 48), Image.Resampling.BILINEAR)
+            return im.convert("L").resize((64, 96), Image.Resampling.BILINEAR)
     except Exception:
         return None
 
@@ -35,7 +35,8 @@ def same_image(a: bytes, b: bytes) -> bool:
     left, right = _grayscale_small(a), _grayscale_small(b)
     if left is None or right is None:
         return False
-    return ImageStat.Stat(ImageChops.difference(left, right)).mean[0] <= 3.0
+    # dark poster at 1000×1500, modern-streaming band 50: 64×96 mean 3.24 with one badge vs 1.0 re-encoded; audit 32×48 was 3.08 / 2.57 at 3.0
+    return ImageStat.Stat(ImageChops.difference(left, right)).mean[0] <= 2.5
 
 
 def _thumb_path(thumb: object) -> str:

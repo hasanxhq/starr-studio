@@ -17,6 +17,7 @@ import os
 import sqlite3
 import time
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -74,6 +75,16 @@ def _render_pool() -> ProcessPoolExecutor:
     if _pool is None:
         _pool = ProcessPoolExecutor(max_workers=min(PARALLEL, os.cpu_count() or 1), mp_context=multiprocessing.get_context("forkserver"))
     return _pool
+
+
+async def _render_jpeg(elements: list, work: bytes) -> bytes:
+    loop = asyncio.get_running_loop()
+    try:
+        return await loop.run_in_executor(_render_pool(), render_poster, elements, work)
+    except BrokenProcessPool:
+        global _pool
+        _pool = None
+        return await loop.run_in_executor(_render_pool(), render_poster, elements, work)
 
 
 def _row(db: sqlite3.Connection, rating_key: str) -> sqlite3.Row | None:
@@ -161,7 +172,7 @@ async def _apply_one(ctx: Context, rating_key: str, style: Style, style_name: st
     if original is None:
         raise ValueError("No original poster is kept for this title, so Studio won't draw on it")
     work = ctx.originals.working_copy(original)
-    jpeg = await asyncio.get_running_loop().run_in_executor(_render_pool(), render_poster, elements, work)
+    jpeg = await _render_jpeg(elements, work)
     # Kept before the upload, atomically, so Studio's own poster is recognised even if Studio stops before the row is saved.
     part = _uploaded_path(ctx, rating_key).with_suffix(f".part.{os.getpid()}")
     part.write_bytes(jpeg)
