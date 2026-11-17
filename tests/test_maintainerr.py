@@ -509,11 +509,11 @@ def test_an_unexpected_error_after_takeover_leaves_redraw_pending(tmp_path, setu
                 raise RuntimeError("Maintainerr broke mid-revert")
             return await real_call(method, path, url, **kwargs)
 
-            service._call = break_on_revert
-            run = finished(client, client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"])
-            assert run["status"] == "failed" and "Maintainerr broke" in run["error"]
-            assert get_setting(service.db, maintainerr.PENDING_PROCESS) is True
-            assert service._wrapping is False
+        service._call = break_on_revert
+        run = finished(client, client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"])
+        assert run["status"] == "failed" and "Maintainerr broke" in run["error"]
+        assert get_setting(service.db, maintainerr.PENDING_PROCESS) is True
+        assert service._wrapping is False
 
 
 def test_cancelling_while_maintainerr_is_busy_in_before_run(tmp_path, setup, monkeypatch):

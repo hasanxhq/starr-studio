@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import sys
@@ -24,6 +25,20 @@ class AfterCounter:
     async def before_run(self, request, say):
         async def after() -> None:
             self.ran += 1
+
+        return after
+
+
+class SlowAfter:
+    def __init__(self) -> None:
+        self.ran = 0
+        self.started = asyncio.Event()
+
+    async def before_run(self, request, say):
+        async def after() -> None:
+            self.ran += 1
+            self.started.set()
+            await asyncio.sleep(60)
 
         return after
 
@@ -99,3 +114,24 @@ def test_a_log_write_error_stops_kometa_and_still_runs_after_hooks(tmp_path):
     assert run["status"] == "failed" and "Couldn't write the run log" in run["error"]
     assert counter.ran == 1
     assert child_pid.exists() and not _alive(int(child_pid.read_text()))
+
+
+def test_stopping_the_runner_during_an_after_step_does_not_run_it_again(tmp_path):
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "config.yml").write_text("libraries: {}\n")
+    (config / "fake.json").write_text(json.dumps({"lines": ["Kometa ran"]}))
+    settings = Settings(data_dir=tmp_path / "data", kometa_python=Path(sys.executable), kometa_entry=FAKE_KOMETA, kometa_config=config / "config.yml", kill_after=0.5)
+    with TestClient(create_app(settings, static_dir=tmp_path / "no-static"), client=("127.0.0.1", 50000)) as client:
+        runner = client.app.state.runner
+        slow = SlowAfter()
+        runner.hooks.append(slow)
+        run_id = client.post("/api/v1/runs", json={"mode": "collections"}).json()["id"]
+        deadline = time.monotonic() + 10
+        while not slow.started.is_set() and time.monotonic() < deadline:
+            client.portal.call(asyncio.sleep, 0.02)
+        assert slow.started.is_set() and slow.ran == 1
+        stop_at = time.monotonic()
+        client.portal.call(runner.stop)
+    assert slow.ran == 1
+    assert time.monotonic() - stop_at < 5

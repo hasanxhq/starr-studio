@@ -10,6 +10,7 @@ import contextlib
 import json
 import logging
 import os
+import sys
 import re
 import signal
 import sqlite3
@@ -354,7 +355,7 @@ class Runner:
                 self._finish(run_id, status, exit_code=exit_code, error=error)
                 finished = True
             finally:
-                if not afters_done:
+                if not afters_done and not isinstance(sys.exc_info()[1], asyncio.CancelledError):
                     await self._terminate(active)
                     await self._afters(active, log, afters)
                 if not finished and log_write_error:

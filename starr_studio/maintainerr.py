@@ -414,7 +414,6 @@ class Maintainerr:
                     say("Maintainerr is still putting posters back (it goes through every show, season and episode); waiting for it…")
                 await self._wait_until_idle(say, REVERT_WAIT, quiet=True)
         except RunCancelled:
-            self._wrapping = False
             if get_setting(self.db, PENDING_PROCESS):
                 async def after() -> None:
                     try:
@@ -423,6 +422,7 @@ class Maintainerr:
                         self._wrapping = False
 
                 return after
+            self._wrapping = False
             raise
         except (MaintainerrProblem, RunHeld) as problem:
             set_setting(self.db, PENDING_PROCESS, True)
@@ -430,6 +430,7 @@ class Maintainerr:
             self._wrapping = False
             raise RunHeld(str(problem) if isinstance(problem, RunHeld) else f"Held: {problem}") from None
         except Exception as problem:
+            log.exception("Maintainerr before_run failed")
             self._wrapping = False
             raise RunHeld(str(problem) or type(problem).__name__) from problem
 
