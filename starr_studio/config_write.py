@@ -229,9 +229,12 @@ class ConfigWriter:
             checks = [self._kometa([*base, "--validate", "--validate-level", level, "--validate-schema"], sandbox, level)]
             if per_file and level == "structure":
                 staged = sandbox / "_edited"
-                staged.mkdir()
+                config_dir = self.config_dir.resolve()
                 for path, text in per_file.items():
-                    (staged / path.name).write_text(text, encoding="utf-8")
+                    relative = path.resolve().relative_to(config_dir)
+                    target = staged / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(text, encoding="utf-8")
                 checks.append(self._kometa([*base, "--validate-dir", str(staged)], sandbox, level))
             results = await asyncio.gather(*checks)
         merged = Validation(all(r.ok for r in results), crashed=any(r.crashed for r in results))
@@ -398,10 +401,11 @@ class ConfigWriter:
             entry = next(b for b in backups.list_backups(self.backup_root) if b["id"] == backup_id)
             restored = [self.resolve(relative) for relative in entry["files"]]
             removed = [self.resolve(relative) for relative in entry["new_files"]]
+            restored_text = {path: (folder / self.relative(path)).read_text(encoding="utf-8") for path in restored}
             before = backups.take_backup(self.backup_root, self.config_dir.resolve(), restored + removed, f"Before restoring the backup from {entry['created']}")
-            for path in restored:
+            for path, text in restored_text.items():
                 path.parent.mkdir(parents=True, exist_ok=True)
-                write_atomic(path, (folder / self.relative(path)).read_text(encoding="utf-8"))
+                write_atomic(path, text)
             for path in removed:
                 path.unlink(missing_ok=True)
         validation = await self.validate({})

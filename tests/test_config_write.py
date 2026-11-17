@@ -232,6 +232,61 @@ def test_backups_keep_the_newest_thirty(tmp_path, kometa):
     assert len(listed["backups"]) == listed["keep"] == 30
 
 
+def test_restoring_the_oldest_backup_when_thirty_are_kept(tmp_path, kometa):
+    """Restoring must not lose the target backup: take_backup on entry prunes the oldest folder, which may be the backup being restored."""
+    from starr_studio.backups import KEEP
+
+    with make_client(tmp_path, kometa) as client:
+        oldest_content = MOVIES + "  Oldest marker:\n    template: {}\n"
+        movies = opened(client, "Movies.yml")
+        assert (
+            client.put(
+                "/api/v1/config/files",
+                json={"files": [{"path": "Movies.yml", "text": oldest_content, "base_hash": movies["hash"]}], "reason": "Seed oldest"},
+            ).status_code
+            == 200
+        )
+        for number in range(KEEP - 1):
+            movies = opened(client, "Movies.yml")
+            text = oldest_content + f"  Pad {number}:\n    template: {{}}\n"
+            assert client.put("/api/v1/config/files", json={"files": [{"path": "Movies.yml", "text": text, "base_hash": movies["hash"]}]}).status_code == 200
+        listed = client.get("/api/v1/backups").json()
+        assert len(listed["backups"]) == KEEP
+        oldest_id = listed["backups"][-1]["id"]
+        expected = (kometa / "config" / ".studio" / "backups" / oldest_id / "Movies.yml").read_text()
+        # Change on disk without another save so the oldest of KEEP backups is still present.
+        (kometa / "config" / "Movies.yml").write_text("collections: {}\n")
+
+        response = client.post(f"/api/v1/backups/{oldest_id}/restore")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["restored"] == ["Movies.yml"] and body["validation"]["ok"]
+    assert (kometa / "config" / "Movies.yml").read_text() == expected
+
+
+def test_two_same_named_files_in_different_folders_are_both_checked(tmp_path, kometa):
+    (kometa / "config" / "movies").mkdir()
+    (kometa / "config" / "shows").mkdir()
+    movies_yml = "collections:\n  Good:\n    template: {}\n"
+    shows_yml = "collections:\n  Good:\n    template: {}\n  Bad:\n    SCHEMA-BAD: 1\n"
+    with make_client(tmp_path, kometa) as client:
+        response = client.put(
+            "/api/v1/config/files",
+            json={
+                "files": [
+                    {"path": "movies/collections.yml", "text": movies_yml},
+                    {"path": "shows/collections.yml", "text": shows_yml},
+                ],
+                "reason": "Two collections.yml",
+            },
+        )
+    assert response.status_code == 422
+    errors = response.json()["detail"]["validation"]["errors"]
+    assert any("shows/collections.yml" in error for error in errors)
+    assert not (kometa / "config" / "movies" / "collections.yml").exists()
+    assert not (kometa / "config" / "shows" / "collections.yml").exists()
+
+
 def test_checking_without_saving(tmp_path, kometa):
     with make_client(tmp_path, kometa) as client:
         movies = opened(client, "Movies.yml")
