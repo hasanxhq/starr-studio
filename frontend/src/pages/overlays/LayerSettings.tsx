@@ -28,7 +28,7 @@ function hexRgb(hex: string): string {
 
 function readBackColor(values: Values, fallback: string): { rgb: string; alpha: number } {
   const raw = String(values.back_color ?? fallback);
-  const match = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(raw.replace("#", "#"));
+  const match = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(raw);
   if (!match) return { rgb: "#000000", alpha: 204 };
   return { rgb: `#${match[1].toUpperCase()}`, alpha: match[2] ? Number.parseInt(match[2], 16) : 255 };
 }

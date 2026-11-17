@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { api, type FullCheck } from "../../api";
 import { Card } from "../../components/ui";
+import { requestsApi } from "../../requestsApi";
 
 type Level = "ok" | "warn" | "err" | "unknown";
 
@@ -34,7 +35,6 @@ function levelForService(check: FullCheck | null, pattern: RegExp): Level {
   if (err) return "err";
   const warn = check.warnings.some((line) => pattern.test(line)) || check.existing_errors.some((line) => pattern.test(line));
   if (warn) return "warn";
-  if (check.ok) return "ok";
   return "ok";
 }
 
@@ -45,11 +45,24 @@ function kometaLevel(check: FullCheck | null): Level {
   return "ok";
 }
 
+function visibleServices(loading: boolean, connected: { radarr: boolean; sonarr: boolean; seerr: boolean } | undefined) {
+  if (loading) return services.filter((s) => s.id === "plex" || s.id === "tmdb");
+  return services.filter((s) => {
+    if (s.id === "plex" || s.id === "tmdb") return true;
+    if (s.id === "radarr") return connected?.radarr === true;
+    if (s.id === "sonarr") return connected?.sonarr === true;
+    if (s.id === "seerr") return connected?.seerr === true;
+    return false;
+  });
+}
+
 export function Connected() {
   const last = useQuery({ queryKey: ["full-check"], queryFn: api.fullCheck.last });
   const status = useQuery({ queryKey: ["status"], queryFn: api.status });
+  const settings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
   const check = last.data?.last ?? null;
   const version = status.data?.kometa.version;
+  const rows = visibleServices(settings.isLoading, settings.data?.connected);
 
   return (
     <Card
@@ -61,7 +74,7 @@ export function Connected() {
       }
     >
       <ul className="flex flex-wrap gap-x-6 gap-y-3 text-sm">
-        {services.map((service) => {
+        {rows.map((service) => {
           const level = levelForService(check, service.test);
           return (
             <li key={service.id} className="flex items-center gap-2">
