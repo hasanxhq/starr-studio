@@ -81,7 +81,7 @@ export type RequestRow = {
 
 export type RequestCounts = Record<RequestStatus, number>;
 
-export type RequestsList = { requests: RequestRow[]; counts: RequestCounts };
+export type RequestsList = { requests: RequestRow[]; counts: RequestCounts; arrived_today: number };
 
 export type RequestSummary = {
   waiting: number;

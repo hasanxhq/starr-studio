@@ -5,6 +5,7 @@ import shutil
 import sys
 from collections.abc import Callable
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -14,6 +15,8 @@ from fastapi.testclient import TestClient
 from test_requesting import seerr_service
 
 from starr_studio.app import create_app
+from starr_studio.auth_routes import TIMEZONE
+from starr_studio.scheduler import utc_text
 from starr_studio.crypto import SecretBox
 from starr_studio.db import get_setting, open_database, set_setting
 from starr_studio.requesting import REQUESTS_SEERR, SEERR_CARRY
@@ -389,6 +392,40 @@ def test_create_and_list_requests(test_setup):
     assert len(filtered.json()["requests"]) == 2
     empty = client.get("/api/v1/requests?collection_id=999")
     assert len(empty.json()["requests"]) == 0
+    assert body["arrived_today"] == 0
+
+
+def test_arrived_today_beyond_limit_and_timezone(test_setup):
+    client, mock, app, tmp_path = test_setup
+    db = app.state.db
+    set_setting(db, TIMEZONE, "UTC")
+
+    now = datetime.now(UTC)
+    today_import = utc_text(now - timedelta(hours=2))
+    yesterday_import = utc_text(now - timedelta(days=1))
+    old_request = utc_text(datetime(2020, 1, 1, tzinfo=UTC))
+
+    def insert(item: str, title: str, requested_at: str, imported_at: str | None) -> None:
+        db.execute(
+            """
+            INSERT INTO requests (
+                item, media, title, library, via, status, requested_at, updated_at, imported_at
+            ) VALUES (?, 'movie', ?, 'Movies', 'radarr', 'imported', ?, ?, ?)
+            """,
+            (item, title, requested_at, requested_at, imported_at),
+        )
+
+    for i in range(3):
+        insert(f"tmdb-movie:{100 + i}", f"Recent {i}", utc_text(now - timedelta(minutes=i)), None)
+    insert("tmdb-movie:old-today", "Old request arrived today", old_request, today_import)
+    insert("tmdb-movie:yesterday", "Yesterday import", old_request, yesterday_import)
+    db.commit()
+
+    res = client.get("/api/v1/requests?limit=2")
+    body = res.json()
+    assert len(body["requests"]) == 2
+    assert all(r["title"].startswith("Recent") for r in body["requests"])
+    assert body["arrived_today"] == 1
 
 
 def test_cancel_and_refresh_routes(test_setup):

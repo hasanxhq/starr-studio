@@ -185,9 +185,11 @@ async def list_requests(
     query += " ORDER BY requested_at DESC, id DESC LIMIT ?"
     params.append(limit)
     rows = service.db.execute(query, params).fetchall()
+    now = datetime.now(UTC)
     return {
         "requests": [dict(r) for r in rows],
         "counts": service.counts(),
+        "arrived_today": service.arrived_today(now),
     }
 
 

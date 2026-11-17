@@ -155,7 +155,7 @@ describe("Music library UI", () => {
         runs: { current: null, queued: 0, next_scheduled: null },
       }),
       "GET /runs": () => ({ runs: [], current: null }),
-      "GET /requests?limit=200": () => ({ requests: [], counts: { requested: 0, downloading: 0, imported: 0, failed: 0, cancelled: 0, exists: 0 } }),
+      "GET /requests?limit=2": () => ({ requests: [], counts: { requested: 0, downloading: 0, imported: 0, failed: 0, cancelled: 0, exists: 0 }, arrived_today: 0 }),
       "GET /kometa/full-check": () => ({
         last: { ok: true, errors: [], warnings: [], existing_errors: [], checked_by_kometa: true, crashed: false, output: "", at: null },
       }),

@@ -33,6 +33,8 @@ const row = (partial: Partial<RequestRow> & Pick<RequestRow, "id" | "status" | "
   ...partial,
 });
 
+const layoutRequests = { "GET /requests?limit=2": () => list([]) };
+
 const list = (requests: RequestRow[]): RequestsList => ({
   requests,
   counts: {
@@ -43,6 +45,7 @@ const list = (requests: RequestRow[]): RequestsList => ({
     cancelled: requests.filter((r) => r.status === "cancelled").length,
     exists: requests.filter((r) => r.status === "exists").length,
   },
+  arrived_today: 0,
 });
 
 afterEach(() => {
@@ -52,6 +55,7 @@ afterEach(() => {
 describe("Requests page", () => {
   it("is under Libraries after Collections", async () => {
     mockApi({
+      ...layoutRequests,
       "GET /requests/settings": () => settingsOff,
       "GET /requests?limit=200": () => list([]),
     });
@@ -63,6 +67,7 @@ describe("Requests page", () => {
 
   it("notes when requests are off and shows the empty state", async () => {
     mockApi({
+      ...layoutRequests,
       "GET /requests/settings": () => settingsOff,
       "GET /requests?limit=200": () => list([]),
     });
@@ -74,6 +79,7 @@ describe("Requests page", () => {
 
   it("lists rows with status chips, cancels with confirmation, and Check now refreshes", async () => {
     const calls = mockApi({
+      ...layoutRequests,
       "GET /requests/settings": () => ({ ...settingsOff, settings: { ...settingsOff.settings, enabled: true } }),
       "GET /requests?limit=200": () =>
         list([
@@ -111,6 +117,7 @@ describe("Requests page", () => {
 
   it("shows the note on a title the app already had", async () => {
     mockApi({
+      ...layoutRequests,
       "GET /requests/settings": () => ({ ...settingsOff, settings: { ...settingsOff.settings, enabled: true } }),
       "GET /requests?limit=200": () =>
         list([row({ id: 4, title: "Breaking Bad", status: "exists", via: "seerr", external_id: null, error: "Seerr has every season already requested or available" })]),
@@ -123,6 +130,7 @@ describe("Requests page", () => {
   it("polls while a row is requested or downloading", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const calls = mockApi({
+      ...layoutRequests,
       "GET /requests/settings": () => ({ ...settingsOff, settings: { ...settingsOff.settings, enabled: true } }),
       "GET /requests?limit=200": () => list([row({ id: 1, title: "Die Hard", status: "requested" })]),
     });
@@ -138,6 +146,7 @@ describe("Requests page", () => {
 
 describe("Request music", () => {
   const libs = {
+    ...layoutRequests,
     "GET /config": () => ({ path: "/config/config.yml", libraries: [{ name: "Music", plex_name: "Music" }], playlist_files: [] }),
     "GET /plex/libraries": () => ({ libraries: [{ key: "2", title: "Music", type: "artist", collections: 0, managed: 0 }] }),
     "GET /requests?limit=200": () => list([]),

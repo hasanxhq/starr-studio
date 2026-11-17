@@ -33,6 +33,15 @@ from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
 from .scheduler import default_timezone, utc_text
 from .services import mask
 
+
+def today_start_utc(db: sqlite3.Connection, now: datetime) -> str:
+    """Midnight in Studio's timezone, as UTC text."""
+    tz = get_setting(db, TIMEZONE) or default_timezone()
+    local = now.astimezone(ZoneInfo(tz))
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+    return utc_text(start)
+
+
 log = logging.getLogger(__name__)
 
 REQUESTS_SETTINGS = "requests.settings"
@@ -478,6 +487,9 @@ class RequestService:
             "cancelled": by_status.get("cancelled", 0),
             "exists": by_status.get("exists", 0),
         }
+
+    def arrived_today(self, now: datetime) -> int:
+        return self.db.execute("SELECT count(*) FROM requests WHERE imported_at >= ?", (today_start_utc(self.db, now),)).fetchone()[0]
 
     def plex_server(self) -> PlexServer | None:
         try:
@@ -1066,10 +1078,7 @@ class RequestService:
             # Daily cap calculation
             effective_cap = cap if cap is not None else settings.daily_cap
             if collection_id is not None and effective_cap is not None:
-                tz = get_setting(self.db, TIMEZONE) or default_timezone()
-                local = now.astimezone(ZoneInfo(tz))
-                start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
-                today_start = utc_text(start)
+                today_start = today_start_utc(self.db, now)
                 used_today = self.db.execute(
                     # Only what was actually sent counts towards the cap, not failures or titles the app already had.
                     "SELECT count(*) FROM requests WHERE collection_id = ? AND requested_at >= ? AND status IN ('requested', 'downloading', 'imported')",

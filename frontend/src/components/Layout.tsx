@@ -89,8 +89,8 @@ function HealthDot() {
 
 function useRequestsWaiting(): number {
   const query = useQuery({
-    queryKey: ["requests", "list", ""],
-    queryFn: () => requestsApi.list({ limit: 200 }),
+    queryKey: ["requests", "list", "", 2],
+    queryFn: () => requestsApi.list({ status: "", limit: 2 }),
     refetchInterval: 60_000,
   });
   const counts = query.data?.counts;
