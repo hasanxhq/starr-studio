@@ -16,7 +16,7 @@ from typing import Any
 from .style import Style, StyleError, load_style
 
 SHIPPED = Path(__file__).parent / "styles"
-STYLE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+STYLE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}\Z")  # \Z: $ would let a trailing newline through
 SCHEMA_FILE = Path(__file__).parent / "style.schema.json"
 
 
