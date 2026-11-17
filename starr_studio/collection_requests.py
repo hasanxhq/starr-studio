@@ -40,7 +40,7 @@ def waiting(db: sqlite3.Connection, row: sqlite3.Row) -> list[Item]:
     found = db.execute(
         """
         SELECT w.item, w.title FROM wanted w
-        WHERE w.library = ? AND w.collection = ? AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.item = w.item)
+        WHERE w.library = ? AND w.collection = ? AND NOT EXISTS (SELECT 1 FROM requests r WHERE r.item = w.item OR r.alt_item = w.item)
         ORDER BY w.item
         """,
         (row["library"], row["kometa_name"]),

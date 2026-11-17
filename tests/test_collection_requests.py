@@ -244,6 +244,34 @@ def test_a_check_rebuilds_after_labelling(root):
         assert order == ["refresh", "after"]
 
 
+def test_wanted_tvdb_does_not_wait_when_tmdb_show_was_requested(tmp_path):
+    from starr_studio.db import open_database
+
+    db = open_database(tmp_path / "studio.db")
+    with db:
+        db.execute(
+            """
+            INSERT INTO collections (
+                library, category, block, key, kometa_name, title, origin, desired, download_missing, definition,
+                created_at, updated_at
+            )
+            VALUES ('Movies', 'built', '', 'dune', 'Dune', 'Dune', 'built', 1, 1, '{}', 't', 't')
+            """
+        )
+        row_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+        db.execute(
+            """
+            INSERT INTO requests (item, alt_item, media, library, collection_id, via, status, requested_at, updated_at)
+            VALUES ('tmdb-show:1399', 'tvdb:121361', 'show', 'Movies', ?, 'sonarr', 'requested', 't', 't')
+            """,
+            (row_id,),
+        )
+        _wanted(db, "Dune", "tvdb:121361")
+    row = col.built_row(db, row_id)
+    assert [i.item for i in cr.waiting(db, row)] == []
+    db.close()
+
+
 def test_skipped_titles_are_never_requested_until_unticked(root):
     with tmdb_client(root, []) as client:
         wait_for_flags(client)

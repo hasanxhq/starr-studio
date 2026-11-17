@@ -13,7 +13,7 @@ import logging
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -42,6 +42,7 @@ SEERR_LOGIN = "requests.seerr_login"  # the proxy login in front of Seerr, if an
 SEERR_CARRY = "requests.seerr_carry"  # why the old connection couldn't move into config.yml: {"error", "config": its hash}
 SEERR_NO_SEASONS = "Seerr has every season already requested or available"  # its HTTP 202 on POST /request
 POLL_EVERY = 300.0  # 5 minutes
+LABEL_IMPORT_MAX_AGE = timedelta(days=7)  # stop full-library Plex scans for imports that never get a label
 TIMEOUT = 10.0
 
 
@@ -545,6 +546,15 @@ class RequestService:
                 pass
         return None
 
+    async def _show_alt_item(self, item: str) -> str | None:
+        if item.startswith("tmdb-show:"):
+            tvdb_id = await self._tmdb_to_tvdb(item.removeprefix("tmdb-show:"))
+            return f"tvdb:{tvdb_id}" if tvdb_id else None
+        if item.startswith("tvdb:"):
+            tmdb_id = await self._tvdb_to_tmdb(item.removeprefix("tvdb:"))
+            return f"tmdb-show:{tmdb_id}" if tmdb_id else None
+        return None
+
     async def _ensure_tag(self, conn: Connection) -> int:
         tags = await arr._get(self.http, conn, "/api/v3/tag")
         if isinstance(tags, list):
@@ -999,11 +1009,12 @@ class RequestService:
         status: str,
         error: str | None,
         now: datetime,
+        alt_item: str | None = None,
     ) -> int:
         cursor = self.db.execute(
             """
-            INSERT INTO requests (item, media, title, year, library, collection_id, via, external_id, status, error, requested_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO requests (item, media, title, year, library, collection_id, via, external_id, status, error, requested_at, updated_at, alt_item)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 item,
@@ -1018,6 +1029,7 @@ class RequestService:
                 error,
                 utc_text(now),
                 utc_text(now),
+                alt_item,
             ),
         )
         self.db.commit()
@@ -1042,9 +1054,13 @@ class RequestService:
             # Asked once is enough: a title already requested, downloading, imported, or already in Radarr/Sonarr
             # ('exists', which Studio leaves alone) isn't filed again on every later run.
             active_rows = self.db.execute(
-                "SELECT item FROM requests WHERE status IN ('requested', 'downloading', 'imported', 'exists')"
+                "SELECT item, alt_item FROM requests WHERE status IN ('requested', 'downloading', 'imported', 'exists')"
             ).fetchall()
-            active_items = {r[0] for r in active_rows}
+            active_items: set[str] = set()
+            for r in active_rows:
+                active_items.add(r["item"])
+                if r["alt_item"]:
+                    active_items.add(r["alt_item"])
             seen_in_batch: set[str] = set()
 
             # Daily cap calculation
@@ -1072,12 +1088,20 @@ class RequestService:
                     outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
                     continue
 
+                alt_item = await self._show_alt_item(it.item) if it.item.startswith(("tmdb-show:", "tvdb:")) else None
+                if alt_item and (alt_item in active_items or alt_item in seen_in_batch):
+                    outcome.skipped += 1
+                    outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
+                    continue
+
                 if remaining_cap is not None and remaining_cap <= 0:
                     outcome.capped += 1
                     outcome.items.append(RequestItemResult(item=it.item, status="capped"))
                     continue
 
                 seen_in_batch.add(it.item)
+                if alt_item:
+                    seen_in_batch.add(alt_item)
                 if remaining_cap is not None:
                     remaining_cap -= 1
 
@@ -1097,7 +1121,7 @@ class RequestService:
                 else:
                     outcome.failed += 1
                     error_msg = f"Unknown item key format: {it.item}"
-                    self._record(it.item, "movie", it.title, it.year, library, collection_id, "unknown", None, "failed", error_msg, now)
+                    self._record(it.item, "movie", it.title, it.year, library, collection_id, "unknown", None, "failed", error_msg, now, alt_item=alt_item)
                     outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
                     continue
 
@@ -1107,7 +1131,7 @@ class RequestService:
                     lidarr_conn = lidarr_connection(self.db, self.box)
                     if lidarr_conn is None:
                         error_msg = "Lidarr isn't connected"
-                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, "failed", error_msg, now)
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, "failed", error_msg, now, alt_item=alt_item)
                         outcome.failed += 1
                         outcome.items.append(RequestItemResult(item=it.item, status="failed", error=error_msg))
                         continue
@@ -1116,10 +1140,12 @@ class RequestService:
                     )
                     title = stored_title or it.title
                     year = it.year if it.year is not None else found_year
-                    self._record(it.item, media, title, year, library, collection_id, via_record, external_id, status, error_msg, now)
+                    self._record(it.item, media, title, year, library, collection_id, via_record, external_id, status, error_msg, now, alt_item=alt_item)
                     if status == "requested":
                         outcome.requested += 1
                         active_items.add(it.item)
+                        if alt_item:
+                            active_items.add(alt_item)
                     elif status == "exists":
                         outcome.exists += 1
                     elif status == "failed":
@@ -1143,7 +1169,7 @@ class RequestService:
                         error_msg = "Seerr isn't connected"
                         status = "failed"
                         external_id = None
-                        self._record(it.item, media, it.title, it.year, library, collection_id, "seerr", None, status, error_msg, now)
+                        self._record(it.item, media, it.title, it.year, library, collection_id, "seerr", None, status, error_msg, now, alt_item=alt_item)
                         outcome.failed += 1
                         outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
                         continue
@@ -1159,7 +1185,7 @@ class RequestService:
                         error_msg = "Radarr isn't connected"
                         status = "failed"
                         external_id = None
-                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now, alt_item=alt_item)
                         outcome.failed += 1
                         outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
                         continue
@@ -1171,16 +1197,18 @@ class RequestService:
                         error_msg = "Sonarr isn't connected"
                         status = "failed"
                         external_id = None
-                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now)
+                        self._record(it.item, media, it.title, it.year, library, collection_id, via_record, None, status, error_msg, now, alt_item=alt_item)
                         outcome.failed += 1
                         outcome.items.append(RequestItemResult(item=it.item, status=status, error=error_msg))
                         continue
                     status, external_id, error_msg = await self._request_sonarr(sonarr_conn, settings.sonarr, it, kind_id, profile)
 
-                self._record(it.item, media, it.title, it.year, library, collection_id, via_record, external_id, status, error_msg, now)
+                self._record(it.item, media, it.title, it.year, library, collection_id, via_record, external_id, status, error_msg, now, alt_item=alt_item)
                 if status == "requested":
                     outcome.requested += 1
                     active_items.add(it.item)
+                    if alt_item:
+                        active_items.add(alt_item)
                 elif status == "exists":
                     outcome.exists += 1
                 elif status == "failed":
@@ -1266,6 +1294,12 @@ class RequestService:
                     movie_list = found if isinstance(found, list) else ([found] if isinstance(found, dict) and found.get("id") else [])
                     if not movie_list and via == "seerr":
                         await self._follow_seerr(row, now)
+                    elif not movie_list and via == "radarr":
+                        self.db.execute(
+                            "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                            ("Removed from Radarr", utc_text(now), row_id),
+                        )
+                        continue
                     if movie_list:
                         movie = movie_list[0]
                         movie_id = movie["id"]
@@ -1303,6 +1337,12 @@ class RequestService:
                     series_list = found if isinstance(found, list) else ([found] if isinstance(found, dict) and found.get("id") else [])
                     if not series_list and via == "seerr":
                         await self._follow_seerr(row, now)
+                    elif not series_list and via == "sonarr":
+                        self.db.execute(
+                            "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                            ("Removed from Sonarr", utc_text(now), row_id),
+                        )
+                        continue
                     if series_list:
                         series = series_list[0]
                         series_id = series["id"]
@@ -1452,7 +1492,11 @@ class RequestService:
         return updated_count
 
     async def label_imported(self, server: PlexServer, now: datetime) -> int:
-        rows = self.db.execute("SELECT * FROM requests WHERE status = 'imported' AND labelled_at IS NULL").fetchall()
+        cutoff = utc_text(now - LABEL_IMPORT_MAX_AGE)
+        rows = self.db.execute(
+            "SELECT * FROM requests WHERE status = 'imported' AND labelled_at IS NULL AND imported_at IS NOT NULL AND imported_at >= ?",
+            (cutoff,),
+        ).fetchall()
         if not rows:
             return 0
 
