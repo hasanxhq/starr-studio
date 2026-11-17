@@ -34,17 +34,11 @@ from .kometa_command import RunRequest
 from .kometa_files import ConfigReader
 from .overlay_originals import BAD_FILENAME, find_backup, get_or_create_original
 from .plex_routes import kometa_plex
+from .services import AppSettings
 from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/overlays", tags=["overlays"])
 RATING_KEY_PATTERN = re.compile(r"^[0-9]+$")
-
-
-def _settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-AppSettings = Annotated[Settings, Depends(_settings)]
 
 
 def _reader(settings: Settings) -> ConfigReader:

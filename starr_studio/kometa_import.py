@@ -24,11 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from . import list_sources, smart_filters
-from .kometa_files import ConfigReader, Library, Reference, _is_builder
+from .kometa_files import ConfigReader, Library, Reference, _is_builder, _yaml
 
 STUDIO_FOLDER = "studio/"
 STUDIO_HEADER = re.compile(r"^#\s*Written by (Starr|Kometa) Studio", re.MULTILINE)
@@ -341,10 +340,6 @@ def _is_other_builder(key: str) -> bool:
 
 
 # --- One file ---------------------------------------------------------------------------------------
-
-
-def _yaml() -> YAML:
-    return YAML(typ="safe", pure=True)
 
 
 def describe_file(

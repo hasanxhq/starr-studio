@@ -22,11 +22,10 @@ from urllib.parse import quote
 
 import httpx
 from PIL import Image
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from starr_studio.default_covers import DEFAULT_IMAGES, cache_on_disk
-from starr_studio.kometa_files import _read
+from starr_studio.kometa_files import _read, _yaml
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +40,6 @@ RETRY_AFTER = 600  # seconds before trying a missing poster again
 MAX_BYTES = 8_000_000
 
 _loaded: dict[Path, tuple[float, dict]] = {}
-
-
-def _yaml() -> YAML:
-    return YAML(typ="safe", pure=True)
 
 
 def _default_file(kometa_root: Path, library_type: str, name: str) -> Path | None:

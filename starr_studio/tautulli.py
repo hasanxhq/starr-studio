@@ -7,15 +7,13 @@ is left as written.
 """
 
 from pathlib import Path
-from typing import Annotated
-
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from .config_routes import Writer, _write_call
 from .config_sections import read_section, save_section
-from .services import mask
+from .services import AppSettings, Http, mask
 from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/settings/tautulli", tags=["tautulli"])
@@ -56,18 +54,6 @@ async def check(http: httpx.AsyncClient, url: str, apikey: str) -> dict:
         raise TautulliProblem("Tautulli rejected the API key" if "apikey" in str(message).lower() else f"Tautulli: {message}")
     version = (answer.get("data") or {}).get("tautulli_version")
     return {"version": str(version) if version else None}
-
-
-def _settings(request: Request) -> Settings:
-    return request.app.state.settings
-
-
-def _http(request: Request) -> httpx.AsyncClient:
-    return request.app.state.http
-
-
-AppSettings = Annotated[Settings, Depends(_settings)]
-Http = Annotated[httpx.AsyncClient, Depends(_http)]
 
 
 class TautulliIn(BaseModel):

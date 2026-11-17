@@ -11,11 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from starr_studio import plex_people, tmdb_details, tmdb_languages
-from starr_studio.kometa_files import _banner, _read
+from starr_studio.kometa_files import _banner, _read, _yaml
 from starr_studio.plex_library import PlexServer
 
 
@@ -117,10 +116,6 @@ NO_LANGUAGE_NAMES = (
     "Kometa names these collections with TMDb's language names, and Studio couldn't get them. "
     "Check the TMDb key in Settings → Connect, then count again."
 )
-
-
-def _yaml() -> YAML:
-    return YAML(typ="safe", pure=True)
 
 
 def _to_str_list(value: Any) -> list[str]:

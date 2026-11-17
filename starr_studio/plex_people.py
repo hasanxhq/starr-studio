@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .kometa_config import write_atomic
 from .plex_library import PlexNotFound, PlexServer, PlexUnavailable
 
 log = logging.getLogger(__name__)
@@ -49,10 +50,7 @@ class PeopleScan:
 
     def _save(self, cache: dict[str, Any]) -> None:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(cache), encoding="utf-8")
-            tmp.replace(self.path)
+            write_atomic(self.path, json.dumps(cache))
         except OSError as error:
             log.warning("Couldn't keep Plex's credits: %s", error)
 

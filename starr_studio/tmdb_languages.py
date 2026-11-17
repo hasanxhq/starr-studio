@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 
 from .config_sections import read_section
+from .kometa_config import write_atomic
 
 log = logging.getLogger(__name__)
 
@@ -72,10 +73,7 @@ async def _names(http: httpx.AsyncClient, config: Path | None, data_dir: Path, c
             log.warning("Couldn't get TMDb's names from %s: %s", url, error)
         else:
             try:
-                data_dir.mkdir(parents=True, exist_ok=True)
-                tmp = path.with_suffix(".tmp")
-                tmp.write_text(json.dumps({"fetched_at": time.time(), "names": names}), encoding="utf-8")
-                tmp.replace(path)
+                write_atomic(path, json.dumps({"fetched_at": time.time(), "names": names}))
             except OSError as error:
                 log.warning("Couldn't keep TMDb's names from %s: %s", url, error)
             return names
