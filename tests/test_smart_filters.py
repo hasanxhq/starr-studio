@@ -352,6 +352,16 @@ def test_to_kometa_any_match():
 
 
 @pytest.mark.anyio
+async def test_plex_query_resolves_current_year_minus(plex_server):
+    """Year rules with ``current_year-N`` go to Plex as the real year (kometa/modules/builder.py ~5058)."""
+    _, server = plex_server
+    want = str(datetime.now().year - 5)
+    spec = {"match": "all", "rules": [{"field": "year", "modifier": "gte", "value": "current_year-5"}]}
+    params = await plex_query(server, "1", "movie", spec)
+    assert ("year>", want) in params
+
+
+@pytest.mark.anyio
 async def test_plex_query_spec1_all_tags_year_unplayed(plex_server):
     """Spec 1: Match 'all' with tag list, year.gte, and boolean unplayed.
 

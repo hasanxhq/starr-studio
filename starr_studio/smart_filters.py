@@ -907,6 +907,16 @@ def to_plex_search(spec: dict) -> dict:
     return to_kometa(spec)
 
 
+def _normalize_year_arg(value: object) -> object:
+    """Resolve ``current_year`` / ``current_year-N`` for Plex queries (kometa/modules/builder.py, year handling ~5058)."""
+    val_str = str(value).strip()
+    if val_str.startswith("current_year"):
+        parts = val_str.split("-")
+        offset = 0 if len(parts) == 1 else int(parts[1].strip())
+        return datetime.now().year - offset
+    return value
+
+
 def _normalize_date_arg(value: object) -> str:
     """Normalize date argument for before/after filter (kometa/modules/builder.py validate_attribute, line 5175)."""
     val_str = str(value).strip()
@@ -1071,6 +1081,8 @@ async def plex_query(
             mod_code = MODIFIER_TRANSLATION.get(dot_mod, dot_mod)
             raw_items = raw_val if isinstance(raw_val, list) else [raw_val]
             for item in raw_items:
+                if field_obj.kind == "year":
+                    item = _normalize_year_arg(item)
                 rule_pairs.append((f"{arg_key}{mod_code}", str(item)))
 
     if not rule_pairs:
