@@ -23,8 +23,7 @@ SCHEMA_FILE = Path(__file__).parent / "style.schema.json"
 def style_schema() -> dict:
     """The JSON Schema of the format, as served to the browser's YAML editor and written to style.schema.json.
     It checks shape only; option references and show_when are checked by load_style on the server."""
-    schema = Style.model_json_schema()
-    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema = Style.model_json_schema()  # no $schema key: the browser's Ajv (draft-07) refuses 2020-12's URI
     schema["title"] = "Starr Studio overlay style, version 1"
     return schema
 

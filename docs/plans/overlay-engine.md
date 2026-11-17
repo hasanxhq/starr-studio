@@ -277,7 +277,7 @@ The style format (3.6) with its JSON Schema and loader; Modern streaming as the 
 - `style.schema.json`, made from the style models by `scripts/make_style_schema.py` (a test fails when it's stale). It checks shape; option references and show_when are checked by the server's loader.
 - Migration 0023 `overlay_library_style`: each config.yml library's style id and option values. No row means Modern streaming with its defaults.
 - Routes under `/api/v1/overlay-engine`: `GET /style-schema`, `GET /styles`, `GET|PUT|DELETE /styles/{id}`, `POST /styles/{id}/duplicate`, `GET|PUT /libraries/{library}/style`, `GET /libraries/{library}/posters` (the gallery's page of titles with what Studio has on each). Preview and apply with neither `style` nor `yaml` use the library's choice.
-- Export and import (task 2): `GET /styles/{id}/export` (zip), `POST /styles/import` (multipart `file`, optional `?id=`).
+- Export and import (task 2): `GET /styles/{id}/export` (zip), `POST /styles/import?filename=&id=` with the file as the raw body (no multipart in Studio).
 - Frontend: `overlayEngineApi.ts` is the client; Overlays gets a "Studio overlays" tab (`?engine=studio`) holding `styles/StyleSettings` and `gallery/PosterGallery`.
 
 ### Phase 4: the editor

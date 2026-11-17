@@ -68,11 +68,15 @@ export const overlayEngine = {
     remove: (id: string) => request<void>("DELETE", `${BASE}/styles/${enc(id)}`),
     /** A zip of the style file and any custom logos and fonts it uses. */
     exportUrl: (id: string) => `${urlBase}/api/v1${BASE}/styles/${enc(id)}/export`,
-    /** A .zip from exportUrl, or a bare .yml. The id defaults to the file's name; 409 if it's taken. */
+    /** A .zip from exportUrl, or a bare .yml, sent as the raw body (Studio has no multipart). The id defaults to the
+     *  file's name; 409 if it's taken. */
     import: async (file: File, id?: string): Promise<StyleDetail> => {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await fetch(`${urlBase}/api/v1${BASE}/styles/import${id ? `?id=${enc(id)}` : ""}`, { method: "POST", body: form });
+      const query = `filename=${enc(file.name)}${id ? `&id=${enc(id)}` : ""}`;
+      const response = await fetch(`${urlBase}/api/v1${BASE}/styles/import?${query}`, {
+        method: "POST",
+        headers: { "Content-Type": file.name.toLowerCase().endsWith(".zip") ? "application/zip" : "application/yaml" },
+        body: file,
+      });
       if (!response.ok) throw await errorFrom(response);
       return (await response.json()) as StyleDetail;
     },

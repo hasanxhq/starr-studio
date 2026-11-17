@@ -6,7 +6,8 @@ import draft06 from "ajv/dist/refs/json-schema-draft-06.json";
 
 import { urlBase } from "../base";
 
-export type SchemaKind = "config" | "collection" | "overlay" | "metadata" | "playlist" | "template";
+// "style" is Studio's own overlay style format (overlay engine), not Kometa's.
+export type SchemaKind = "config" | "collection" | "overlay" | "metadata" | "playlist" | "template" | "style";
 
 export type JsonSchema = {
   $ref?: string;
@@ -35,7 +36,7 @@ const loaded = new Map<SchemaKind, Promise<LoadedSchema | null>>();
 export function loadSchema(kind: SchemaKind): Promise<LoadedSchema | null> {
   let promise = loaded.get(kind);
   if (!promise) {
-    promise = fetch(`${urlBase}/api/v1/config/schemas/${kind}`)
+    promise = fetch(kind === "style" ? `${urlBase}/api/v1/overlay-engine/style-schema` : `${urlBase}/api/v1/config/schemas/${kind}`)
       .then((response) => (response.ok ? (response.json() as Promise<JsonSchema>) : null))
       .then((root) => (root ? { root, validate: compile(root) } : null))
       .catch(() => null);
