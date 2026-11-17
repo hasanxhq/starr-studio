@@ -87,6 +87,25 @@ class RestoreRequest(BaseModel):
         return self
 
 
+async def _guard_maintainerr(request: Request) -> None:
+    service = request.app.state.maintainerr
+    if not service.connected():
+        return
+    await service.refresh()
+    if service.snapshot.error:
+        raise HTTPException(503, f"Can't apply overlays while Maintainerr's collections can't be read: {service.snapshot.error}")
+
+
+async def _validate_rating_keys(server, library_key: str, rating_keys: list[str]) -> None:
+    for rating_key in rating_keys:
+        entries = (await _plex_read(server._get(f"/library/metadata/{rating_key}"))).get("Metadata") or []
+        if not entries:
+            raise HTTPException(404, f"Plex has no title {rating_key}")
+        section = str(entries[0].get("librarySectionID") or "")
+        if not section or section != library_key:
+            raise HTTPException(422, f"Title {rating_key} isn't in this library")
+
+
 async def _maintainerr_excluded(request: Request, library_key: str, server) -> set[str]:
     excluded: set[str] = set()
     for collection in request.app.state.maintainerr.snapshot.collections:
@@ -147,6 +166,8 @@ async def preview(body: PreviewRequest, request: Request, settings: AppSettings)
 async def apply(body: ApplyRequest, request: Request, settings: AppSettings) -> dict:
     style, style_name = _load_style(body.style, body.yaml, body.values)
     ctx = await _context(request, settings, body.library)
+    await _guard_maintainerr(request)
+    await _validate_rating_keys(ctx.server, ctx.library_key, body.rating_keys)
     excluded = await _maintainerr_excluded(request, ctx.library_key, ctx.server)
     outcomes = await apply_titles(
         ctx,

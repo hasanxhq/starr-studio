@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 from fakeplex import FakePlex
 
-from starr_studio.maintainerr import OwnedCollection
+from starr_studio import maintainerr
+from starr_studio.db import set_setting
+from starr_studio.maintainerr import Maintainerr, OwnedCollection, Snapshot
 
 from starr_studio.overlay_engine.apply import Context, Outcome
 
@@ -29,6 +31,7 @@ class Captured:
 
 def test_apply_passes_context_and_maintainerr_exclusions(tmp_path, monkeypatch):
     fake = FakePlex()
+    fake.CREDITS.pop("501", None)  # metadata must carry librarySectionID for the library check
     captured = Captured()
 
     async def fake_apply(ctx, rating_keys, style, style_name, values, excluded, *, dry_run=False, force=False):
@@ -39,7 +42,7 @@ def test_apply_passes_context_and_maintainerr_exclusions(tmp_path, monkeypatch):
         captured.excluded = excluded
         captured.dry_run = dry_run
         captured.force = force
-        return [Outcome(rating_keys[0], "Marvel film 1", "skip", "up to date", False)]
+        return [Outcome(rating_keys[0], "Dune", "skip", "up to date", False)]
 
     monkeypatch.setattr("starr_studio.overlay_engine_routes.apply_titles", fake_apply)
     client, config = make_client(tmp_path, fake_plex=fake)
@@ -51,13 +54,13 @@ def test_apply_passes_context_and_maintainerr_exclusions(tmp_path, monkeypatch):
         ]
         response = client.post(
             APPLY,
-            json={"library": "Movies", "rating_keys": ["4635"], "style": "modern-streaming", "values": {"band": 50}},
+            json={"library": "Movies", "rating_keys": ["501"], "style": "modern-streaming", "values": {"band": 50}},
         )
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["dry_run"] is True
     assert body["outcomes"][0]["kind"] == "skip"
-    assert captured.rating_keys == ["4635"]
+    assert captured.rating_keys == ["501"]
     assert captured.style_name == "modern-streaming"
     assert captured.values == {"band": 50}
     assert captured.excluded == {"201"}
@@ -72,10 +75,12 @@ def test_apply_defaults_to_dry_run_and_refuses_too_many_keys(tmp_path, monkeypat
         return []
 
     monkeypatch.setattr("starr_studio.overlay_engine_routes.apply_titles", fake_apply)
-    client, _ = make_client(tmp_path, fake_plex=FakePlex())
+    fake = FakePlex()
+    fake.CREDITS.pop("501", None)
+    client, _ = make_client(tmp_path, fake_plex=fake)
     with client:
         assert client.post(APPLY, json={"library": "Movies", "rating_keys": ["1"] * 51, "style": "modern-streaming"}).status_code == 422
-        response = client.post(APPLY, json={"library": "Movies", "rating_keys": ["4635"], "style": "modern-streaming", "dry_run": False})
+        response = client.post(APPLY, json={"library": "Movies", "rating_keys": ["501"], "style": "modern-streaming", "dry_run": False})
         assert response.status_code == 200
         assert response.json()["dry_run"] is False
 
@@ -148,7 +153,71 @@ def test_section_key_uses_library_name(tmp_path, monkeypatch):
     fake = FakePlex()
     fake.SECTIONS = [dict(section) for section in fake.SECTIONS]
     next(section for section in fake.SECTIONS if section["key"] == "2")["title"] = "Series"
+    fake.TITLES["2"] = [{"ratingKey": "601", "type": "show", "title": "A Show", "year": 2020}]
     client, _ = make_client(tmp_path, fake_plex=fake)
     with client:
-        client.post(APPLY, json={"library": "TV Shows", "rating_keys": ["4635"], "style": "modern-streaming"})
+        client.post(APPLY, json={"library": "TV Shows", "rating_keys": ["601"], "style": "modern-streaming"})
     assert captured["key"] == "2"
+
+
+def test_apply_refuses_when_maintainerr_is_connected_but_unreadable(tmp_path, monkeypatch):
+    called = {"apply": False}
+
+    async def fake_apply(*_a, **_k):
+        called["apply"] = True
+        return []
+
+    async def broken_refresh(self) -> Snapshot:
+        self.snapshot = Snapshot(self.snapshot.collections, self.snapshot.library_titles, self.snapshot.overlays_enabled, time.monotonic(), "Maintainerr is down")
+        return self.snapshot
+
+    monkeypatch.setattr("starr_studio.overlay_engine_routes.apply_titles", fake_apply)
+    monkeypatch.setattr(Maintainerr, "refresh", broken_refresh)
+    plex = FakePlex()
+    plex.CREDITS.pop("501", None)
+    client, _ = make_client(tmp_path, fake_plex=plex)
+    with client:
+        set_setting(client.app.state.db, maintainerr.SETTINGS, {"url": "http://maintainerr.test"})
+        fake = client.app.state.maintainerr
+        fake.snapshot.error = "Never loaded"
+        response = client.post(APPLY, json={"library": "Movies", "rating_keys": ["501"], "style": "modern-streaming", "dry_run": False})
+    assert response.status_code == 503
+    assert "Maintainerr" in response.json()["detail"]
+    assert not called["apply"]
+
+
+def test_apply_works_when_maintainerr_is_not_connected(tmp_path, monkeypatch):
+    captured: dict = {}
+
+    async def fake_apply(ctx, rating_keys, *_a, **_k):
+        captured["keys"] = rating_keys
+        return [Outcome(rating_keys[0], "Dune", "skip", "up to date", False)]
+
+    monkeypatch.setattr("starr_studio.overlay_engine_routes.apply_titles", fake_apply)
+    fake = FakePlex()
+    fake.CREDITS.pop("501", None)
+    client, _ = make_client(tmp_path, fake_plex=fake)
+    with client:
+        assert client.app.state.maintainerr.connected() is False
+        response = client.post(APPLY, json={"library": "Movies", "rating_keys": ["501"], "style": "modern-streaming"})
+    assert response.status_code == 200
+    assert captured["keys"] == ["501"]
+
+
+def test_apply_rejects_rating_key_from_another_library(tmp_path, monkeypatch):
+    called = {"apply": False}
+
+    async def fake_apply(*_a, **_k):
+        called["apply"] = True
+        return []
+
+    monkeypatch.setattr("starr_studio.overlay_engine_routes.apply_titles", fake_apply)
+    fake = FakePlex()
+    fake.add_overlay_section()
+    client, _ = make_client(tmp_path, fake_plex=fake)
+    with client:
+        response = client.post(APPLY, json={"library": "Movies", "rating_keys": ["4635"], "style": "modern-streaming", "dry_run": False})
+    assert response.status_code == 422
+    assert "4635" in response.json()["detail"]
+    assert not called["apply"]
+    assert fake.uploads == []
