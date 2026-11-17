@@ -6,6 +6,7 @@ import { indentWithTab } from "@codemirror/commands";
 import { yaml } from "@codemirror/lang-yaml";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { forceLinting, linter, lintGutter, type Diagnostic } from "@codemirror/lint";
+import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
@@ -42,11 +43,13 @@ export default function YamlEditor({
   onChange,
   kind,
   label,
+  readOnly = false,
 }: {
   value: string;
   onChange: (text: string) => void;
   kind: SchemaKind | null;
   label: string;
+  readOnly?: boolean; // fixed when the editor is created: give it a new key to change it
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -88,6 +91,7 @@ export default function YamlEditor({
         check,
         autocompletion({ override: [complete] }),
         EditorView.contentAttributes.of({ "aria-label": label }),
+        EditorState.readOnly.of(readOnly),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) changed.current(update.state.doc.toString());
         }),

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import { ApiError, api, type OverlayLibrary, type Schedule } from "../api";
 import { ConfirmButton, Tag } from "../components/ui";
@@ -10,6 +10,7 @@ import { useLibrary } from "../library";
 import { formatRelative, statusLabels, statusTones } from "../runs";
 import { OverlayStudio } from "./overlays/OverlayStudio";
 import { overlayScheduleLabel, ScheduleDialog } from "./overlays/scheduleDialog";
+import { StudioOverlays } from "./overlays/studio/StudioOverlays";
 
 function OverlayHeader({ library, schedules, onSchedule }: { library: OverlayLibrary; schedules: Schedule[]; onSchedule: () => void }) {
   const queryClient = useQueryClient();
@@ -125,6 +126,17 @@ export function Overlays() {
   const arr = useQuery({ queryKey: ["arr"], queryFn: api.arr.get });
   const config = useQuery({ queryKey: ["config", "library", library], queryFn: () => api.config.library(library!), enabled: library !== null });
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const engine = searchParams.get("engine") === "studio" ? "studio" : "kometa";
+  const pickEngine = (next: "kometa" | "studio") =>
+    setSearchParams(
+      (params) => {
+        if (next === "studio") params.set("engine", "studio");
+        else params.delete("engine");
+        return params;
+      },
+      { replace: true },
+    );
 
   if (overview.isPending || overlays.isPending) return <p className="text-muted">Loading…</p>;
   if (overview.isError || overlays.isError) {
@@ -155,7 +167,23 @@ export function Overlays() {
         <OverlayHeader library={status} schedules={schedules.data?.schedules ?? []} onSchedule={() => setScheduleOpen(true)} />
       )}
       {!status && <h2 className="text-[32px] font-semibold">Overlays · {library}</h2>}
-      {config.isPending ? (
+      <div role="tablist" aria-label="Overlay engine" className="flex gap-2 border-b border-border">
+        {(["kometa", "studio"] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            aria-selected={engine === tab}
+            className={`-mb-px min-h-11 border-b-2 px-3 text-sm ${engine === tab ? "border-accent font-semibold" : "border-transparent text-muted hover:text-text"}`}
+            onClick={() => pickEngine(tab)}
+          >
+            {tab === "kometa" ? "Kometa overlays" : "Studio overlays"}
+          </button>
+        ))}
+      </div>
+      {engine === "studio" ? (
+        <StudioOverlays key={library} library={library} />
+      ) : config.isPending ? (
         <p className="text-muted">Loading…</p>
       ) : config.isError ? (
         <p role="alert" className="text-err">

@@ -15,6 +15,8 @@ export default defineConfig({
   server: {
     // `npm run dev` on :5173 talks to `starr-studio serve` on :8484.
     proxy: { "/api": "http://127.0.0.1:8484" },
+    // Tests import the overlay style schema and shipped styles from the Python package next door.
+    fs: { allow: [".."] },
   },
   test: {
     environment: "jsdom",

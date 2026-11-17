@@ -58,6 +58,16 @@ function routes(extra: Record<string, (body: unknown) => unknown> = {}) {
 }
 
 describe("Overlays", () => {
+  it("switches between Kometa's overlays and Studio's own engine", async () => {
+    routes();
+    renderAt("/overlays?library=TV%20Shows");
+    const studioTab = await screen.findByRole("tab", { name: "Studio overlays" });
+    expect(screen.getByRole("tab", { name: "Kometa overlays" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(studioTab);
+    expect(studioTab).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText(/Poster gallery for TV Shows/)).toBeInTheDocument();
+  });
+
   it("shows a plain message for a music library", async () => {
     mockApi({
       "GET /overlays": () => ({ libraries: [] }),
