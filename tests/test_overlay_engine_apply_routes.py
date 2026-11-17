@@ -93,7 +93,8 @@ def test_apply_unknown_library_and_style_errors(tmp_path, monkeypatch):
     client, _ = make_client(tmp_path, fake_plex=FakePlex())
     with client:
         assert client.post(APPLY, json={"library": "Films", "rating_keys": ["1"], "style": "modern-streaming"}).status_code == 404
-        assert "style name or a style file" in client.post(APPLY, json={"library": "Movies", "rating_keys": ["1"]}).text
+        # no style: the library's chosen one (Modern streaming until one is saved), so it gets as far as the titles
+        assert "Plex has nothing" in client.post(APPLY, json={"library": "Movies", "rating_keys": ["1"]}).text
         assert "No style called" in client.post(APPLY, json={"library": "Movies", "rating_keys": ["1"], "style": "nope"}).text
 
 

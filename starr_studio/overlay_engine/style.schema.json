@@ -1,0 +1,1498 @@
+{
+  "$defs": {
+    "Background": {
+      "additionalProperties": false,
+      "description": "A box drawn behind a text's own size plus padding: a filled pill, or an outline with no fill.",
+      "properties": {
+        "fill": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fill"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stroke"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "radius": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Radius"
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "default": 0,
+          "title": "Padding"
+        }
+      },
+      "title": "Background",
+      "type": "object"
+    },
+    "BlurBehind": {
+      "additionalProperties": false,
+      "description": "Frosted glass: the poster under the element's background, blurred and tinted.",
+      "properties": {
+        "radius": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 12,
+          "title": "Radius"
+        },
+        "tint": {
+          "default": "#0E0E12",
+          "title": "Tint",
+          "type": "string"
+        },
+        "tint_opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0.4,
+          "title": "Tint Opacity"
+        }
+      },
+      "title": "BlurBehind",
+      "type": "object"
+    },
+    "Box": {
+      "additionalProperties": false,
+      "description": "Where an element sits. Horizontally: left, right, both (the width stretches), or centre_x (an offset from the\ncentre, 0 = centred). Vertically the same with top, bottom and centre_y. width and height are optional where the\ncontent gives a size (text, logo, row, column).",
+      "properties": {
+        "left": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Left"
+        },
+        "right": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Right"
+        },
+        "centre_x": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Centre X"
+        },
+        "top": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top"
+        },
+        "bottom": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bottom"
+        },
+        "centre_y": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Centre Y"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        }
+      },
+      "title": "Box",
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "description": "Children top to bottom with gap between them; hidden children close up. align is on the cross axis.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "column",
+          "title": "Type",
+          "type": "string"
+        },
+        "gap": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Gap"
+        },
+        "align": {
+          "default": "start",
+          "enum": [
+            "start",
+            "centre",
+            "end"
+          ],
+          "title": "Align",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "column": "#/$defs/Column",
+                "group": "#/$defs/Group",
+                "logo": "#/$defs/Logo",
+                "rect": "#/$defs/Rect",
+                "row": "#/$defs/Row",
+                "svg": "#/$defs/Svg",
+                "text": "#/$defs/Text"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Rect"
+              },
+              {
+                "$ref": "#/$defs/Text"
+              },
+              {
+                "$ref": "#/$defs/Logo"
+              },
+              {
+                "$ref": "#/$defs/Svg"
+              },
+              {
+                "$ref": "#/$defs/Row"
+              },
+              {
+                "$ref": "#/$defs/Column"
+              },
+              {
+                "$ref": "#/$defs/Group"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "children"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "Fill": {
+      "additionalProperties": false,
+      "description": "A flat colour, or a gradient.",
+      "properties": {
+        "colour": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Colour"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "gradient": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Gradient"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Fill",
+      "type": "object"
+    },
+    "Gradient": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "default": "down",
+          "enum": [
+            "down",
+            "up",
+            "right",
+            "left"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "stops": {
+          "items": {
+            "$ref": "#/$defs/Stop"
+          },
+          "minItems": 2,
+          "title": "Stops",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stops"
+      ],
+      "title": "Gradient",
+      "type": "object"
+    },
+    "Group": {
+      "additionalProperties": false,
+      "description": "Children placed by their own boxes, inside the group's box.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "group",
+          "title": "Type",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "column": "#/$defs/Column",
+                "group": "#/$defs/Group",
+                "logo": "#/$defs/Logo",
+                "rect": "#/$defs/Rect",
+                "row": "#/$defs/Row",
+                "svg": "#/$defs/Svg",
+                "text": "#/$defs/Text"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Rect"
+              },
+              {
+                "$ref": "#/$defs/Text"
+              },
+              {
+                "$ref": "#/$defs/Logo"
+              },
+              {
+                "$ref": "#/$defs/Svg"
+              },
+              {
+                "$ref": "#/$defs/Row"
+              },
+              {
+                "$ref": "#/$defs/Column"
+              },
+              {
+                "$ref": "#/$defs/Group"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "children"
+      ],
+      "title": "Group",
+      "type": "object"
+    },
+    "Logo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "logo",
+          "title": "Type",
+          "type": "string"
+        },
+        "image": {
+          "title": "Image",
+          "type": "string"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Height"
+        }
+      },
+      "required": [
+        "type",
+        "image",
+        "height"
+      ],
+      "title": "Logo",
+      "type": "object"
+    },
+    "Option": {
+      "additionalProperties": false,
+      "description": "Something a library can change without editing the file. A percent option is 0\u2013100 in the UI and the\nlibrary's settings; where a style uses it ($name) it stands for the fraction (65 \u2192 0.65).",
+      "properties": {
+        "type": {
+          "enum": [
+            "colour",
+            "percent",
+            "number",
+            "choice",
+            "toggle",
+            "text"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "default": {
+          "title": "Default"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "choices": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choices"
+        },
+        "multiple": {
+          "default": false,
+          "title": "Multiple",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type",
+        "label",
+        "default"
+      ],
+      "title": "Option",
+      "type": "object"
+    },
+    "Rect": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "rect",
+          "title": "Type",
+          "type": "string"
+        },
+        "fill": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fill"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stroke": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Stroke"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "radius": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Radius"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Rect",
+      "type": "object"
+    },
+    "Row": {
+      "additionalProperties": false,
+      "description": "Children left to right with gap between them; hidden children close up. align is on the cross axis.",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "row",
+          "title": "Type",
+          "type": "string"
+        },
+        "gap": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Gap"
+        },
+        "align": {
+          "default": "centre",
+          "enum": [
+            "start",
+            "centre",
+            "end"
+          ],
+          "title": "Align",
+          "type": "string"
+        },
+        "children": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "column": "#/$defs/Column",
+                "group": "#/$defs/Group",
+                "logo": "#/$defs/Logo",
+                "rect": "#/$defs/Rect",
+                "row": "#/$defs/Row",
+                "svg": "#/$defs/Svg",
+                "text": "#/$defs/Text"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Rect"
+              },
+              {
+                "$ref": "#/$defs/Text"
+              },
+              {
+                "$ref": "#/$defs/Logo"
+              },
+              {
+                "$ref": "#/$defs/Svg"
+              },
+              {
+                "$ref": "#/$defs/Row"
+              },
+              {
+                "$ref": "#/$defs/Column"
+              },
+              {
+                "$ref": "#/$defs/Group"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "children"
+      ],
+      "title": "Row",
+      "type": "object"
+    },
+    "Shadow": {
+      "additionalProperties": false,
+      "properties": {
+        "dx": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Dx"
+        },
+        "dy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 4,
+          "title": "Dy"
+        },
+        "blur": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 6,
+          "title": "Blur"
+        },
+        "colour": {
+          "default": "#000000",
+          "title": "Colour",
+          "type": "string"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0.5,
+          "title": "Opacity"
+        }
+      },
+      "title": "Shadow",
+      "type": "object"
+    },
+    "Stop": {
+      "additionalProperties": false,
+      "properties": {
+        "at": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "At",
+          "type": "number"
+        },
+        "colour": {
+          "title": "Colour",
+          "type": "string"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        }
+      },
+      "required": [
+        "at",
+        "colour"
+      ],
+      "title": "Stop",
+      "type": "object"
+    },
+    "Stroke": {
+      "additionalProperties": false,
+      "properties": {
+        "colour": {
+          "title": "Colour",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Width"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        }
+      },
+      "required": [
+        "colour",
+        "width"
+      ],
+      "title": "Stroke",
+      "type": "object"
+    },
+    "Svg": {
+      "additionalProperties": false,
+      "description": "Power users' escape hatch: a raw SVG fragment in a width \u00d7 height box (checked against an allow-list when drawn).",
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "svg",
+          "title": "Type",
+          "type": "string"
+        },
+        "svg": {
+          "title": "Svg",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Height"
+        }
+      },
+      "required": [
+        "type",
+        "svg",
+        "width",
+        "height"
+      ],
+      "title": "Svg",
+      "type": "object"
+    },
+    "Text": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Box"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "show_when": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Show When"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1,
+          "title": "Opacity"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Shadow"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "blur_behind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BlurBehind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "const": "text",
+          "title": "Type",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "font": {
+          "default": "Inter Bold",
+          "title": "Font",
+          "type": "string"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Size"
+        },
+        "colour": {
+          "default": "#FFFFFF",
+          "title": "Colour",
+          "type": "string"
+        },
+        "letter_spacing": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 0,
+          "title": "Letter Spacing"
+        },
+        "background": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Background"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "type",
+        "text",
+        "size"
+      ],
+      "title": "Text",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "studio_style": {
+      "const": 1,
+      "title": "Studio Style",
+      "type": "integer"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "canvas": {
+      "const": "poster",
+      "default": "poster",
+      "title": "Canvas",
+      "type": "string"
+    },
+    "options": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Option"
+      },
+      "title": "Options",
+      "type": "object"
+    },
+    "elements": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "column": "#/$defs/Column",
+            "group": "#/$defs/Group",
+            "logo": "#/$defs/Logo",
+            "rect": "#/$defs/Rect",
+            "row": "#/$defs/Row",
+            "svg": "#/$defs/Svg",
+            "text": "#/$defs/Text"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/Rect"
+          },
+          {
+            "$ref": "#/$defs/Text"
+          },
+          {
+            "$ref": "#/$defs/Logo"
+          },
+          {
+            "$ref": "#/$defs/Svg"
+          },
+          {
+            "$ref": "#/$defs/Row"
+          },
+          {
+            "$ref": "#/$defs/Column"
+          },
+          {
+            "$ref": "#/$defs/Group"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Elements",
+      "type": "array"
+    }
+  },
+  "required": [
+    "studio_style",
+    "name",
+    "elements"
+  ],
+  "title": "Starr Studio overlay style, version 1",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

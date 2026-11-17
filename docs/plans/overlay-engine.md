@@ -270,6 +270,16 @@ Each step is one branch and one PR.
 ### Phase 3: style files, Modern streaming and the gallery
 The style format (3.6) with its JSON Schema and loader; Modern streaming as the first shipped style; the gallery on the user's own posters; options per library; Apply; the YAML view behind a disclosure; export and import.
 
+**Phase 3 split** (2026-11-18): (1) styles API, the shared contract; then (2) export and import, (3) the gallery, (4) the library's style and options UI, in parallel.
+
+**The contract** (task 1):
+- `styles_store.py`: shipped styles (read-only) plus the user's in `config/studio/styles/<id>.yml`; an id is the file name, lower case letters, digits and `-`; a user file can't take a shipped id. A broken hand-edited file is listed with its error, never drawn.
+- `style.schema.json`, made from the style models by `scripts/make_style_schema.py` (a test fails when it's stale). It checks shape; option references and show_when are checked by the server's loader.
+- Migration 0023 `overlay_library_style`: each config.yml library's style id and option values. No row means Modern streaming with its defaults.
+- Routes under `/api/v1/overlay-engine`: `GET /style-schema`, `GET /styles`, `GET|PUT|DELETE /styles/{id}`, `POST /styles/{id}/duplicate`, `GET|PUT /libraries/{library}/style`, `GET /libraries/{library}/posters` (the gallery's page of titles with what Studio has on each). Preview and apply with neither `style` nor `yaml` use the library's choice.
+- Export and import (task 2): `GET /styles/{id}/export` (zip), `POST /styles/import` (multipart `file`, optional `?id=`).
+- Frontend: `overlayEngineApi.ts` is the client; Overlays gets a "Studio overlays" tab (`?engine=studio`) holding `styles/StyleSettings` and `gallery/PosterGallery`.
+
 ### Phase 4: the editor
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
 
