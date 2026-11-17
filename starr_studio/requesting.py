@@ -35,17 +35,12 @@ from .services import mask
 
 
 def today_start_utc(db: sqlite3.Connection, now: datetime) -> str:
+    """Midnight in Studio's timezone, as UTC text."""
     tz = get_setting(db, TIMEZONE) or default_timezone()
     local = now.astimezone(ZoneInfo(tz))
     start = local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
     return utc_text(start)
 
-
-def tomorrow_start_utc(db: sqlite3.Connection, now: datetime) -> str:
-    tz = get_setting(db, TIMEZONE) or default_timezone()
-    local = now.astimezone(ZoneInfo(tz))
-    tomorrow = local.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    return utc_text(tomorrow.astimezone(UTC))
 
 log = logging.getLogger(__name__)
 
@@ -494,12 +489,7 @@ class RequestService:
         }
 
     def arrived_today(self, now: datetime) -> int:
-        start = today_start_utc(self.db, now)
-        end = tomorrow_start_utc(self.db, now)
-        return self.db.execute(
-            "SELECT count(*) FROM requests WHERE imported_at >= ? AND imported_at < ?",
-            (start, end),
-        ).fetchone()[0]
+        return self.db.execute("SELECT count(*) FROM requests WHERE imported_at >= ?", (today_start_utc(self.db, now),)).fetchone()[0]
 
     def plex_server(self) -> PlexServer | None:
         try:
