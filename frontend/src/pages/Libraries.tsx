@@ -8,11 +8,7 @@ import { ApiError, api } from "../api";
 import { AddLibrary } from "../components/AddLibrary";
 import { Button, Tag } from "../components/ui";
 import { UploadFiles } from "../components/UploadFiles";
-import { libraryPath, libraryTypeLabels, mergeLibraries, type LibraryEntry } from "../libraries";
-
-function plural(count: number, word: string): string {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
+import { libraryPath, libraryTypeLabels, mergeLibraries, plural, type LibraryEntry } from "../libraries";
 
 function LibraryCard({ entry }: { entry: LibraryEntry }) {
   const { plex, config } = entry;

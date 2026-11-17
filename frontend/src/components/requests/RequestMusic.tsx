@@ -4,18 +4,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 
 import { useLibrary } from "../../library";
-import { requestsApi, type MusicAlbum, type RequestStatus } from "../../requestsApi";
+import { requestsApi, STATUS_LABEL, type MusicAlbum } from "../../requestsApi";
 import { Button, Card, Field, inputClass } from "../ui";
 import { useMusicLibraries } from "./musicLibraries";
-
-const STATUS_LABEL: Record<RequestStatus, string> = {
-  requested: "Requested",
-  downloading: "Downloading",
-  imported: "Imported",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  exists: "Already there",
-};
 
 function Album({ album, onRequest, busy, locked, error }: { album: MusicAlbum; onRequest: () => void; busy: boolean; locked: boolean; error: string | null }) {
   return (

@@ -19,7 +19,9 @@ import {
   type ServiceName,
   type TautulliState,
 } from "../api";
+import { ProxyLogin } from "../components/ProxyLogin";
 import { useMusicLibraries } from "../components/requests/musicLibraries";
+import { Outcome, Section } from "../components/settingsLayout";
 import { Button, Card, Checkbox, ConfirmButton, Field, inputClass } from "../components/ui";
 import { formatRelative, formatTime, modes } from "../runs";
 
@@ -28,74 +30,6 @@ const apps: { kind: AppKind; label: string }[] = [
   { kind: "sonarr", label: "Sonarr" },
   { kind: "lidarr", label: "Lidarr" },
 ];
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-label={title} className="flex flex-col gap-4 border-t border-border pt-5 first:border-0 first:pt-0">
-      <h3 className="font-display text-base font-semibold">{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function Outcome({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <span role={ok ? "status" : "alert"} className={`text-sm ${ok ? "text-ok" : "text-err"}`}>
-      {children}
-    </span>
-  );
-}
-
-// A username and password for a proxy in front of an app (HTTP Basic), as seedboxes put in front of each one.
-function ProxyLogin({
-  app,
-  enabled,
-  username,
-  password,
-  hasPassword,
-  onEnabled,
-  onUsername,
-  onPassword,
-}: {
-  app: string;
-  enabled: boolean;
-  username: string;
-  password: string;
-  hasPassword: boolean;
-  onEnabled: (value: boolean) => void;
-  onUsername: (value: string) => void;
-  onPassword: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <Checkbox checked={enabled} onChange={onEnabled}>
-        {app} is behind a proxy that asks for a login
-        <span className="block text-xs text-muted">Seedboxes often put one in front of each app. Only Studio uses this login.</span>
-      </Checkbox>
-      {enabled && (
-        <div className="flex flex-wrap gap-3">
-          <div className="min-w-0 flex-1 basis-48">
-            <Field label="Username">
-              <input className={inputClass} autoComplete="off" value={username} onChange={(e) => onUsername(e.target.value)} />
-            </Field>
-          </div>
-          <div className="min-w-0 flex-1 basis-48">
-            <Field label="Password">
-              <input
-                className={inputClass}
-                type="password"
-                autoComplete="off"
-                value={password}
-                onChange={(e) => onPassword(e.target.value)}
-                placeholder={hasPassword ? "Saved (leave empty to keep it)" : ""}
-              />
-            </Field>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // --- Radarr and Sonarr -------------------------------------------------------------
 
@@ -169,7 +103,8 @@ function ArrConnectionForm({ kind, label, connection }: { kind: AppKind; label: 
         </div>
       </div>
       <ProxyLogin
-        app={label}
+        label={`${label} is behind a proxy that asks for a login`}
+        help="Seedboxes often put one in front of each app. Only Studio uses this login."
         enabled={proxy}
         username={username}
         password={password}
@@ -474,7 +409,8 @@ function MaintainerrForm({ current }: { current: MaintainerrState }) {
         <input className={inputClass} value={url} onChange={(e) => changed(setUrl)(e.target.value)} placeholder="http://maintainerr:6246" spellCheck={false} />
       </Field>
       <ProxyLogin
-        app="Maintainerr"
+        label="Maintainerr is behind a proxy that asks for a login"
+        help="Seedboxes often put one in front of each app. Only Studio uses this login."
         enabled={proxy}
         username={username}
         password={password}

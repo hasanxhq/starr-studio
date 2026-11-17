@@ -3,18 +3,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 
-import { api, type FileReference, type RunRequest } from "../api";
+import { api, type RunRequest } from "../api";
+import { fileReferenceKindLabel } from "../libraries";
 import { Button, Card, Tag } from "../components/ui";
-
-const kindLabels: Record<FileReference["kind"], string> = {
-  default: "Kometa default",
-  file: "File",
-  folder: "Folder",
-  url: "URL",
-  git: "Git",
-  repo: "Repo",
-  unknown: "Unknown",
-};
 
 function libraries(value: unknown): string {
   if (Array.isArray(value)) return value.join(", ");
@@ -86,7 +77,7 @@ export function Playlists() {
         <p className="text-sm text-muted">No playlist files yet. Add a playlist to start one; saving adds it to config.yml.</p>
       ) : (
         references.map((reference, index) => (
-          <Card key={`${reference.kind}:${reference.value}:${index}`} title={reference.value} actions={<Tag>{kindLabels[reference.kind]}</Tag>}>
+          <Card key={`${reference.kind}:${reference.value}:${index}`} title={reference.value} actions={<Tag>{fileReferenceKindLabel(reference.kind)}</Tag>}>
             {reference.error && <p className="mb-2 text-sm text-err">{reference.error}</p>}
             {reference.files.map((file) => (
               <div key={file.path} className="flex flex-col gap-2">

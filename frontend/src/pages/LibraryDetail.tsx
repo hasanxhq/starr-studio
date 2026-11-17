@@ -10,7 +10,7 @@ import { LibrarySettingsForm } from "../components/library/LibrarySettingsForm";
 import { OperationsForm } from "../components/library/OperationsForm";
 import { PlexPoster, posterGrid } from "../components/PlexPoster";
 import { Button, Card, Tag } from "../components/ui";
-import { collectionPath, libraryTypeLabels, mergeLibraries } from "../libraries";
+import { collectionPath, fileReferenceKindLabel, libraryTypeLabels, mergeLibraries } from "../libraries";
 
 const tabs = [
   { id: "collections", label: "Collections" },
@@ -18,16 +18,6 @@ const tabs = [
   { id: "operations", label: "Operations" },
 ] as const;
 type TabId = (typeof tabs)[number]["id"];
-
-const kindLabels: Record<FileReference["kind"], string> = {
-  default: "Kometa default",
-  file: "File",
-  folder: "Folder",
-  url: "URL",
-  git: "Git",
-  repo: "Repo",
-  unknown: "?",
-};
 
 // --- Shared pieces --------------------------------------------------------------
 
@@ -76,7 +66,7 @@ function ReferenceHeader({ reference }: { reference: FileReference }) {
   const docs = reference.files[0]?.docs_url;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Tag tone={reference.kind === "default" ? "info" : "muted"}>{kindLabels[reference.kind]}</Tag>
+      <Tag tone={reference.kind === "default" ? "info" : "muted"}>{fileReferenceKindLabel(reference.kind, true)}</Tag>
       <span className="min-w-0 break-all font-semibold">{title}</span>
       {reference.kind === "default" && <span className="font-mono text-xs text-muted">default: {reference.value}</span>}
       {docs && (

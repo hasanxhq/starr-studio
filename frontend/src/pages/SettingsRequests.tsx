@@ -1,10 +1,12 @@
 // Settings → Requests: turn missing-title downloads on, choose Radarr/Sonarr or Seerr, set limits.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router";
 
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ProxyLogin } from "../components/ProxyLogin";
+import { Outcome, Section } from "../components/settingsLayout";
 import { Button, Card, Checkbox, ConfirmButton, Field, inputClass } from "../components/ui";
 import {
   requestsApi,
@@ -13,23 +15,6 @@ import {
   type SeerrIn,
   type SeerrJson,
 } from "../requestsApi";
-
-function Outcome({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <span role={ok ? "status" : "alert"} className={`text-sm ${ok ? "text-ok" : "text-err"}`}>
-      {children}
-    </span>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-label={title} className="flex flex-col gap-4 border-t border-border pt-5 first:border-0 first:pt-0">
-      <h3 className="font-display text-base font-semibold">{title}</h3>
-      {children}
-    </section>
-  );
-}
 
 const AVAILABILITY: { value: RequestSettings["radarr"]["minimum_availability"]; label: string }[] = [
   { value: "announced", label: "Announced" },
@@ -115,33 +100,17 @@ function SeerrForm({ current }: { current: SeerrJson | null }) {
           </Field>
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <Checkbox checked={proxy} onChange={changed(setProxy)}>
-          Behind a proxy that asks for a login
-          <span className="block text-xs text-muted">Optional HTTP Basic login. Only Studio uses it.</span>
-        </Checkbox>
-        {proxy && (
-          <div className="flex flex-wrap gap-3">
-            <div className="min-w-0 flex-1 basis-48">
-              <Field label="Username">
-                <input className={inputClass} autoComplete="off" value={username} onChange={(e) => changed(setUsername)(e.target.value)} />
-              </Field>
-            </div>
-            <div className="min-w-0 flex-1 basis-48">
-              <Field label="Password">
-                <input
-                  className={inputClass}
-                  type="password"
-                  autoComplete="off"
-                  value={password}
-                  onChange={(e) => changed(setPassword)(e.target.value)}
-                  placeholder={current?.has_password ? "Saved (leave empty to keep it)" : ""}
-                />
-              </Field>
-            </div>
-          </div>
-        )}
-      </div>
+      <ProxyLogin
+        label="Behind a proxy that asks for a login"
+        help="Optional HTTP Basic login. Only Studio uses it."
+        enabled={proxy}
+        username={username}
+        password={password}
+        hasPassword={current?.has_password ?? false}
+        onEnabled={changed(setProxy)}
+        onUsername={changed(setUsername)}
+        onPassword={changed(setPassword)}
+      />
       <div className="flex flex-wrap items-center gap-3">
         <Button onClick={() => test.mutate()} disabled={!ready || test.isPending}>
           {test.isPending ? "Testing…" : "Test"}

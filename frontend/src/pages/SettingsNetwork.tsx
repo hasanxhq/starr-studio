@@ -3,20 +3,13 @@
 // over HTTPS are saved only after a passing test.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent } from "react";
 
 import { api, type NetworkCheck, type NetworkState, type ProxyInput } from "../api";
+import { Outcome } from "../components/settingsLayout";
 import { Button, Card, Field, Tag, inputClass } from "../components/ui";
 
 type ProxyKind = "none" | "http" | "https" | "socks5";
-
-function Outcome({ ok, children }: { ok: boolean; children: ReactNode }) {
-  return (
-    <span role={ok ? "status" : "alert"} className={`text-sm ${ok ? "text-ok" : "text-err"}`}>
-      {children}
-    </span>
-  );
-}
 
 function splitProxy(url: string | null): { kind: ProxyKind; address: string } {
   const match = url?.match(/^(https?|socks5h?):\/\/(.+)$/);

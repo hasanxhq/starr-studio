@@ -2,7 +2,28 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { api, type LibraryCounts, type PlexLibrarySummary } from "./api";
+import { api, type FileReference, type LibraryCounts, type PlexLibrarySummary } from "./api";
+
+export function plural(count: number, word: string, locale = false): string {
+  const n = locale ? count.toLocaleString() : String(count);
+  return `${n} ${word}${count === 1 ? "" : "s"}`;
+}
+
+const fileReferenceKindLabels: Record<FileReference["kind"], string> = {
+  default: "Kometa default",
+  file: "File",
+  folder: "Folder",
+  url: "URL",
+  git: "Git",
+  repo: "Repo",
+  unknown: "Unknown",
+};
+
+/** Tag label for a config file reference (`unknown` can show as `?` on the library page). */
+export function fileReferenceKindLabel(kind: FileReference["kind"], shortUnknown = false): string {
+  if (shortUnknown && kind === "unknown") return "?";
+  return fileReferenceKindLabels[kind];
+}
 
 export type LibraryEntry = {
   name: string; // the Plex title, or the config name for a library Plex doesn't have

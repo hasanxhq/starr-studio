@@ -3,13 +3,10 @@ import { Link } from "react-router";
 
 import { api, type Run } from "../../api";
 import { Card, Tag } from "../../components/ui";
+import { plural } from "../../libraries";
 import { isActive } from "../../runs";
 
 const SHOWN = 8;
-
-function plural(count: number, word: string): string {
-  return `${count.toLocaleString()} ${word}${count === 1 ? "" : "s"}`;
-}
 
 export function WhatChanged({ runs }: { runs: Run[] | undefined }) {
   const lastRun = runs?.find((r) => !isActive(r.status));
@@ -52,7 +49,7 @@ export function WhatChanged({ runs }: { runs: Run[] | undefined }) {
           ))}
         </ul>
       )}
-      {changes.length > SHOWN && <p className="mt-2 text-sm text-muted">And {plural(changes.length - SHOWN, "more collection")} on the run's page.</p>}
+      {changes.length > SHOWN && <p className="mt-2 text-sm text-muted">And {plural(changes.length - SHOWN, "more collection", true)} on the run's page.</p>}
     </Card>
   );
 }
