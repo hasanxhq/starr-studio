@@ -151,6 +151,7 @@ export type LibraryBuildBody = {
   ready_made: { add: ReadyMadeRef[]; remove: ReadyMadeRef[] };
   collections: number[];
   download_missing: boolean;
+  confirm_requests?: boolean;
   dry_run: boolean;
 };
 

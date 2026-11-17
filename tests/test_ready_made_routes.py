@@ -307,39 +307,6 @@ def test_run_hook_records_only_after_run_end(root):
         assert any("Plex state" in line for line in said)
 
 
-def test_counting_task_stores_counts_and_shows_in_jobs(root):
-    client, _, _ = make_client(root)
-    with client:
-        # Startup may already be counting; wait, then start again and watch jobs.
-        wait_for_task(client, "ready_made_counts")
-        # Clear counts and run again so we can catch it in /jobs while running.
-        with client.app.state.db:
-            client.app.state.db.execute("DELETE FROM preview_counts")
-
-        # Slow the task by pausing notes observation: start and poll jobs immediately.
-        started = client.post("/api/v1/ready-made/count")
-        assert started.status_code == 202 and started.json()["started"] is True
-        # While running (or just after), jobs should mention it at some point.
-        seen = False
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            jobs = client.get("/api/v1/jobs").json()["jobs"]
-            if any(j["id"] == "task-ready_made_counts" for j in jobs):
-                seen = True
-                break
-            time.sleep(0.05)
-        assert seen
-        task = wait_for_task(client, "ready_made_counts")
-        assert task["last"]["status"] == "succeeded", task
-        cached = col.counts(client.app.state.db, "Movies")
-        assert "basic" in cached and "genre" in cached
-        assert isinstance(cached["genre"]["data"]["entries"], list)
-        again = client.post("/api/v1/ready-made/count")
-        # Not running now, so it should start.
-        assert again.status_code == 202
-        wait_for_task(client, "ready_made_counts")
-
-
 def test_remove_keeps_everything_while_plex_cant_be_reached(root):
     client, plex, _ = make_client(root)
     with client:

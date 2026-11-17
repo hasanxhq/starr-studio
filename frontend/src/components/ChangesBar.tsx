@@ -5,8 +5,9 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { builderApi, type LibraryBuildBody, type LibraryBuildResult } from "../builderApi";
-import { requestsApi } from "../requestsApi";
+import { needsConfirm, requestsApi, type NeedsConfirm } from "../requestsApi";
 import { useReadyMadePicks } from "../readyMadePicks";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { SaveError } from "./ValidationReport";
 import { ActionBar, Button, Checkbox } from "./ui";
 
@@ -25,12 +26,14 @@ function buildBody(
   collectionIds: number[],
   downloadMissing: boolean,
   dryRun: boolean,
+  confirmRequests: boolean,
 ): LibraryBuildBody {
   return {
     ready_made: { add: readyAdd, remove: readyRemove },
     collections: collectionIds,
     download_missing: downloadMissing,
     dry_run: dryRun,
+    ...(confirmRequests ? { confirm_requests: true } : {}),
   };
 }
 
@@ -46,54 +49,54 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
   const [plan, setPlan] = useState<LibraryBuildResult | null>(null);
   const [done, setDone] = useState<LibraryBuildResult | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const [confirmMore, setConfirmMore] = useState<NeedsConfirm | null>(null);
   const [downloadMissing, setDownloadMissing] = useState(false);
   const [help, setHelp] = useState(false);
   const settings = useQuery({ queryKey: ["requests", "settings"], queryFn: requestsApi.settings });
   const requestsOn = settings.data?.settings.enabled === true;
 
-  const body = (dryRun: boolean) => buildBody(local.add, local.remove, changedCollectionIds, downloadMissing, dryRun);
+  const body = (dryRun: boolean, confirmRequests = false) =>
+    buildBody(local.add, local.remove, changedCollectionIds, downloadMissing, dryRun, confirmRequests);
 
   const dryRun = useMutation({
     mutationFn: () => builderApi.buildLibrary(library, body(true)),
     onMutate: () => {
       setError(null);
       setDone(null);
+      setConfirmMore(null);
     },
     onSuccess: (result) => setPlan(result),
     onError: (err: Error) => setError(err),
   });
 
-  const confirm = useMutation({
-    mutationFn: () => builderApi.buildLibrary(library, body(false)),
-    onMutate: () => setError(null),
-    onSuccess: (result) => {
-      clearLibrary(library);
-      setPlan(null);
-      setDone(result);
-      queryClient.invalidateQueries({ queryKey: ["ready-made"] });
-      queryClient.invalidateQueries({ queryKey: ["collections"] });
-      queryClient.invalidateQueries({ queryKey: ["requests"] });
-    },
-    onError: (err: Error) => setError(err),
-  });
-
-  const buildAll = useMutation({
-    mutationFn: () => builderApi.buildLibrary(library, body(false)),
+  const build = useMutation({
+    mutationFn: ({ confirm_requests }: { confirm_requests: boolean }) =>
+      builderApi.buildLibrary(library, body(false, confirm_requests)),
     onMutate: () => {
       setError(null);
-      setPlan(null);
+      setConfirmMore(null);
     },
     onSuccess: (result) => {
       clearLibrary(library);
+      setPlan(null);
       setDone(result);
+      setConfirmMore(null);
       queryClient.invalidateQueries({ queryKey: ["ready-made"] });
       queryClient.invalidateQueries({ queryKey: ["collections"] });
       queryClient.invalidateQueries({ queryKey: ["requests"] });
     },
-    onError: (err: Error) => setError(err),
+    onError: (err: Error) => {
+      const confirm = needsConfirm(err);
+      if (confirm) {
+        setConfirmMore(confirm);
+        setError(null);
+      } else {
+        setError(err);
+      }
+    },
   });
 
-  if (total === 0 && !plan && !done && !error && !dryRun.isPending && !buildAll.isPending) return null;
+  if (total === 0 && !plan && !done && !error && !confirmMore && !dryRun.isPending && !build.isPending) return null;
 
   const discard = () => {
     if (readyMadeCount > 5 && !window.confirm(`Discard ${readyMadeCount} ready-made picks for ${library}?`)) return;
@@ -101,6 +104,7 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
     setPlan(null);
     setDone(null);
     setError(null);
+    setConfirmMore(null);
     setDownloadMissing(false);
   };
 
@@ -112,7 +116,7 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
 
   return (
     <>
-      {(total > 0 || dryRun.isPending || buildAll.isPending) && (
+      {(total > 0 || dryRun.isPending || build.isPending) && (
         <ActionBar
           label="Collection changes"
           summary={summary ?? "Collection changes"}
@@ -143,13 +147,13 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
               ?
             </button>
           )}
-          <Button onClick={() => dryRun.mutate()} disabled={dryRun.isPending || buildAll.isPending || total === 0}>
+          <Button onClick={() => dryRun.mutate()} disabled={dryRun.isPending || build.isPending || total === 0}>
             {dryRun.isPending ? "Checking…" : "Review"}
           </Button>
-          <Button variant="primary" onClick={() => buildAll.mutate()} disabled={buildAll.isPending || total === 0}>
-            {buildAll.isPending ? "Starting…" : "Build all"}
+          <Button variant="primary" onClick={() => build.mutate({ confirm_requests: false })} disabled={build.isPending || total === 0}>
+            {build.isPending ? "Starting…" : "Build all"}
           </Button>
-          <Button onClick={discard} disabled={buildAll.isPending || readyMadeCount === 0}>
+          <Button onClick={discard} disabled={build.isPending || readyMadeCount === 0}>
             Discard
           </Button>
         </ActionBar>
@@ -243,14 +247,34 @@ export function ChangesBar({ library, changedCollectionIds }: { library: string;
             <SaveError error={error} />
             <div className="flex flex-wrap gap-3">
               {plan && (
-                <Button variant="primary" onClick={() => confirm.mutate()} disabled={confirm.isPending} autoFocus>
-                  {confirm.isPending ? "Starting…" : "Build all"}
+                <Button
+                  variant="primary"
+                  onClick={() => build.mutate({ confirm_requests: false })}
+                  disabled={build.isPending}
+                  autoFocus
+                >
+                  {build.isPending ? "Starting…" : "Build all"}
                 </Button>
               )}
               <Button onClick={closeDialog}>Cancel</Button>
             </div>
           </div>
         </div>
+      )}
+
+      {confirmMore && (
+        <ConfirmDialog
+          title="Request missing titles"
+          confirm={`Request ${confirmMore.count}`}
+          busy={build.isPending}
+          onConfirm={() => build.mutate({ confirm_requests: true })}
+          onCancel={() => {
+            setConfirmMore(null);
+            build.reset();
+          }}
+        >
+          {confirmMore.message || `Request ${confirmMore.count} titles now?`}
+        </ConfirmDialog>
       )}
     </>
   );
