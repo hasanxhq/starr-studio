@@ -203,10 +203,6 @@ async def _put(http: httpx.AsyncClient, conn: Connection, path: str, json: Any =
     return await _request(http, conn, "PUT", path, json=json)
 
 
-async def _delete(http: httpx.AsyncClient, conn: Connection, path: str) -> Any:
-    return await _request(http, conn, "DELETE", path)
-
-
 async def test_connection(http: httpx.AsyncClient, conn: Connection, kind: Kind) -> dict:
     """Whether ``conn`` is this kind of app, with its root folders and quality profiles for Kometa's settings."""
     status = await _get(http, conn, "/api/v3/system/status")

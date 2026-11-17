@@ -211,7 +211,7 @@ async def kometa_info(request: Request, runner: RunnerDep) -> dict:
 @router.post(EVENTS_PATH.removeprefix("/api/v1"))
 async def kometa_event(request: Request, db: Db, runner: RunnerDep, token: str = "") -> dict:
     """Kometa's webhooks land here (handoff v2 §5.2)."""
-    if not secrets.compare_digest(token, webhook_token(db)):
+    if not secrets.compare_digest(token.encode(), webhook_token(db).encode()):
         raise HTTPException(403, "Wrong token")
     try:
         payload = await request.json()
