@@ -5,7 +5,6 @@ import re
 import zipfile
 import zlib
 
-from .style import load_style
 from .styles_store import StoredStyle
 
 MAX_BODY = 1_048_576       # 1 MB upload limit
@@ -42,6 +41,11 @@ def _read_zip(data: bytes) -> str:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
         raise ValueError(f"Not a valid zip file: {exc}") from exc
+    with zf:
+        return _read_entry(zf)
+
+
+def _read_entry(zf: zipfile.ZipFile) -> str:
     entries = zf.infolist()
     if len(entries) > MAX_ZIP_ENTRIES:
         raise ValueError(f"Too many entries in the zip ({len(entries)}); expected one .yml file at the root")

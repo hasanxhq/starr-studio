@@ -25,7 +25,7 @@ from .overlay_engine.kometa_hold import section_key_for_library
 from .overlay_engine.originals import OriginalsStore
 from .overlay_engine.render import render_poster
 from .overlay_engine.rules import resolve
-from .overlay_engine.share import export_zip, read_upload
+from .overlay_engine.share import MAX_BODY, export_zip, read_upload
 from .overlay_engine.style import Style, StyleError, load_style
 from .overlay_engine.styles_store import STYLE_ID, StyleStore, library_style, set_library_style, style_schema
 from .overlay_originals import find_backup
@@ -379,9 +379,13 @@ def _default_id(filename: str) -> str:
 
 @router.post("/styles/import")
 async def import_style(request: Request, settings: AppSettings, filename: str = Query(...), id: str | None = Query(None)) -> dict:
-    data = await request.body()
+    data = bytearray()
+    async for chunk in request.stream():  # stop reading past the limit rather than holding any size in memory
+        data += chunk
+        if len(data) > MAX_BODY:
+            raise HTTPException(422, "File must be 1 MB or smaller")
     try:
-        text = read_upload(data, filename)
+        text = read_upload(bytes(data), filename)
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
     style_id = id if id is not None else _default_id(filename)

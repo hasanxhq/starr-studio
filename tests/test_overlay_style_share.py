@@ -382,3 +382,11 @@ def test_import_zip_yaml_too_large_422(tmp_path):
 
 def test_import_zip_bomb_lying_header_422(tmp_path):
     _refused(tmp_path, "filename=bomb.zip", _lying_zip(MAX_YAML * 50))
+
+
+def test_import_zip_too_many_entries_422(tmp_path):
+    assert "Too many entries" in _refused(tmp_path, "filename=many.zip", _zip(**{f"s{n}.yml": MINIMAL for n in range(21)}))
+
+
+def test_import_id_with_trailing_newline_422(tmp_path):
+    _refused(tmp_path, "filename=a.yml&id=mine%0A", MINIMAL.encode())
