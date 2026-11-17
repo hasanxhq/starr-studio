@@ -6,6 +6,7 @@ exited after ``kill_after`` seconds.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -27,6 +28,7 @@ from .settings import Settings
 logger = logging.getLogger(__name__)  # `log` is each run's own log file below
 
 FINISHED = ("succeeded", "failed", "cancelled", "interrupted", "timed_out")
+KEEP_RUNS = 200  # finished runs (and their logs) kept; older rows are deleted when a run ends
 # What makes a log line an error or a warning: the same words as the log's colours and filter (frontend's RunLog.tsx).
 LOG_ERROR = re.compile(r"\b(error|critical|traceback)\b", re.IGNORECASE)
 LOG_WARNING = re.compile(r"\bwarning\b", re.IGNORECASE)
@@ -57,6 +59,10 @@ class Subscriber:
 
 class RunHeld(Exception):
     """A run hook says this run mustn't start; the message says why."""
+
+
+class RunCancelled(Exception):
+    """A before_run hook stopped because this run was cancelled."""
 
 
 # A run hook: ``await hook.before_run(request, say)`` runs before Kometa starts. It may raise RunHeld, and
@@ -225,6 +231,26 @@ class Runner:
                 "UPDATE runs SET status = ?, finished_at = ?, exit_code = ?, error = ?, warnings = ? WHERE id = ?",
                 (status, now(), exit_code, error, warnings, run_id),
             )
+        if status in FINISHED:
+            self._prune_finished_runs()
+
+    def _prune_finished_runs(self) -> None:
+        """Drop finished runs older than the newest KEEP_RUNS, and their log files."""
+        placeholders = ",".join("?" * len(FINISHED))
+        stale = [
+            row[0]
+            for row in self.db.execute(
+                f"SELECT id FROM runs WHERE status IN ({placeholders}) ORDER BY id DESC LIMIT -1 OFFSET ?",
+                (*FINISHED, KEEP_RUNS),
+            ).fetchall()
+        ]
+        if not stale:
+            return
+        with self.db:
+            for run_id in stale:
+                with contextlib.suppress(OSError):
+                    self.log_path(run_id).unlink()
+            self.db.executemany("DELETE FROM runs WHERE id = ?", [(run_id,) for run_id in stale])
 
     def _prepare(self, request: RunRequest) -> tuple[list[str], Path]:
         """Check Kometa can run, make sure its webhooks reach Studio, and build the command. Raises ValueError with the reason."""
@@ -251,6 +277,9 @@ class Runner:
         active = Active(run_id, None)
         self._active = active
         afters: list[After] = []
+        afters_done = False
+        finished = False
+        log_write_error: str | None = None
         with open(self.log_path(run_id), "w", encoding="utf-8", buffering=1) as log:
             try:
                 try:
@@ -258,13 +287,19 @@ class Runner:
                     with self.db:
                         self.db.execute("UPDATE runs SET command = ? WHERE id = ?", (kometa_command.display(argv), run_id))
                     for hook in self.hooks:
+                        if active.cancel_requested:
+                            break
                         after = await hook.before_run(request, lambda line: self._emit(active, log, f"Starr Studio: {line}"))
                         if after is not None:
                             afters.append(after)
+                        if active.cancel_requested:
+                            break
                     if active.cancel_requested:
                         await self._afters(active, log, afters)
+                        afters_done = True
                         self._emit(active, log, "Starr Studio: run cancelled before Kometa started")
                         self._finish(run_id, "cancelled")
+                        finished = True
                         return
                     active.started = time.time()
                     active.process = await asyncio.create_subprocess_exec(
@@ -276,13 +311,22 @@ class Runner:
                         start_new_session=True,  # its own process group, so cancelling reaches Kometa's worker too
                         limit=LINE_LIMIT,
                     )
+                except RunCancelled:
+                    await self._afters(active, log, afters)
+                    afters_done = True
+                    self._emit(active, log, "Starr Studio: run cancelled before Kometa started")
+                    self._finish(run_id, "cancelled")
+                    finished = True
+                    return
                 except Exception as error:  # RunHeld, ValueError (UnsupportedFlag), OSError, or a hook's surprise
                     if not isinstance(error, (RunHeld, ValueError, OSError)):
                         logger.exception("Run %s: a run hook failed", run_id)  # anything else would end the runner loop
                     message = str(error) or type(error).__name__
                     await self._afters(active, log, afters)
+                    afters_done = True
                     self._emit(active, log, f"Starr Studio: {message}")
                     self._finish(run_id, "failed", error=message)
+                    finished = True
                     return
 
                 try:
@@ -290,14 +334,31 @@ class Runner:
                 except TimeoutError:
                     active.timed_out = True
                     await self._terminate(active)
+                except OSError as error:
+                    log_write_error = f"Couldn't write the run log: {error}"
+                    await self._terminate(active)
+                assert active.process is not None
                 exit_code = await active.process.wait()
                 await self._afters(active, log, afters)
+                afters_done = True
+                if log_write_error:
+                    with contextlib.suppress(OSError):
+                        self._emit(active, log, f"Starr Studio: {log_write_error}")
+                    self._finish(run_id, "failed", exit_code=exit_code, error=log_write_error)
+                    finished = True
+                    return
                 status, error = self._outcome(run_id, active, exit_code)
                 reason = f": {error}" if error and status == "failed" and exit_code == 0 else ""
                 self._emit(active, log, f"Starr Studio: run {status.replace('_', ' ')} (exit code {exit_code}){reason}")
                 # Record the outcome before ending the streams: their closing event reports it.
                 self._finish(run_id, status, exit_code=exit_code, error=error)
+                finished = True
             finally:
+                if not afters_done:
+                    await self._terminate(active)
+                    await self._afters(active, log, afters)
+                if not finished and log_write_error:
+                    self._finish(run_id, "failed", error=log_write_error)
                 self._active = None
                 for subscriber in active.subscribers:
                     subscriber.send(None)

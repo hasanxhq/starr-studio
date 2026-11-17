@@ -470,6 +470,73 @@ def test_a_new_address_or_login_is_saved_only_after_it_passes_a_test(tmp_path, s
     assert toggled["leave_overlays_alone"] is False
 
 
+def test_pending_process_is_set_while_reverts_are_still_going(tmp_path, setup, monkeypatch):
+    from starr_studio import maintainerr
+    from starr_studio.db import get_setting
+
+    _, _, fake = setup
+    monkeypatch.setattr(maintainerr, "POLL", 0.05)
+    fake.slow_revert_polls = 30
+    with make_client(tmp_path, setup) as client:
+        connect(client)
+        service = client.app.state.maintainerr
+        run_id = client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"]
+        deadline = time.monotonic() + 10
+        seen = False
+        while time.monotonic() < deadline:
+            if client.get(f"/api/v1/runs/{run_id}").json()["status"] != "running":
+                break
+            if get_setting(service.db, maintainerr.PENDING_PROCESS) and any("puts back the posters" in line for line in log_of(client, run_id).splitlines()):
+                seen = True
+                break
+            time.sleep(0.05)
+        finished(client, run_id)
+    assert seen and service._wrapping is False
+
+
+def test_an_unexpected_error_after_takeover_leaves_redraw_pending(tmp_path, setup):
+    from starr_studio import maintainerr
+    from starr_studio.db import get_setting
+
+    _, _, fake = setup
+    with make_client(tmp_path, setup) as client:
+        connect(client)
+        service = client.app.state.maintainerr
+        real_call = service._call
+
+        async def break_on_revert(method, path, url=None, **kwargs):
+            if method == "POST" and path.startswith("/api/overlays/revert/"):
+                raise RuntimeError("Maintainerr broke mid-revert")
+            return await real_call(method, path, url, **kwargs)
+
+            service._call = break_on_revert
+            run = finished(client, client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"])
+            assert run["status"] == "failed" and "Maintainerr broke" in run["error"]
+            assert get_setting(service.db, maintainerr.PENDING_PROCESS) is True
+            assert service._wrapping is False
+
+
+def test_cancelling_while_maintainerr_is_busy_in_before_run(tmp_path, setup, monkeypatch):
+    from starr_studio import maintainerr
+
+    _, _, fake = setup
+    monkeypatch.setattr(maintainerr, "BUSY_WAIT", 60.0)
+    monkeypatch.setattr(maintainerr, "POLL", 0.05)
+    fake.status = "running"
+    with make_client(tmp_path, setup) as client:
+        connect(client)
+        run_id = client.post("/api/v1/runs", json={"mode": "overlays"}).json()["id"]
+        deadline = time.monotonic() + 10
+        while client.get(f"/api/v1/runs/{run_id}").json()["status"] != "running" and time.monotonic() < deadline:
+            time.sleep(0.02)
+        client.post(f"/api/v1/runs/{run_id}/cancel")
+        run = finished(client, run_id, timeout=10)
+        log = log_of(client, run_id)
+    assert run["status"] == "cancelled"
+    assert "Kometa ran" not in log
+    assert not any("revert" in call for call in fake.calls)
+
+
 def test_turning_the_setting_off_while_maintainerr_is_away_gives_its_schedule_back_later(tmp_path, setup):
     _, _, fake = setup
     with make_client(tmp_path, setup) as client:
