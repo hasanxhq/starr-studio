@@ -28,6 +28,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Clone Kometa at pinned version
+        run: |
+          KOMETA_VERSION=$(python -c "import ast; src=open('starr_studio/kometa_pin.py', encoding='utf-8').read(); print(next(n.value.value for n in ast.parse(src).body if isinstance(n, ast.Assign) and n.targets[0].id == 'KOMETA_VERSION'))")
+          git clone --depth 1 --branch "v${KOMETA_VERSION}" https://github.com/Kometa-Team/Kometa kometa
+
       - name: Backend tests
         run: |
           python -m pip install -e ".[dev]"

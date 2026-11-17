@@ -1,6 +1,6 @@
 """A title's edition, the way Kometa's edition overlays find it: from Plex's Edition field or the file name.
 
-The edition names, search words and regexes are copied from Kometa v2.5.3, defaults/overlays/resolution.yml
+The edition names, search words and regexes are copied from Kometa v2.5.4, defaults/overlays/resolution.yml
 (the ``edition`` template and its overlays). Kometa is MIT licensed:
 
     MIT License
