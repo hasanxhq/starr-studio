@@ -50,7 +50,7 @@ from .kometa_config import read_plex
 from .kometa_files import load_yaml
 from .maintainerr_guard import Risk
 from .plex_library import PlexServer, PlexUnavailable
-from .runner import After, RunHeld, Say
+from .runner import After, RunCancelled, RunHeld, Say
 
 log = logging.getLogger(__name__)
 
@@ -403,18 +403,36 @@ class Maintainerr:
         self._wrapping = True
         try:
             await self.take_over()  # its own schedule can't draw while Kometa runs
+            set_setting(self.db, PENDING_PROCESS, True)
             say(f"Maintainerr puts back the posters under its overlays ({len(overlaid)} collection(s)), so Kometa only sees its own posters.")
             for collection in overlaid:
+                if self._cancelled():
+                    raise RunCancelled()
                 try:
                     await self._call("POST", f"/api/overlays/revert/{collection.id}")
                 except StillGoing:
                     say("Maintainerr is still putting posters back (it goes through every show, season and episode); waiting for it…")
                 await self._wait_until_idle(say, REVERT_WAIT, quiet=True)
+        except RunCancelled:
+            if get_setting(self.db, PENDING_PROCESS):
+                async def after() -> None:
+                    try:
+                        await self._resume(say)
+                    finally:
+                        self._wrapping = False
+
+                return after
+            self._wrapping = False
+            raise
         except (MaintainerrProblem, RunHeld) as problem:
             set_setting(self.db, PENDING_PROCESS, True)
             await self._resume(say)
             self._wrapping = False
             raise RunHeld(str(problem) if isinstance(problem, RunHeld) else f"Held: {problem}") from None
+        except Exception as problem:
+            log.exception("Maintainerr before_run failed")
+            self._wrapping = False
+            raise RunHeld(str(problem) or type(problem).__name__) from problem
 
         async def after() -> None:
             try:
@@ -464,12 +482,18 @@ class Maintainerr:
         except Exception:
             return kometa_name
 
+    def _cancelled(self) -> bool:
+        runner = self.runner
+        return runner is not None and runner._active is not None and runner._active.cancel_requested
+
     async def _wait_until_idle(self, say: Say, limit: float | None = None, quiet: bool = False) -> None:
         """Until Maintainerr's overlay processor is idle: its status says "running" during runs and reverts."""
         limit = BUSY_WAIT if limit is None else limit
         deadline = time.monotonic() + limit
         said = quiet
         while time.monotonic() < deadline:
+            if self._cancelled():
+                raise RunCancelled()
             status = await self._call("GET", "/api/overlays/status")
             if not (isinstance(status, dict) and status.get("status") == "running"):
                 return
