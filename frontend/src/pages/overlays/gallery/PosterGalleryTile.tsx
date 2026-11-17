@@ -35,7 +35,10 @@ export function PosterGalleryTile({ item, library }: { item: GalleryPoster; libr
     },
     onSuccess: (data, vars) => {
       const outcome = outcomeFor(data.outcomes, item.rating_key);
-      if (!outcome) return;
+      if (!outcome) {
+        setStatus({ kind: "error", message: "Studio didn't say what happened to this title." });
+        return;
+      }
       if (vars.dryRun) {
         if (canConfirm(outcome.kind)) {
           setConfirm({ action: vars.action, message: outcome.message });
@@ -58,7 +61,7 @@ export function PosterGalleryTile({ item, library }: { item: GalleryPoster; libr
 
   const thumb = item.thumb ? api.plexLibraries.imageUrl(item.thumb, 240, 360) : null;
 
-  const dialog = (node: ReactNode) => (typeof document !== "undefined" ? createPortal(node, document.body) : node);
+  const dialog = (node: ReactNode) => createPortal(node, document.body);
 
   return (
     <>

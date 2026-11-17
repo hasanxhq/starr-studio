@@ -1,9 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { Button, Field, inputClass, Spinner } from "../../../components/ui";
 import { useDebounced } from "../../../useDebounced";
-import type { GalleryPoster } from "../../../overlayEngineApi";
 import { overlayEngine } from "../../../overlayEngineApi";
 import { PosterGalleryTile } from "./PosterGalleryTile";
 
@@ -12,31 +11,20 @@ const PAGE = 48;
 export function PosterGallery({ library }: { library: string }) {
   const [search, setSearch] = useState("");
   const q = useDebounced(search, 500);
-  const [moreItems, setMoreItems] = useState<GalleryPoster[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const posters = useQuery({
+  // Every loaded page refetches together, so an Apply on page 3 keeps its tile (and message) in place.
+  const posters = useInfiniteQuery({
     queryKey: ["overlay-engine", "posters", library, q],
-    queryFn: () => overlayEngine.library.posters(library, { q, start: 0, size: PAGE }),
+    queryFn: ({ pageParam }) => overlayEngine.library.posters(library, { q, start: pageParam, size: PAGE }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.start + last.items.length < last.total && last.items.length > 0 ? last.start + last.items.length : undefined),
+    placeholderData: keepPreviousData,
   });
 
-  useEffect(() => {
-    setMoreItems([]);
-  }, [library, q, posters.dataUpdatedAt]);
-
-  const items = [...(posters.data?.items ?? []), ...moreItems];
-  const total = posters.data?.total ?? 0;
-  const canLoadMore = items.length < total;
-
-  const loadMore = async () => {
-    setLoadingMore(true);
-    try {
-      const page = await overlayEngine.library.posters(library, { q, start: items.length, size: PAGE });
-      setMoreItems((prev) => [...prev, ...page.items]);
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+  const items = posters.data?.pages.flatMap((page) => page.items) ?? [];
+  const canLoadMore = posters.hasNextPage;
+  const loadingMore = posters.isFetchingNextPage;
+  const loadMore = () => void posters.fetchNextPage();
 
   return (
     <section className="flex flex-col gap-4" aria-label="Poster gallery">
@@ -55,7 +43,7 @@ export function PosterGallery({ library }: { library: string }) {
           <Spinner className="size-4" />
           Loading…
         </p>
-      ) : posters.isError ? (
+      ) : posters.isError && !posters.isFetchNextPageError ? (
         <p role="alert" className="text-err">
           {posters.error.message}
         </p>
@@ -70,11 +58,16 @@ export function PosterGallery({ library }: { library: string }) {
           </ul>
           {canLoadMore ? (
             <div className="flex justify-center">
-              <Button className="min-h-11 gap-2" disabled={loadingMore} onClick={() => void loadMore()}>
+              <Button className="min-h-11 gap-2" disabled={loadingMore} onClick={loadMore}>
                 {loadingMore ? <Spinner className="size-4" /> : null}
                 Load more
               </Button>
             </div>
+          ) : null}
+          {posters.isFetchNextPageError ? (
+            <p role="alert" className="text-err">
+              {posters.error?.message}
+            </p>
           ) : null}
         </>
       )}

@@ -76,12 +76,12 @@ describe("PosterGallery", () => {
       [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48`]: () => postersPage([noStudio], 0, 1),
       [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48&q=moon`]: () => postersPage([noStudio], 0, 1),
     };
-    mockApi(routes);
+    const calls = mockApi(routes);
     renderGallery();
     await screen.findByText("Moonlight");
     fireEvent.change(screen.getByPlaceholderText("Search…"), { target: { value: "moon" } });
     await vi.advanceTimersByTimeAsync(500);
-    await waitFor(() => expect(screen.getByText("Moonlight")).toBeInTheDocument());
+    await waitFor(() => expect(calls.map((c) => c.route)).toContain(`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48&q=moon`));
     vi.useRealTimers();
   });
 
@@ -96,6 +96,23 @@ describe("PosterGallery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     await screen.findByText("Arrival");
     expect(screen.getByText("Moonlight")).toBeInTheDocument();
+  });
+
+  it("keeps later pages after an apply refreshes the grid", async () => {
+    const page2: GalleryPoster = { ...noStudio, rating_key: "300", title: "Arrival", year: 2016 };
+    const done = (dry: boolean): OutcomeList => ({ dry_run: dry, outcomes: [{ rating_key: "300", title: "Arrival", kind: "draw", message: dry ? "Would draw." : "Drew Studio's poster.", done: !dry }] });
+    mockApi({
+      [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48`]: () => postersPage([noStudio], 0, 2),
+      [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=1&size=48`]: () => postersPage([page2], 1, 2),
+      "POST /overlay-engine/apply": (body) => done((body as { dry_run?: boolean }).dry_run !== false),
+    });
+    renderGallery();
+    await screen.findByText("Moonlight");
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    const tile = await screen.findByRole("listitem", { name: "Arrival" });
+    fireEvent.click(within(tile).getByRole("button", { name: "Apply" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(within(screen.getByRole("listitem", { name: "Arrival" })).getByRole("status")).toHaveTextContent("Drew Studio's poster."));
   });
 
   it("Apply dry-runs, shows confirm, then applies with dry_run false", async () => {
