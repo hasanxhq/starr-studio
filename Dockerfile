@@ -8,6 +8,9 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# The type check covers a test that reads the overlay style schema and shipped styles from the Python package.
+COPY starr_studio/overlay_engine/style.schema.json ../starr_studio/overlay_engine/
+COPY starr_studio/overlay_engine/styles/ ../starr_studio/overlay_engine/styles/
 # vite.config.ts writes the build to ../starr_studio/static
 RUN npm run build
 
