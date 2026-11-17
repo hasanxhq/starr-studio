@@ -139,6 +139,23 @@ describe("StyleSettings", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("TV Shows uses this style");
   });
 
+  it("deletes a user style and drops it from the picker", async () => {
+    let list = [modern, mine, broken];
+    mockApi(routes({ "GET /overlay-engine/styles": () => list, "DELETE /overlay-engine/styles/mine": () => { list = [modern, broken]; return new Response(null, { status: 204 }); } }));
+    renderSettings();
+    fireEvent.click(await radio(/Mine/));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete style" }));
+    await waitFor(() => expect(screen.queryByRole("radio", { name: /Mine/ })).toBeNull());
+    expect(screen.getByRole("radio", { name: /Modern Streaming/ })).toBeChecked();
+  });
+
+  it("says so when the library's saved style is gone", async () => {
+    mockApi(routes({ "GET /overlay-engine/libraries/Movies/style": () => ({ style: "vanished", values: {}, saved: true }) }));
+    renderSettings();
+    expect(await screen.findByRole("alert")).toHaveTextContent("vanished");
+  });
+
   it("imports a file and picks the imported style; export links to the zip", async () => {
     const imported: StyleDetail = { ...mine, id: "imported", name: "Imported", yaml: "name: Imported\n" };
     mockApi(routes({ "GET /overlay-engine/styles": () => [modern, mine, imported] }));

@@ -56,6 +56,12 @@ export function StyleSettings({ library }: { library: string }) {
     pick(style);
   };
 
+  const deleted = async (id: string) => {
+    setDraft(null);
+    queryClient.removeQueries({ queryKey: ["overlay-engine", "style", id] });
+    await queryClient.invalidateQueries({ queryKey: ["overlay-engine", "styles"] });
+  };
+
   if (styles.isError || libraryStyle.isError) {
     return (
       <Card title="Style">
@@ -95,8 +101,13 @@ export function StyleSettings({ library }: { library: string }) {
                 </span>
               </label>
             ))}
+            {!picked && saved && (
+              <p role="alert" className="text-sm text-warn">
+                This library's style, {saved.style}, isn't among the style files any more: pick another and save.
+              </p>
+            )}
           </fieldset>
-          {picked && <StyleActions style={picked} onAdded={(style) => void added(style)} onDeleted={() => setDraft(null)} />}
+          {picked && <StyleActions style={picked} onAdded={(style) => void added(style)} onDeleted={() => void deleted(picked.id)} />}
         </div>
 
         {picked && (
