@@ -1083,8 +1083,13 @@ class RequestService:
             seerr_choice: dict[str, tuple[SeerrServer | None, int | None, str | None]] = {}  # per media, looked up once
 
             for it in items:
-                alt_item = await self._show_alt_item(it.item) if it.item.startswith(("tmdb-show:", "tvdb:")) else None
                 if it.item in active_items or it.item in seen_in_batch:
+                    outcome.skipped += 1
+                    outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
+                    continue
+
+                alt_item = await self._show_alt_item(it.item) if it.item.startswith(("tmdb-show:", "tvdb:")) else None
+                if alt_item and (alt_item in active_items or alt_item in seen_in_batch):
                     outcome.skipped += 1
                     outcome.items.append(RequestItemResult(item=it.item, status="skipped"))
                     continue
@@ -1095,6 +1100,8 @@ class RequestService:
                     continue
 
                 seen_in_batch.add(it.item)
+                if alt_item:
+                    seen_in_batch.add(alt_item)
                 if remaining_cap is not None:
                     remaining_cap -= 1
 
@@ -1279,34 +1286,6 @@ class RequestService:
             current_status = row["status"]
 
             if media == "movie" and radarr_conn:
-                if via == "radarr" and row.get("external_id"):
-                    try:
-                        movie = await arr._get(self.http, radarr_conn, f"/api/v3/movie/{row['external_id']}")
-                    except ArrProblem as problem:
-                        if "HTTP 404" in str(problem):
-                            self.db.execute(
-                                "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
-                                ("Removed from Radarr", utc_text(now), row_id),
-                            )
-                        else:
-                            log.warning("Error checking movie %s in Radarr: %s", row["external_id"], problem)
-                        continue
-                    except Exception as e:
-                        log.warning("Error checking movie %s in Radarr: %s", row["external_id"], e)
-                        continue
-                    if isinstance(movie, dict) and movie.get("id"):
-                        movie_id = movie["id"]
-                        if movie.get("hasFile"):
-                            self.db.execute(
-                                "UPDATE requests SET status = 'imported', imported_at = ?, updated_at = ? WHERE id = ?",
-                                (utc_text(now), utc_text(now), row_id),
-                            )
-                        elif movie_id in radarr_queue_movie_ids and current_status != "downloading":
-                            self.db.execute(
-                                "UPDATE requests SET status = 'downloading', updated_at = ? WHERE id = ?",
-                                (utc_text(now), row_id),
-                            )
-                    continue
                 tmdb_id = item.split(":")[1] if ":" in item else None
                 if not tmdb_id:
                     continue
@@ -1315,6 +1294,12 @@ class RequestService:
                     movie_list = found if isinstance(found, list) else ([found] if isinstance(found, dict) and found.get("id") else [])
                     if not movie_list and via == "seerr":
                         await self._follow_seerr(row, now)
+                    elif not movie_list and via == "radarr":
+                        self.db.execute(
+                            "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                            ("Removed from Radarr", utc_text(now), row_id),
+                        )
+                        continue
                     if movie_list:
                         movie = movie_list[0]
                         movie_id = movie["id"]
@@ -1339,35 +1324,6 @@ class RequestService:
                     log.warning("Error checking movie %s in Radarr: %s", tmdb_id, e)
 
             elif media == "show" and sonarr_conn:
-                if via == "sonarr" and row.get("external_id"):
-                    try:
-                        series = await arr._get(self.http, sonarr_conn, f"/api/v3/series/{row['external_id']}")
-                    except ArrProblem as problem:
-                        if "HTTP 404" in str(problem):
-                            self.db.execute(
-                                "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
-                                ("Removed from Sonarr", utc_text(now), row_id),
-                            )
-                        else:
-                            log.warning("Error checking series %s in Sonarr: %s", row["external_id"], problem)
-                        continue
-                    except Exception as e:
-                        log.warning("Error checking series %s in Sonarr: %s", row["external_id"], e)
-                        continue
-                    if isinstance(series, dict) and series.get("id"):
-                        series_id = series["id"]
-                        file_count = (series.get("statistics") or {}).get("episodeFileCount", 0)
-                        if file_count > 0:
-                            self.db.execute(
-                                "UPDATE requests SET status = 'imported', imported_at = ?, updated_at = ? WHERE id = ?",
-                                (utc_text(now), utc_text(now), row_id),
-                            )
-                        elif series_id in sonarr_queue_series_ids and current_status != "downloading":
-                            self.db.execute(
-                                "UPDATE requests SET status = 'downloading', updated_at = ? WHERE id = ?",
-                                (utc_text(now), row_id),
-                            )
-                    continue
                 tvdb_id = None
                 if item.startswith("tvdb:"):
                     tvdb_id = item.removeprefix("tvdb:")
@@ -1381,6 +1337,12 @@ class RequestService:
                     series_list = found if isinstance(found, list) else ([found] if isinstance(found, dict) and found.get("id") else [])
                     if not series_list and via == "seerr":
                         await self._follow_seerr(row, now)
+                    elif not series_list and via == "sonarr":
+                        self.db.execute(
+                            "UPDATE requests SET status = 'failed', error = ?, updated_at = ? WHERE id = ?",
+                            ("Removed from Sonarr", utc_text(now), row_id),
+                        )
+                        continue
                     if series_list:
                         series = series_list[0]
                         series_id = series["id"]

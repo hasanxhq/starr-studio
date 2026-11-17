@@ -617,7 +617,7 @@ async def test_seerr_202_no_seasons_left_becomes_exists_with_a_note(env):
     # Not counted against the daily cap (1), and not asked again.
     mock.seerr_answer_202 = False
     again = await service.request(
-        [Item(item="tvdb:81189", title="Breaking Bad"), Item(item="tmdb-show:1396", title="Another")], library="TV Shows", collection_id=1, now=T0, cap=1
+        [Item(item="tvdb:81189", title="Breaking Bad"), Item(item="tmdb-show:999999", title="Another")], library="TV Shows", collection_id=1, now=T0, cap=1
     )
     assert again.skipped == 1
     assert again.requested == 1
