@@ -14,13 +14,15 @@ export function Card({ title, children, actions }: { title: string; children: Re
   );
 }
 
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" };
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" };
 
 export function Button({ variant = "secondary", className = "", type = "button", ...props }: ButtonProps) {
   const look =
     variant === "primary"
       ? "bg-accent text-on-accent hover:brightness-110"
-      : "border border-border-strong bg-surface-2 text-text hover:border-muted";
+      : variant === "danger"
+        ? "border border-err/60 bg-transparent text-err hover:bg-err/10"
+        : "border border-border-strong bg-surface-2 text-text hover:border-muted";
   return (
     <button
       type={type}
@@ -113,7 +115,8 @@ export function ConfirmButton({
     <span className="flex flex-wrap items-center gap-2">
       <span className="text-sm text-warn">{warning}</span>
       <Button
-        className="gap-2 border-err/60 text-err"
+        variant="danger"
+        className="gap-2"
         onClick={onConfirm}
         disabled={busy}
         aria-busy={busy ? "true" : undefined}

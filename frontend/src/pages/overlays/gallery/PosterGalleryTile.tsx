@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 
 import { api } from "../../../api";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
-import { PosterTile } from "../../../components/PosterTile";
-import { Button, Tag } from "../../../components/ui";
+import { PosterTile, StatusBadge } from "../../../components/PosterTile";
+import { Button } from "../../../components/ui";
 import type { GalleryPoster, Outcome, OutcomeKind } from "../../../overlayEngineApi";
 import { overlayEngine } from "../../../overlayEngineApi";
 import { canConfirm } from "./constants";
@@ -75,13 +75,7 @@ export function PosterGalleryTile({ item, library }: { item: GalleryPoster; libr
             <div className="flex aspect-[2/3] w-full items-center justify-center bg-surface-2 text-xs text-muted">No poster</div>
           )
         }
-        badge={
-          item.studio_poster ? (
-            <Tag tone="ok">
-              Studio poster{item.style ? ` · ${item.style}` : ""}
-            </Tag>
-          ) : undefined
-        }
+        badge={item.studio_poster ? <StatusBadge state={{ kind: "studio_poster" }} /> : undefined}
         footer={
           <div className="mt-2 flex flex-col gap-2">
             <div className="flex flex-wrap gap-2">
