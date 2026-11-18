@@ -46,8 +46,7 @@ export function ConfirmDialog({
         <div className="text-sm text-muted">{children}</div>
         <div className="flex flex-wrap gap-3">
           <Button
-            variant="primary"
-            className={danger ? "border-err/60 bg-transparent text-err hover:brightness-100" : undefined}
+            variant={danger ? "danger" : "primary"}
             onClick={onConfirm}
             disabled={busy}
             autoFocus

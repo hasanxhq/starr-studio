@@ -14,7 +14,8 @@ export type StatusBadgeState =
   | { kind: "missing" }
   | { kind: "failed" }
   | { kind: "will_remove" }
-  | { kind: "changed" };
+  | { kind: "changed" }
+  | { kind: "studio_poster" };
 
 const looks: Record<Exclude<StatusBadgeState["kind"], "in_plex">, { dot: string; text: string }> = {
   queued: { dot: "bg-info", text: "Queued" },
@@ -24,6 +25,7 @@ const looks: Record<Exclude<StatusBadgeState["kind"], "in_plex">, { dot: string;
   failed: { dot: "bg-err", text: "Failed" },
   will_remove: { dot: "bg-warn", text: "Will be removed" },
   changed: { dot: "bg-accent", text: "Changed" },
+  studio_poster: { dot: "bg-ok", text: "Studio poster" },
 };
 
 function inPlex(count: number | null | undefined, coming: number): { dot: string; text: string; title: string } {

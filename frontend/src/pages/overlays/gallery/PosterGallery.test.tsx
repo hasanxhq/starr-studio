@@ -57,14 +57,14 @@ describe("PosterGallery", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders tiles with the Studio poster tag", async () => {
+  it("renders tiles with the Studio poster badge", async () => {
     mockApi({
       [`GET /overlay-engine/libraries/${encodeURIComponent(library)}/posters?start=0&size=48`]: () => postersPage([noStudio, withStudio], 0, 2),
     });
     renderGallery();
     await screen.findByText("Moonlight");
     expect(screen.getByText("Slumdog Millionaire")).toBeInTheDocument();
-    expect(screen.getByText(/Studio poster · modern-streaming/)).toBeInTheDocument();
+    expect(screen.getByText("Studio poster")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Apply" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Repair" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
