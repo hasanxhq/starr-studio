@@ -1,6 +1,6 @@
 // A modal that asks once more before doing something that uses disk, indexers or can't be undone easily.
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { Button } from "./ui";
 
@@ -23,6 +23,14 @@ export function ConfirmDialog({
   onCancel: () => void;
   danger?: boolean;
 }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busy) onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
   return (
     <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/50 p-4 sm:items-center" onClick={onCancel}>
       <div

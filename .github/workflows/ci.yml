@@ -49,3 +49,7 @@ jobs:
           npm ci
           npm run typecheck
           npm test
+
+      # The image's frontend stage only sees what the Dockerfile copies in, so build it here too (#161).
+      - name: Docker frontend stage builds
+        run: docker build --target frontend .

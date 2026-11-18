@@ -280,6 +280,12 @@ The style format (3.6) with its JSON Schema and loader; Modern streaming as the 
 - Export and import (task 2): `GET /styles/{id}/export` (zip), `POST /styles/import?filename=&id=` with the file as the raw body (no multipart in Studio).
 - Frontend: `overlayEngineApi.ts` is the client; Overlays gets a "Studio overlays" tab (`?engine=studio`) holding `styles/StyleSettings` and `gallery/PosterGallery`.
 
+**Phase 3 results** (2026-11-18, PRs #157–#161):
+- #157 the contract above; #158 the gallery (search, Load more, Plex-vs-Studio preview, Apply / Repair / Restore, each a dry run first and a confirm before anything reaches Plex); #159 style picker, options form, duplicate / delete, and the YAML view (shipped styles read-only); #160 export and import; #161 the Dockerfile's frontend stage also copies the style schema and shipped styles, which a frontend test reads.
+- Apply and preview with no style use the library's choice instead of failing.
+- An export zip holds only the style's YAML; custom logos or fonts come with the editor. Import takes a 1 MB body at most, with at most 20 zip entries and a 200 KB YAML; anything with a path outside the zip's root is refused.
+- Not yet: whole-library passes (Phase 5).
+
 ### Phase 4: the editor
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
 
