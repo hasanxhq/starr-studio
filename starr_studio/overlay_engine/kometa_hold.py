@@ -45,7 +45,13 @@ class KometaOverlayHold:
         server = kometa_plex(self.settings, self.http)
         try:
             for name in _libraries_in_run(self.settings, request):
-                key = await section_key_for_library(self.settings, server, name)
+                try:
+                    key = await section_key_for_library(self.settings, server, name)
+                except ValueError:
+                    # Plex has no library by this name (renamed or removed). Kometa won't find it either,
+                    # so this run can't draw on Studio's posters there. A later library still can.
+                    say(f"{name} isn't on this Plex server, so Kometa won't draw overlays there")
+                    continue
                 if studio_posters(self.db, key):
                     count = len(studio_posters(self.db, key))
                     raise RunHeld(
@@ -54,7 +60,7 @@ class KometaOverlayHold:
                     )
         except RunHeld:
             raise
-        except (PlexUnavailable, OSError, ValueError):
+        except (PlexUnavailable, OSError):
             total = len(studio_posters(self.db))
             raise RunHeld(
                 f"Studio's overlay engine has its posters on {total} titles and Plex didn't answer, "
