@@ -58,6 +58,38 @@ def test_overlay_run_without_studio_posters_goes(tmp_path, monkeypatch):
     assert run["status"] == "succeeded"
 
 
+def test_missing_plex_library_does_not_hold_a_run_that_misses_studio_posters(tmp_path, monkeypatch):
+    """TV Shows is config's library_name 'Series', which FakePlex doesn't have. Posters on Movies must not stop a TV run."""
+    client, _ = make_client(tmp_path, fake_plex=FakePlex())
+
+    def fake_studio_posters(db, library_key=None):
+        if library_key is None:
+            return ["201"]
+        return ["201"] if library_key == "1" else []
+
+    monkeypatch.setattr("starr_studio.overlay_engine.kometa_hold.studio_posters", fake_studio_posters)
+    with client:
+        run = hold_message(client, "overlays", ["TV Shows"])
+    assert run["status"] == "succeeded"
+    assert run["error"] is None
+
+
+def test_missing_plex_library_still_holds_when_another_library_has_posters(tmp_path, monkeypatch):
+    client, _ = make_client(tmp_path, fake_plex=FakePlex())
+
+    def fake_studio_posters(db, library_key=None):
+        if library_key is None:
+            return ["201"]
+        return ["201"] if library_key == "1" else []
+
+    monkeypatch.setattr("starr_studio.overlay_engine.kometa_hold.studio_posters", fake_studio_posters)
+    with client:
+        run = hold_message(client, "overlays", ["TV Shows", "Movies"])
+    assert run["status"] == "failed"
+    assert "Studio's overlay engine has its posters on 1 titles in Movies" in run["error"]
+    assert "didn't answer" not in run["error"]
+
+
 def test_plex_unreachable_with_studio_posters_is_held(tmp_path, monkeypatch):
     config = tmp_path / "config"
     config.mkdir()

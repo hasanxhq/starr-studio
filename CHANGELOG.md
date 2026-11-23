@@ -93,6 +93,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A library Plex doesn't have no longer stops every Kometa run.** While Studio's overlay engine has posters on a library, a run that would let Kometa draw overlays there waits. A library that isn't on the Plex server (renamed or removed) was treated as Plex being down, so the whole run waited — including one that never touched those posters. That library is skipped. A run that does include a library with Studio's posters still waits, and a run while Plex can't be reached still waits.
 - **Overlay studio:** clicking an anchor such as Middle left or Middle right no longer jumps the layer to the top. Studio read a cleared value as "top left" instead of Kometa's default; this hit ratings and any layer whose default isn't the top left.
 - **Overlay studio:** dropping a badge on the poster no longer sends it to the left when the layer was saved on the right (or to the top when saved at the bottom). Studio left out any value that matched the saved one, so Kometa's default took over.
 - **Ratings run:** Across and Down now match Kometa, which stacks ratings unless told otherwise. Down was drawn while Across showed as picked, and choosing Across did nothing. Screen readers read the Across button as "Run Down"; the control is now a labelled group.
