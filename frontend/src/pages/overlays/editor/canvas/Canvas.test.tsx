@@ -121,6 +121,29 @@ describe("Canvas", () => {
     expect(file()).toBe(YAML);
   });
 
+  it("drops no transform after Undo before the scene arrives", async () => {
+    const { g, frame, file, container } = await open();
+    const node = container.querySelector('g[data-path="elements.0"]') as SVGGElement;
+    fireEvent.pointerDown(g(0), { clientX: 50, clientY: 50, button: 0 });
+    fireEvent.pointerMove(frame, { clientX: 60, clientY: 50 });
+    fireEvent.pointerUp(frame, { clientX: 60, clientY: 50 });
+    expect(node.style.transform).toBe("translate(20px, 0px)");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(file()).toBe(YAML);
+    expect(node.style.transform).toBe("");
+    expect(container.querySelector("[data-box]")?.getAttribute("style")).not.toContain("translate");
+  });
+
+  it("keeps no old transform when edited again before the first scene arrives", async () => {
+    const { g, frame, container } = await open();
+    const nodes = () => [...container.querySelectorAll<HTMLElement>("[data-path], [data-box]")];
+    fireEvent.pointerDown(g(0), { clientX: 50, clientY: 50, button: 0 });
+    fireEvent.pointerMove(frame, { clientX: 60, clientY: 50 });
+    fireEvent.pointerUp(frame, { clientX: 60, clientY: 50 });
+    fireEvent.keyDown(frame, { key: "ArrowRight" });
+    await waitFor(() => expect(nodes().every((n) => n.style.transform === "")).toBe(true));
+  });
+
   it("resizes from a handle", async () => {
     const { g, frame, file, container } = await open();
     fireEvent.pointerDown(g(0));

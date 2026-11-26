@@ -73,17 +73,25 @@ function Stage({ scene }: { scene: Scene }) {
   const guides = useRef<Record<"x" | "y", HTMLDivElement | null>>({ x: null, y: null });
   const drag = useRef<Drag | null>(null);
   const placed = useRef<Record<string, SceneBox>>({}); // where edits put elements, until the scene that shows them arrives
+  const dropText = useRef<string | null>(null); // the file the drops in `placed` made; any other text makes them wrong
   const edits = useRef(0);
   const [dragging, setDragging] = useState(false);
   const exact = useExactRender(dragging);
   const markup = useMemo(() => sceneMarkup(scene.svg, scene.thumb), [scene.svg, scene.thumb]);
   const { boxes } = scene;
 
-  // a new scene shows the file as it is: the nodes and boxes we moved by hand go back to their own places
-  useLayoutEffect(() => {
-    if (text !== settledText) return;
+  const reset = () => {
     placed.current = {};
+    dropText.current = null;
     frame.current?.querySelectorAll<HTMLElement>("[data-path], [data-box]").forEach((node) => (node.style.transform = ""));
+  };
+  // the nodes we moved by hand stay only until the text they were made for is drawn: other text (undo, YAML, inspector) or a scene for it ends them
+  useLayoutEffect(() => {
+    if (text !== dropText.current) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new text
+  }, [text]);
+  useLayoutEffect(() => {
+    if (text === settledText) reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new scene
   }, [scene]);
 
@@ -101,7 +109,7 @@ function Stage({ scene }: { scene: Scene }) {
   const resizeFor = (() => {
     try {
       const type = moving.length === 1 && selection.length === 1 && moving[0] === selection[0] ? elementAt(text, moving[0])?.type : undefined;
-      return type && RESIZABLE.has(type) ? { path: moving[0], ratio: RATIO_TYPES.has(type) } : null;
+      return !readOnly && type && RESIZABLE.has(type) ? { path: moving[0], ratio: RATIO_TYPES.has(type) } : null;
     } catch {
       return null;
     }
@@ -121,7 +129,7 @@ function Stage({ scene }: { scene: Scene }) {
       if (i < 0) return;
       const from = boxes[paths[i]];
       const t = to[i];
-      node.style.transform = `translate(${(t[0] - from[0]) * scale}px, ${(t[1] - from[1]) * scale}px) scale(${t[2] / from[2]}, ${t[3] / from[3]})`;
+      node.style.transform = `translate(${(t[0] - from[0]) * scale}px, ${(t[1] - from[1]) * scale}px) scale(${t[2] / (from[2] || 1)}, ${t[3] / (from[3] || 1)})`;
     });
   };
 
@@ -130,8 +138,13 @@ function Stage({ scene }: { scene: Scene }) {
     paths.forEach((p, i) => {
       const current = boxOf(p);
       const parent = parentPath(p);
-      const parentBox = parent === null ? POSTER_BOX : (boxes[parent] ?? POSTER_BOX);
+      const parentBox = parent === null ? POSTER_BOX : (boxOf(parent) ?? POSTER_BOX);
       placed.current[p] = to[i];
+      try {
+        dropText.current = placeBox(dropText.current ?? text, p, to[i], current, parentBox);
+      } catch {
+        // edit() changes nothing for it too
+      }
       edit((t) => placeBox(t, p, to[i], current, parentBox), key);
     });
   };
@@ -223,6 +236,7 @@ function Stage({ scene }: { scene: Scene }) {
       select(selection.includes(path) ? selection.filter((p) => p !== path) : [...selection, path]);
       return;
     }
+    if (readOnly) return select([path]);
     const next = selection.includes(path) ? selection : [path];
     if (next !== selection) select(next);
     start(event, null, movingOf(next), path, false);
