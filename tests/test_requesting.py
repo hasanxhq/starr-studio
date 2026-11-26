@@ -165,8 +165,8 @@ class FakeMockEnvironment:
                     if mid in self.radarr_movies:
                         self.radarr_movies[mid].update(body)
                     return httpx.Response(200, json=body)
-            if path.startswith("/api/v3/movie/lookup/tmdb"):
-                tmdb_id = int(request.url.params.get("tmdbId", 0))
+            if path == "/api/v3/movie/lookup":
+                tmdb_id = int(request.url.params["term"].removeprefix("tmdb:"))
                 return httpx.Response(200, json=[{"title": f"Movie {tmdb_id}", "tmdbId": tmdb_id, "year": 2024}])
             if path.startswith("/api/v3/movie/"):
                 mid = int(path.rsplit("/", 1)[-1])

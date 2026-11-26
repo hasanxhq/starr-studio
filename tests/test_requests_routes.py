@@ -99,8 +99,8 @@ class FakeRouteEnvironment:
                     movie = {"id": self._next_id, **body}
                     self.radarr_movies[self._next_id] = movie
                     return httpx.Response(201, json=movie)
-            if path.startswith("/api/v3/movie/lookup/tmdb"):
-                tmdb_id = int(request.url.params.get("tmdbId", 0))
+            if path == "/api/v3/movie/lookup":
+                tmdb_id = int(request.url.params["term"].removeprefix("tmdb:"))
                 return httpx.Response(200, json=[{"title": f"Movie {tmdb_id}", "tmdbId": tmdb_id, "year": 2024}])
             if path.startswith("/api/v3/movie/"):
                 mid = int(path.rsplit("/", 1)[-1])
