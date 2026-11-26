@@ -791,7 +791,8 @@ class RequestService:
             qp_id, rf_path = await self._resolve_arr_options(conn, "Radarr", radarr_settings.quality_profile, radarr_settings.root_folder, profile)
             starr_tag = await _ensure_starr_tag(self.http, conn, "/api/v3/tag")
 
-            lookup = await arr._get(self.http, conn, "/api/v3/movie/lookup/tmdb", {"tmdbId": tmdb_id})
+            # term=tmdb: rather than /movie/lookup/tmdb, which HolyArrs' Radarr API doesn't serve
+            lookup = await arr._get(self.http, conn, "/api/v3/movie/lookup", {"term": f"tmdb:{tmdb_id}"})
             movie_data = lookup[0] if isinstance(lookup, list) and lookup else (lookup if isinstance(lookup, dict) else None)
             if not movie_data or not isinstance(movie_data, dict):
                 return "failed", None, "Movie not found on TMDb"
