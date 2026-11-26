@@ -1,6 +1,6 @@
 """Radarr, Sonarr and Lidarr over their API: run Kometa after new imports, once things go quiet (handoff v2 §4.5, §8).
 
-Studio polls each app's import history (``GET /api/v3/history/since``, event type 3, "download folder
+Studio polls each app's import history (``GET /api/v3/history``, newest first, event type 3, "download folder
 imported", in both apps) every ``POLL_EVERY``. Studio reaches out to them, so nothing has to reach Studio,
 and imports made while Studio was off are found when it starts again (up to ``CATCH_UP`` back).
 
@@ -51,6 +51,8 @@ CATCH_UP = timedelta(hours=24)
 MAX_WAIT = timedelta(hours=1)
 TIMEOUT = 10.0
 KEEP_TITLES = 10
+HISTORY_PAGE = 250
+HISTORY_PAGES = 40  # shortcut: stops at 10,000 imports in CATCH_UP; raise it if a library imports more in a day
 IMPORTED = 3  # DownloadFolderImported, in Radarr's MovieHistoryEventType and Sonarr's EpisodeHistoryEventType
 
 Kind = Literal["radarr", "sonarr"]  # the apps whose connection is Kometa's (config.yml)
@@ -285,6 +287,33 @@ async def test_lidarr(http: httpx.AsyncClient, conn: Connection) -> dict:
     }
 
 
+def _at(record: dict) -> datetime | None:
+    try:
+        at = datetime.fromisoformat(str(record["date"]))
+        return at if at.tzinfo else at.replace(tzinfo=UTC)
+    except (KeyError, ValueError):
+        return None
+
+
+async def _paged_history(http: httpx.AsyncClient, conn: Connection, params: dict, since: datetime) -> list[dict]:
+    """Radarr's and Sonarr's ``/api/v3/history``, newest first, paged back to ``since``.
+
+    Not ``/history/since``: HolyArrs' Radarr and Sonarr APIs serve only the paged one, which the real apps also have.
+    """
+    query = {k: v for k, v in params.items() if k != "date"} | {"sortKey": "date", "sortDirection": "descending", "pageSize": HISTORY_PAGE}
+    found: list[dict] = []
+    for page in range(1, HISTORY_PAGES + 1):
+        body = await _get(http, conn, "/api/v3/history", query | {"page": page})
+        records = body.get("records") if isinstance(body, dict) else None
+        if not isinstance(records, list):
+            raise ArrProblem("Unexpected answer to the history request")
+        found += [r for r in records if isinstance(r, dict) and ((at := _at(r)) is None or at >= since)]
+        last = _at(records[-1]) if records and isinstance(records[-1], dict) else None
+        if len(records) < HISTORY_PAGE or (last is not None and last < since):
+            break
+    return found
+
+
 async def imports_since(http: httpx.AsyncClient, conn: Connection, kind: App, since: datetime) -> list[dict]:
     """Import history records at or after ``since``, oldest first. Lidarr's are one per track file (API v1)."""
     params = {"date": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "eventType": LIDARR_IMPORTED if kind == "lidarr" else IMPORTED}
@@ -292,7 +321,7 @@ async def imports_since(http: httpx.AsyncClient, conn: Connection, kind: App, si
         params |= {"includeArtist": "true", "includeAlbum": "true"}
     else:
         params["includeMovie" if kind == "radarr" else "includeSeries"] = "true"
-    records = await _get(http, conn, "/api/v1/history/since" if kind == "lidarr" else "/api/v3/history/since", params)
+    records = await _get(http, conn, "/api/v1/history/since", params) if kind == "lidarr" else await _paged_history(http, conn, params, since)
     if not isinstance(records, list):
         raise ArrProblem("Unexpected answer to the history request")
     return sorted((r for r in records if isinstance(r, dict) and isinstance(r.get("id"), int)), key=lambda r: r["id"])
