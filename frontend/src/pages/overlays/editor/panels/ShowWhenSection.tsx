@@ -4,8 +4,8 @@ import { parse, stringify } from "yaml";
 import { Field, inputClass } from "../../../../components/ui";
 import type { StyleOption } from "../../../../overlayEngineApi";
 import { setProp } from "../model/styleDoc";
-import { HasMultiSelect } from "./fields";
-import { isOptionRef, isSimpleShowWhen, optionsFromText } from "./styleHelpers";
+import { HasMultiSelect, NumberInput } from "./fields";
+import { isSimpleShowWhen, optionDefaultForWrite, optionsFromText } from "./styleHelpers";
 
 function AdvancedShowWhen({
   rule,
@@ -105,21 +105,16 @@ export function ShowWhenSection({
         picked={hasList}
         onChange={(names) => patchRule({ has: names.length ? (names.length === 1 ? names[0] : names) : undefined })}
       />
-      <Field label="Only when added within N days">
-        {isOptionRef(days) ? (
-          <p className="text-xs text-muted">Uses option {String(days).slice(1)} (edit in YAML view or unlink elsewhere)</p>
-        ) : (
-          <input
-            type="number"
-            aria-label="Added within days"
-            disabled={readOnly}
-            min={0}
-            className={`${inputClass} max-w-[8rem] text-xs`}
-            value={days === undefined ? "" : String(days)}
-            onChange={(e) => patchRule({ added_within_days: e.target.value === "" ? undefined : Number(e.target.value) })}
-          />
-        )}
-      </Field>
+      <NumberInput
+        label="Only when added within N days"
+        value={days}
+        disabled={readOnly}
+        min={0}
+        optional
+        text={text}
+        onUnlink={() => patchRule({ added_within_days: optionDefaultForWrite(text, days as string) })}
+        onChange={(v) => patchRule({ added_within_days: v })}
+      />
       {Object.keys(options).length > 0 && (
         <fieldset className="text-sm">
           <legend className="mb-1 text-xs text-muted">Only when option … is …</legend>
@@ -146,31 +141,6 @@ export function ShowWhenSection({
 
 function OptionShowWhen({ name, opt, value, onChange, disabled }: { name: string; opt: StyleOption; value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {
   const label = opt.label || name;
-  if (opt.type === "choice" && opt.multiple) {
-    const picked = Array.isArray(value) ? (value as string[]) : [];
-    return (
-      <div className="mb-2">
-        <span className="text-xs text-muted">{label}</span>
-        <div className="mt-1">
-          {(opt.choices ?? []).map((choice) => (
-            <label key={choice} className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={picked.includes(choice)}
-                onChange={(e) => {
-                  const on = e.target.checked;
-                  const next = on ? [...picked, choice] : picked.filter((c) => c !== choice);
-                  onChange(next.length ? next : undefined);
-                }}
-              />
-              {opt.choice_labels?.[choice] ?? choice}
-            </label>
-          ))}
-        </div>
-      </div>
-    );
-  }
   if (opt.type === "choice") {
     return (
       <Field label={label}>

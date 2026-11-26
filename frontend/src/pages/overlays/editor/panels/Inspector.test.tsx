@@ -16,6 +16,13 @@ const FIXED = `studio_style: 1
 name: Mine
 options:
   accent: { type: colour, default: "#E50914", label: Accent }
+  band: { type: percent, default: 65, label: Band darkness }
+  ratings:
+    type: choice
+    multiple: true
+    default: imdb
+    choices: [imdb, rt_critic, tmdb]
+    label: Ratings
 elements:
   - type: text
     id: title
@@ -42,9 +49,13 @@ elements:
     size: 30
     box: { left: 0, top: 0 }
     show_when: { rt_critic: { min: 60 } }
+  - type: rect
+    id: banded
+    box: { left: 0, top: 0, width: 50, height: 50 }
+    fill: { colour: "#000", opacity: $band }
 `;
 
-const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1500"><g data-path="elements.0"/><g data-path="elements.1"/><g data-path="elements.2"/><g data-path="elements.3"/></svg>';
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1500"><g data-path="elements.0"/><g data-path="elements.1"/><g data-path="elements.2"/><g data-path="elements.3"/><g data-path="elements.4"/></svg>';
 
 function routes(yaml: string, shipped = false) {
   return {
@@ -54,7 +65,7 @@ function routes(yaml: string, shipped = false) {
     "GET /overlay-engine/libraries/Movies/samples?count=12": () => ({ items: [{ rating_key: "1", title: "Heat", year: 1995, thumb: "/t", traits: [] }] }),
     "GET /overlay-engine/libraries/Movies/style": () => ({ style: "mine", values: {}, saved: false }),
     "POST /overlay-engine/scene": () => ({
-      items: [{ rating_key: "1", title: "Heat", svg: SVG, boxes: { "elements.0": [0, 0, 10, 10], "elements.1": [0, 0, 10, 10], "elements.2": [0, 0, 10, 10], "elements.3": [0, 0, 10, 10] } }],
+      items: [{ rating_key: "1", title: "Heat", svg: SVG, boxes: { "elements.0": [0, 0, 10, 10], "elements.1": [0, 0, 10, 10], "elements.2": [0, 0, 10, 10], "elements.3": [0, 0, 10, 10], "elements.4": [0, 0, 10, 10] } }],
     }),
     "GET /overlay-engine/style-schema": () => ({ type: "object" }),
   };
@@ -94,6 +105,11 @@ describe("Inspector", () => {
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(file().value).toContain("text: Hello\n");
 
+    const left = screen.getByLabelText("left");
+    fireEvent.change(left, { target: { value: "" } });
+    fireEvent.blur(left);
+    expect(file().value).toContain("left: 10");
+
     const shadow = screen.getByLabelText("Shadow");
     fireEvent.click(shadow);
     await waitFor(() => expect(file().value).toContain("shadow:"));
@@ -103,6 +119,12 @@ describe("Inspector", () => {
     fireEvent.click(screen.getByRole("button", { name: /ruled text/ }));
     fireEvent.click(screen.getByLabelText("imdb"));
     await waitFor(() => expect(file().value).toMatch(/show_when:[\s\S]*has:/));
+
+    fireEvent.click(screen.getByRole("button", { name: /title text/ }));
+    const ratingsSelect = screen.getByLabelText("Ratings");
+    fireEvent.change(ratingsSelect, { target: { value: "rt_critic" } });
+    await waitFor(() => expect(file().value).toMatch(/show_when:[\s\S]*option:[\s\S]*ratings: rt_critic/));
+    expect(file().value).not.toMatch(/ratings:\s*\n\s*- rt_critic/);
 
     fireEvent.click(screen.getByRole("button", { name: /complex text/ }));
     expect(screen.getByLabelText("Show when rule")).toBeInTheDocument();
@@ -117,6 +139,10 @@ describe("Inspector", () => {
     expect(screen.getByText(/From option accent/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
     await waitFor(() => expect(file().value).toMatch(/colour: ['"]#E50914['"]/i));
+
+    fireEvent.click(screen.getByRole("button", { name: /banded rect/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Unlink" })[0]);
+    await waitFor(() => expect(file().value).toMatch(/opacity: 0\.65/));
 
     fireEvent.click(screen.getByRole("button", { name: /title text/ }), { shiftKey: true });
     expect(screen.getByText("2 elements selected")).toBeInTheDocument();

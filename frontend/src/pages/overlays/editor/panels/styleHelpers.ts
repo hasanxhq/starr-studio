@@ -1,7 +1,7 @@
 import { parseDocument } from "yaml";
 
 import type { StyleOption } from "../../../../overlayEngineApi";
-import { addElement, elementAt, outline, parentPath, type ElementData, type OutlineNode } from "../model/styleDoc";
+import { addElement, elementAt, outline, parentPath, type ElementData } from "../model/styleDoc";
 
 const CONTAINERS = new Set(["row", "column", "group"]);
 
@@ -29,6 +29,18 @@ export function isOptionRef(value: unknown): value is string {
 
 export function optionName(ref: string): string {
   return ref.slice(1);
+}
+
+/** Default to write when unlinking $name; percent options become a fraction (65 → 0.65), as rules.resolve does. */
+export function optionDefaultForWrite(text: string, ref: string): unknown {
+  const opts = optionsFromText(text);
+  const opt = opts[optionName(ref)];
+  if (!opt) return undefined;
+  if (opt.type === "percent") {
+    const d = Number(opt.default);
+    return Number.isFinite(d) ? d / 100 : opt.default;
+  }
+  return opt.default;
 }
 
 export function canRemove(text: string, path: string): boolean {
@@ -62,24 +74,16 @@ export function addParent(text: string, selection: string[]): string | null {
 }
 
 function withPlacement(element: ElementData, parent: string | null, text: string): ElementData {
-  if (parent === null) {
-    if (element.type === "text" || element.type === "rect" || element.type === "logo") {
-      const box = { ...(element.box as object), left: 40, top: 40 } as Record<string, unknown>;
-      return { ...element, box };
+  const parentEl = parent !== null ? elementAt(text, parent) : null;
+  if (parentEl?.type === "row" || parentEl?.type === "column") {
+    if (element.box) {
+      const { box: _, ...rest } = element;
+      return rest as ElementData;
     }
-    if (element.type === "group") return { ...element, box: { left: 40, top: 40, ...(element.box as object) } };
     return element;
   }
-  const parentEl = elementAt(text, parent);
-  if (parentEl?.type === "group" && element.type !== "row" && element.type !== "column") {
-    const box = { ...(element.box as object), left: 40, top: 40 } as Record<string, unknown>;
-    return { ...element, box };
-  }
-  if (element.box) {
-    const { box: _, ...rest } = element;
-    return rest as ElementData;
-  }
-  return element;
+  const box = { ...(element.box as object), left: 40, top: 40 } as Record<string, unknown>;
+  return { ...element, box };
 }
 
 const TEXT_CHILD: ElementData = { type: "text", text: "Text", size: 48 };
@@ -99,11 +103,4 @@ export function addKind(text: string, selection: string[], kind: (typeof ADD_KIN
   const parent = addParent(text, selection);
   const element = withPlacement(structuredClone(def.element), parent, text);
   return addElement(text, parent, element);
-}
-
-export function walkOutline(nodes: OutlineNode[], fn: (node: OutlineNode, depth: number) => void, depth = 0) {
-  for (const node of nodes) {
-    fn(node, depth);
-    walkOutline(node.children, fn, depth + 1);
-  }
 }

@@ -1,9 +1,9 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { Button, Checkbox, Field, inputClass } from "../../../../components/ui";
 import { setProp } from "../model/styleDoc";
 import { FACT_NAMES } from "./constants";
-import { isOptionRef, optionName, optionsFromText } from "./styleHelpers";
+import { isOptionRef, optionDefaultForWrite, optionName } from "./styleHelpers";
 
 export function ColourInput({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const hex = String(value ?? "");
@@ -33,32 +33,89 @@ export function ColourInput({ label, value, onChange, disabled }: { label: strin
   );
 }
 
-export function LengthInput({ label, value, onChange, disabled }: { label: string; value: unknown; onChange: (value: number | string | undefined) => void; disabled?: boolean }) {
-  const display = value === undefined || value === null ? "" : String(value);
+const PERCENT_RE = /^-?\d+(?:\.\d+)?%$/;
+const NUMBER_RE = /^-?\d+(?:\.\d+)?$/;
+
+function lengthValid(raw: string): number | string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  if (PERCENT_RE.test(trimmed)) return trimmed;
+  if (NUMBER_RE.test(trimmed)) return Number(trimmed);
+  return null;
+}
+
+export function LengthInput({ label, value, onChange, disabled, text, onUnlink }: { label: string; value: unknown; onChange: (value: number | string) => void; disabled?: boolean; text?: string; onUnlink?: () => void }) {
+  const ref = typeof value === "string" && isOptionRef(value);
+  const display = ref ? "" : value === undefined || value === null ? "" : String(value);
+  const [draft, setDraft] = useState(display);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => {
+    setDraft(display);
+    setInvalid(false);
+  }, [display]);
+
+  if (ref && text && onUnlink) {
+    return <OptionRefField label={label} value={value as string} disabled={disabled} onUnlink={onUnlink} />;
+  }
+
   return (
     <Field label={label}>
       <input
         type="text"
         aria-label={label}
+        aria-invalid={invalid || undefined}
         disabled={disabled}
         className={`${inputClass} font-mono text-xs`}
-        value={display}
+        value={draft}
         spellCheck={false}
         onChange={(e) => {
-          const raw = e.target.value.trim();
-          if (raw === "") onChange(undefined);
-          else if (raw.endsWith("%")) onChange(raw);
-          else {
-            const n = Number(raw);
-            onChange(Number.isFinite(n) ? n : raw);
+          const raw = e.target.value;
+          setDraft(raw);
+          const parsed = lengthValid(raw);
+          if (parsed !== null) {
+            onChange(parsed);
+            setInvalid(false);
           }
+        }}
+        onBlur={() => {
+          const parsed = lengthValid(draft);
+          if (parsed !== null) {
+            onChange(parsed);
+            setInvalid(false);
+          } else setInvalid(draft.trim() !== "");
         }}
       />
     </Field>
   );
 }
 
-export function NumberInput({ label, value, onChange, disabled, min, max, step }: { label: string; value: unknown; onChange: (value: number | undefined) => void; disabled?: boolean; min?: number; max?: number; step?: number }) {
+export function NumberInput({
+  label,
+  value,
+  onChange,
+  disabled,
+  min,
+  max,
+  step,
+  text,
+  onUnlink,
+  optional,
+}: {
+  label: string;
+  value: unknown;
+  onChange: (value: number | undefined) => void;
+  disabled?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  text?: string;
+  onUnlink?: () => void;
+  optional?: boolean;
+}) {
+  const ref = typeof value === "string" && isOptionRef(value);
+  if (ref && text && onUnlink) {
+    return <OptionRefField label={label} value={value as string} disabled={disabled} onUnlink={onUnlink} />;
+  }
   return (
     <Field label={label}>
       <input
@@ -70,13 +127,13 @@ export function NumberInput({ label, value, onChange, disabled, min, max, step }
         max={max}
         step={step}
         value={value === undefined || value === null ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
+        onChange={(e) => onChange(e.target.value === "" ? (optional ? undefined : Number(min ?? 0)) : Number(e.target.value))}
       />
     </Field>
   );
 }
 
-export function OptionRefField({ label, value, onUnlink, disabled }: { label: string; value: string; text?: string; onUnlink: () => void; disabled?: boolean }) {
+export function OptionRefField({ label, value, onUnlink, disabled }: { label: string; value: string; onUnlink: () => void; disabled?: boolean }) {
   const name = optionName(value);
   return (
     <div className="flex flex-col gap-1.5 text-sm">
@@ -89,7 +146,15 @@ export function OptionRefField({ label, value, onUnlink, disabled }: { label: st
   );
 }
 
-export function usePropEdit(edit: (fn: (t: string) => string, merge?: string) => void, path: string, readOnly: boolean) {
+/** Shows "From option …" when value is $name, otherwise children. */
+export function OptionLinkedField({ label, value, disabled, onUnlink, children }: { label: string; value: unknown; disabled?: boolean; onUnlink: () => void; children: ReactNode }) {
+  if (isOptionRef(value)) {
+    return <OptionRefField label={label} value={value} disabled={disabled} onUnlink={onUnlink} />;
+  }
+  return <>{children}</>;
+}
+
+export function propEdit(edit: (fn: (t: string) => string, merge?: string) => void, path: string, readOnly: boolean) {
   return (key: string, value: unknown) => {
     if (readOnly) return;
     edit((t) => setProp(t, path, key, value), `${path}:${key}`);
@@ -98,23 +163,20 @@ export function usePropEdit(edit: (fn: (t: string) => string, merge?: string) =>
 
 /** Colour or $option: shows unlink when it's an option reference. */
 export function ColourOrOption({ label, value, text, path, propKey, edit, readOnly }: { label: string; value: unknown; text: string; path: string; propKey: string; edit: (fn: (t: string) => string, merge?: string) => void; readOnly: boolean }) {
-  const set = usePropEdit(edit, path, readOnly);
-  if (isOptionRef(value)) {
-    const opts = optionsFromText(text);
-    const def = opts[optionName(value)]?.default;
-    return (
-      <OptionRefField
-        label={label}
-        value={value}
-        text={text}
-        disabled={readOnly}
-        onUnlink={() => {
-          if (def !== undefined) set(propKey, def);
-        }}
-      />
-    );
-  }
-  return <ColourInput label={label} value={String(value ?? "#FFFFFF")} disabled={readOnly} onChange={(v) => set(propKey, v)} />;
+  const set = propEdit(edit, path, readOnly);
+  return (
+    <OptionLinkedField
+      label={label}
+      value={value}
+      disabled={readOnly}
+      onUnlink={() => {
+        const def = optionDefaultForWrite(text, value as string);
+        if (def !== undefined) set(propKey, def);
+      }}
+    >
+      <ColourInput label={label} value={String(value ?? "#FFFFFF")} disabled={readOnly} onChange={(v) => set(propKey, v)} />
+    </OptionLinkedField>
+  );
 }
 
 export function Section({ title, children, defaultOpen = true }: { title: string; children: ReactNode; defaultOpen?: boolean }) {

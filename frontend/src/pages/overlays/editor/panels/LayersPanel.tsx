@@ -12,7 +12,8 @@ export function LayersPanel() {
     nodes = null;
   }
 
-  const boxes = scene && "boxes" in scene ? scene.boxes : {};
+  const sceneReady = scene !== undefined && "boxes" in scene;
+  const boxes = sceneReady ? scene.boxes : {};
 
   const onSelect = (path: string, shift: boolean) => {
     if (shift) {
@@ -21,17 +22,21 @@ export function LayersPanel() {
     } else select([path]);
   };
 
+  const yamlOk = nodes !== null;
+
   const add = (kind: (typeof ADD_KINDS)[number]["key"]) => {
-    const { text: next, path } = addKind(text, selection, kind);
-    edit(() => next);
-    select([path]);
+    edit((t) => {
+      const { text: next, path: newPath } = addKind(t, selection, kind);
+      select([newPath]);
+      return next;
+    });
   };
 
   return (
     <section aria-label="Layers" className="flex max-h-[min(70vh,40rem)] flex-col gap-2 rounded-card border border-border bg-surface p-3 text-sm">
       <div className="flex items-center justify-between gap-2">
         <h3 className="font-semibold">Layers</h3>
-        {!readOnly && (
+        {!readOnly && yamlOk && (
           <Field label="Add">
             <select
               aria-label="Add element"
@@ -60,7 +65,7 @@ export function LayersPanel() {
       ) : (
         <ul role="tree" className="min-h-0 flex-1 overflow-y-auto">
           {nodes.map((node) => (
-            <LayerRow key={node.path} node={node} depth={0} selection={selection} boxes={boxes} readOnly={readOnly} onSelect={onSelect} text={text} edit={edit} select={select} />
+            <LayerRow key={node.path} node={node} depth={0} selection={selection} boxes={boxes} sceneReady={sceneReady} readOnly={readOnly} yamlOk={yamlOk} onSelect={onSelect} text={text} edit={edit} select={select} />
           ))}
         </ul>
       )}
@@ -73,7 +78,9 @@ function LayerRow({
   depth,
   selection,
   boxes,
+  sceneReady,
   readOnly,
+  yamlOk,
   onSelect,
   text,
   edit,
@@ -83,7 +90,9 @@ function LayerRow({
   depth: number;
   selection: string[];
   boxes: Record<string, number[]>;
+  sceneReady: boolean;
   readOnly: boolean;
+  yamlOk: boolean;
   onSelect: (path: string, shift: boolean) => void;
   text: string;
   edit: (fn: (t: string) => string) => void;
@@ -91,19 +100,21 @@ function LayerRow({
 }) {
   const selected = selection.includes(node.path);
   const sole = selection.length === 1 && selection[0] === node.path;
-  const hidden = !boxes[node.path];
+  const hidden = sceneReady && !boxes[node.path];
   const idx = siblingIndex(node.path);
   const count = siblingCount(text, node.path);
   const removable = canRemove(text, node.path);
 
   const reorder = (to: number) => {
-    const { text: next, path } = reorderElement(text, node.path, to);
-    edit(() => next);
-    select([path]);
+    edit((t) => {
+      const { text: next, path: newPath } = reorderElement(t, node.path, to);
+      select([newPath]);
+      return next;
+    });
   };
 
   const del = () => {
-    edit(() => removeElement(text, node.path));
+    edit((t) => removeElement(t, node.path));
     select([]);
   };
 
@@ -119,7 +130,7 @@ function LayerRow({
           <span className="text-xs text-muted">{node.type}</span>
           {hidden && <span className="block text-xs text-muted">hidden on this title</span>}
         </button>
-        {sole && !readOnly && (
+        {sole && !readOnly && yamlOk && (
           <div className="flex shrink-0 flex-col gap-0.5">
             <Button
               disabled={idx >= count - 1}
@@ -154,6 +165,8 @@ function LayerRow({
               depth={depth + 1}
               selection={selection}
               boxes={boxes}
+              sceneReady={sceneReady}
+              yamlOk={yamlOk}
               readOnly={readOnly}
               onSelect={onSelect}
               text={text}
