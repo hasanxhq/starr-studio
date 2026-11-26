@@ -62,7 +62,6 @@ function useExactRender(busy: boolean): string | null {
       if (url) URL.revokeObjectURL(url);
       setShot(null);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- values by valuesKey
   }, [busy, sample, library, valuesKey, settledText]);
   return text === settledText ? shot : null;
 }
@@ -88,11 +87,9 @@ function Stage({ scene }: { scene: Scene }) {
   // the nodes we moved by hand stay only until the text they were made for is drawn: other text (undo, YAML, inspector) or a scene for it ends them
   useLayoutEffect(() => {
     if (text !== dropText.current) reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new text
   }, [text]);
   useLayoutEffect(() => {
     if (text === settledText) reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new scene
   }, [scene]);
 
   const boxOf = (path: string) => placed.current[path] ?? boxes[path];
@@ -147,6 +144,7 @@ function Stage({ scene }: { scene: Scene }) {
       }
       edit((t) => placeBox(t, p, to[i], current, parentBox), key);
     });
+    if (dropText.current === text) reset(); // nothing could move (an $option-pinned axis): don't leave it drawn where it was dropped
   };
   const apply = (paths: string[], to: SceneBox[], key: string) => {
     show(paths, to, (frame.current?.getBoundingClientRect().width ?? 0) / POSTER_W, false);

@@ -19,7 +19,7 @@ export function resizeBox(box: SceneBox, handle: Handle, dx: number, dy: number,
   if (handle.includes("e")) r = Math.max(r + dx, l + MIN);
   if (handle.includes("n")) t = Math.min(t + dy, b - MIN);
   if (handle.includes("s")) b = Math.max(b + dy, t + MIN);
-  if (keepRatio && handle.length === 2) {
+  if (keepRatio && handle.length === 2 && w > 0 && h > 0) {
     const scale = Math.max((r - l) / w, (b - t) / h);
     if (handle.includes("w")) l = r - w * scale;
     else r = l + w * scale;
