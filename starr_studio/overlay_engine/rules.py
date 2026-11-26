@@ -17,8 +17,28 @@ def resolve(style: Style, facts: TitleFacts, values: dict | None = None, now: in
     options = style.option_values(values)
     # a percent option stands for its fraction wherever a style uses it as $name
     refs = {name: options[name] / 100 if option.type == "percent" else options[name] for name, option in style.options.items()}
-    elements = [_resolve(e.model_dump(), facts, options, refs, now) for e in style.elements]
-    return [_ELEMENT.validate_python(e) for e in elements if e is not None]
+    elements = [_resolve(e.model_dump(), facts, options, refs, now, f"elements.{i}") for i, e in enumerate(style.elements)]
+    return [_with_paths(e) for e in elements if e is not None]
+
+
+def _with_paths(element: dict) -> Element:
+    """The validated element, each part carrying the path _resolve noted (the editor finds them by it)."""
+    paths: list[str] = []
+
+    def strip(d: dict) -> None:
+        paths.append(d.pop("__path"))
+        for child in d.get("children") or []:
+            strip(child)
+
+    def attach(model) -> None:
+        model._path = paths.pop(0)
+        for child in getattr(model, "children", None) or []:
+            attach(child)
+
+    strip(element)
+    model = _ELEMENT.validate_python(element)
+    attach(model)
+    return model
 
 
 def _substitute(value: Any, refs: dict) -> Any:
@@ -31,14 +51,17 @@ def _substitute(value: Any, refs: dict) -> Any:
     return value
 
 
-def _resolve(element: dict, facts: TitleFacts, options: dict, refs: dict, now: int) -> dict | None:
+def _resolve(element: dict, facts: TitleFacts, options: dict, refs: dict, now: int, path: str) -> dict | None:
     element = _substitute(element, refs)
+    element["__path"] = path
     show_when = element.pop("show_when")
     if show_when is not None and not matches(show_when, facts, options, now):
         return None
     element["show_when"] = None
     if "children" in element:
-        element["children"] = [c for child in element["children"] if (c := _resolve(child, facts, options, refs, now))]
+        element["children"] = [
+            c for i, child in enumerate(element["children"]) if (c := _resolve(child, facts, options, refs, now, f"{path}.children.{i}"))
+        ]
         return element if element["children"] else None
     if element["type"] == "text":
         names = PLACEHOLDER.findall(element["text"])

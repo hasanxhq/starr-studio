@@ -118,3 +118,20 @@ def test_option():
 
 def test_has_a_zero_score():
     assert m({"has": "rt_critic"}, facts(rt_critic=0)) and not m({"has": "rt_critic"}, facts())
+
+
+def test_resolved_elements_carry_their_place_in_the_file():
+    from starr_studio.overlay_engine.facts import TitleFacts
+    from starr_studio.overlay_engine.rules import resolve
+    from starr_studio.overlay_engine.style import load_style
+
+    style = load_style(
+        "studio_style: 1\nname: x\nelements:\n"
+        "  - { type: rect, box: { left: 0, top: 0, width: 1, height: 1 }, show_when: { has: imdb } }\n"
+        "  - type: row\n    box: { left: 0, top: 0 }\n    children:\n"
+        "      - { type: text, text: '{imdb}', size: 10 }\n"
+        "      - { type: text, text: hi, size: 10 }\n"
+    )
+    elements = resolve(style, TitleFacts(rating_key="1", type="movie", title="t"))
+    assert [e._path for e in elements] == ["elements.1"]
+    assert [c._path for c in elements[0].children] == ["elements.1.children.1"]

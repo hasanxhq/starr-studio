@@ -9,7 +9,8 @@ options:
   accent:   { type: colour, default: "#E50914", label: Accent colour }
   band:     { type: percent, default: 65, label: Band darkness }
   new_days: { type: number, default: 14, min: 0, max: 365, label: Show NEW for how many days (0 = never) }
-  ratings:  { type: choice, multiple: true, default: [imdb, rt_critic], choices: [imdb, rt_critic, rt_audience, tmdb], label: Ratings }
+  ratings:  { type: choice, multiple: true, default: [imdb, rt_critic], choices: [imdb, rt_critic, rt_audience, tmdb], label: Ratings,
+              choice_labels: { imdb: IMDb, rt_critic: Rotten Tomatoes critics, rt_audience: Rotten Tomatoes audience, tmdb: TMDb } }
 
 elements:
   - id: band

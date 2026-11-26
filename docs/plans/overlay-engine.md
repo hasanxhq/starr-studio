@@ -289,6 +289,16 @@ The style format (3.6) with its JSON Schema and loader; Modern streaming as the 
 ### Phase 4: the editor
 SVG canvas, snapping, undo, multi-select, layers, the 12-poster grid, and exact renders on idle.
 
+**Phase 4 split** (2026-11-26): (1) the contract below; then, in parallel, (2) the canvas, (3) the layers list and the element settings, (4) the sample grid and picker.
+
+**The contract** (task 1):
+- One renderer, on the server. `POST /scene {library, rating_keys (1–12), yaml | style, values}` gives each title's SVG, every element wrapped in `<g data-path="elements.1.children.0">` (its place in the file) with its box (x, y, width, height in poster units); the poster's href is `studio-poster:` for the browser to fill. While a hand drags, the browser moves that one node; when it lets go the file changes and the next scene arrives (debounced 80 ms); the exact JPEG from `/preview` comes a moment after the last change.
+- `GET /libraries/{library}/samples?count=12`: varied titles (4K and 1080p, HDR or not, with and without scores, new or not, Atmos or not), newest first among equals. Light and dark posters need each poster's brightness: later.
+- The editor edits the YAML text itself (`styleDoc.ts`, with the `yaml` package): comments stay, spacing is tidied on the first edit. Undo steps through versions of the file. A move keeps the edges an element is pinned to and its units; a row's or column's children are placed by it and reorder in the layers list instead.
+- `choice_labels` on a choice option: what the UI shows for each choice.
+- Saving writes the style file only. The editor opens from **Edit** on a user's style; shipped styles are duplicated first.
+- Left out: editing the options themselves (the YAML view does it), the user's own logos and fonts.
+
 ### Phase 5: switching over and automation
 The Settings → Overlays switch per library (3.5); triggers after imports; nightly check; the Maintainerr guard; Glassy and Minimal templates.
 

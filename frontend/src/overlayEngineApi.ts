@@ -1,5 +1,5 @@
-// Studio's own overlay engine (docs/plans/overlay-engine.md, Phase 3): style files, each library's chosen style,
-// the poster gallery, and apply / restore. Routes in starr_studio/overlay_engine_routes.py.
+// Studio's own overlay engine (docs/plans/overlay-engine.md, Phases 3–4): style files, each library's chosen style,
+// the poster gallery, apply / restore, and the editor's scene and samples. Routes in starr_studio/overlay_engine_routes.py.
 
 import { errorFrom, request, SIGNED_OUT_EVENT } from "./api";
 import { urlBase } from "./base";
@@ -19,6 +19,7 @@ export type StyleOption = {
   min?: number;
   max?: number;
   choices?: string[];
+  choice_labels?: Record<string, string>; // what to show for a choice; the choice itself where missing
   multiple?: boolean;
 };
 
@@ -63,6 +64,22 @@ export type ApplyBody = {
 
 export type PreviewBody = { rating_key: string; library?: string; style?: string; yaml?: string; values?: Record<string, unknown> };
 
+/** In a SceneItem's svg, where the poster's URL goes: editor/model/scene.ts sceneMarkup() fills it in. */
+export const POSTER_HREF = "studio-poster:";
+
+/** x, y, width, height in poster units (the poster is 1000 × 1500). */
+export type SceneBox = [number, number, number, number];
+
+/** One title in the editor: its SVG (each element in <g data-path="elements.1.children.0">) and each drawn element's
+ *  box by path. An element the style hides on this title has no box. error: Plex couldn't be read for this title. */
+export type SceneItem =
+  | { rating_key: string; title: string; year: number | null; thumb: string; svg: string; boxes: Record<string, SceneBox>; error?: undefined }
+  | { rating_key: string; error: string };
+
+export type SceneBody = { library: string; rating_keys: string[]; style?: string; yaml?: string; values?: Record<string, unknown> };
+
+export type Sample = { rating_key: string; title: string; year: number | null; thumb: string; traits: string[] };
+
 export const overlayEngine = {
   schema: () => request<Record<string, unknown>>("GET", `${BASE}/style-schema`),
   styles: {
@@ -96,6 +113,10 @@ export const overlayEngine = {
         `${BASE}/libraries/${enc(library)}/posters?start=${start}&size=${size}${q ? `&q=${enc(q)}` : ""}`,
       ),
   },
+  /** The editor's scene for 1–12 titles (see SceneItem). */
+  scene: (body: SceneBody) => request<{ items: SceneItem[] }>("POST", `${BASE}/scene`, body),
+  /** Up to count (≤ 12) varied titles to try a style on; traits say what kind each is, e.g. "resolution:4K", "rt:no". */
+  samples: (library: string, count = 12) => request<{ items: Sample[] }>("GET", `${BASE}/libraries/${enc(library)}/samples?count=${count}`),
   apply: (body: ApplyBody) => request<OutcomeList>("POST", `${BASE}/apply`, body),
   restore: (library: string, ratingKeys: string[], dryRun = true) =>
     request<OutcomeList>("POST", `${BASE}/restore`, { library, rating_keys: ratingKeys, dry_run: dryRun }),

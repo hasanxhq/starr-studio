@@ -107,7 +107,7 @@ export function StyleSettings({ library }: { library: string }) {
               </p>
             )}
           </fieldset>
-          {picked && <StyleActions style={picked} onAdded={(style) => void added(style)} onDeleted={() => void deleted(picked.id)} />}
+          {picked && <StyleActions style={picked} library={library} onAdded={(style) => void added(style)} onDeleted={() => void deleted(picked.id)} />}
         </div>
 
         {picked && (

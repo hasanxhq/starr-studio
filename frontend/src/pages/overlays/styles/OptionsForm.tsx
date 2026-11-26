@@ -55,7 +55,7 @@ function OptionControl({ opt, value, onChange }: { opt: StyleOption; value: unkn
             {choices.map((choice) => (
               // Keep the choices' order, whatever order they were ticked in.
               <Checkbox key={choice} checked={picked.includes(choice)} onChange={(on) => onChange(choices.filter((c) => (c === choice ? on : picked.includes(c))))}>
-                {choice}
+                {opt.choice_labels?.[choice] ?? choice}
               </Checkbox>
             ))}
           </fieldset>
@@ -66,7 +66,7 @@ function OptionControl({ opt, value, onChange }: { opt: StyleOption; value: unkn
           <select className={inputClass} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
             {choices.map((choice) => (
               <option key={choice} value={choice}>
-                {choice}
+                {opt.choice_labels?.[choice] ?? choice}
               </option>
             ))}
           </select>
