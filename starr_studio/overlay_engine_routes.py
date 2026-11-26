@@ -8,10 +8,15 @@ Phase 2: apply and restore named titles, list what Studio has on Plex, with dry 
 
 Phase 3: style files (shipped and the user's, with a JSON Schema) and each library's chosen style and option values.
 Preview and apply take a style id, a whole style file, or neither, which means the library's chosen style.
+
+Phase 4: the editor. POST /scene gives the editor's SVG for up to 12 titles: each element wrapped in
+<g data-path="elements.1.children.0"> (its place in the style file) with its box, and the poster's href left as
+POSTER_HREF for the browser to replace with its own poster URL. GET /libraries/{library}/samples picks varied titles.
 """
 
 import asyncio
 import re
+import time
 from dataclasses import asdict
 from typing import Annotated, Any
 
@@ -20,10 +25,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
 
 from .overlay_engine.apply import Context, apply as apply_titles, restore as restore_titles, studio_posters
-from .overlay_engine.facts_plex import title_facts
+from .overlay_engine.facts import TitleFacts
+from .overlay_engine.facts_plex import library_facts, title_facts
 from .overlay_engine.kometa_hold import section_key_for_library
 from .overlay_engine.originals import OriginalsStore
-from .overlay_engine.render import render_poster
+from .overlay_engine.render import render_poster, scene_svg
 from .overlay_engine.rules import resolve
 from .overlay_engine.share import MAX_BODY, export_zip, read_upload
 from .overlay_engine.style import Style, StyleError, load_style
@@ -36,6 +42,8 @@ from .settings import Settings
 
 router = APIRouter(prefix="/api/v1/overlay-engine", tags=["overlay-engine"])
 DEFAULT_STYLE = "modern-streaming"
+POSTER_HREF = "studio-poster:"  # in /scene's SVG: the browser puts its poster URL here
+NEW_DAYS = 14  # a sample counts as recently added within this many days
 
 
 def style_store(settings: Settings) -> StyleStore:
@@ -72,6 +80,19 @@ def _load_style(
     except (StyleError, ValueError) as error:
         raise HTTPException(422, str(error)) from None
     return loaded, style if style is not None else loaded.name, values
+
+
+def _thumb(facts: TitleFacts) -> str:
+    # the number after thumb/ only busts caches; Plex sends the current poster for any
+    return f"/library/metadata/{facts.rating_key}/thumb/{facts.updated_at or 0}"
+
+
+class SceneRequest(BaseModel):
+    library: str
+    rating_keys: list[Annotated[str, Field(pattern=r"^[0-9]+$")]] = Field(min_length=1, max_length=12)
+    style: str | None = Field(None, pattern=r"^[a-z0-9-]+$")
+    yaml: str | None = Field(None, max_length=200_000)
+    values: dict[str, Any] | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -319,6 +340,75 @@ async def schema() -> dict:
 @router.get("/styles")
 async def list_styles(settings: AppSettings) -> list[dict]:
     return [stored.summary() for stored in style_store(settings).list()]
+
+
+@router.post("/scene")
+async def scene(body: SceneRequest, request: Request, settings: AppSettings) -> dict:
+    """The editor's SVG of the style on each title (see the module docstring). A title Plex can't read gets error."""
+    _library(settings, body.library)
+    style, _, values = _load_style(settings, request, body.style, body.yaml, body.values, body.library)
+    server = kometa_plex(settings, request.app.state.http)
+    items = []
+    for rating_key in body.rating_keys:
+        try:
+            facts = await _plex_read(title_facts(server, request.app.state.db, rating_key))
+        except HTTPException as error:
+            items.append({"rating_key": rating_key, "error": str(error.detail)})
+            continue
+        boxes: dict[str, list[float]] = {}
+        try:
+            svg = scene_svg(resolve(style, facts, values), POSTER_HREF, boxes)
+        except ValueError as error:  # a style's raw svg that isn't allowed
+            raise HTTPException(422, str(error)) from None
+        items.append({"rating_key": rating_key, "title": facts.title, "year": facts.year, "thumb": _thumb(facts), "svg": svg, "boxes": boxes})
+    return {"items": items}
+
+
+def _traits(facts: TitleFacts, now: float) -> set[str]:
+    resolution = facts.resolution or "unknown"
+    return {
+        f"resolution:{'4K' if resolution == '4K' else '1080P' if resolution == '1080P' else 'lower'}",
+        f"hdr:{'yes' if facts.hdr else 'no'}",
+        f"imdb:{'yes' if facts.imdb is not None else 'no'}",
+        f"rt:{'yes' if facts.rt_critic is not None else 'no'}",
+        f"new:{'yes' if facts.added_at and now - facts.added_at < NEW_DAYS * 86400 else 'no'}",
+        f"audio:{'atmos' if facts.atmos or facts.dts_x else 'other'}",
+    }
+
+
+def pick_samples(all_facts: list[TitleFacts], count: int, now: float) -> list[tuple[TitleFacts, set[str]]]:
+    """Up to count titles that between them show as many kinds of title as they can (4K and 1080p, HDR or not,
+    with and without scores, new or not): each pick is the one adding the most kinds not yet shown, newest first."""
+    pool = sorted(all_facts, key=lambda f: -(f.added_at or 0))
+    traits = {f.rating_key: _traits(f, now) for f in pool}
+    picked: list[tuple[TitleFacts, set[str]]] = []
+    seen: set[str] = set()
+    while pool and len(picked) < count:
+        best = max(pool, key=lambda f: len(traits[f.rating_key] - seen))  # max keeps the first (newest) of equals
+        pool.remove(best)
+        picked.append((best, traits[best.rating_key]))
+        seen |= traits[best.rating_key]
+    return picked
+
+
+@router.get("/libraries/{library}/samples")
+async def samples(library: str, request: Request, settings: AppSettings, count: Annotated[int, Query(ge=1, le=12)] = 12) -> dict:
+    """Varied titles to try a style on (pick_samples). Reads every title's facts, from the cache where it's current."""
+    _library(settings, library)
+    server = kometa_plex(settings, request.app.state.http)
+    try:
+        library_key = await _plex_read(section_key_for_library(settings, server, library))
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from None
+    library_type = next((lib.type for lib in await _plex_read(server.libraries()) if lib.key == library_key), "")
+    facts = await _plex_read(library_facts(server, request.app.state.db, library_key, library_type))
+    picked = pick_samples(list(facts.values()), count, time.time())
+    return {
+        "items": [
+            {"rating_key": f.rating_key, "title": f.title, "year": f.year, "thumb": _thumb(f), "traits": sorted(traits)}
+            for f, traits in picked
+        ]
+    }
 
 
 @router.get("/styles/{style_id}")

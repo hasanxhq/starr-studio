@@ -1,11 +1,25 @@
 // Duplicate, Delete, Export and Import for the picked style.
 
 import { useRef, useState } from "react";
+import { Link } from "react-router";
 
 import { Button, ConfirmButton } from "../../../components/ui";
 import { overlayEngine, type StyleDetail, type StyleSummary } from "../../../overlayEngineApi";
 
-export function StyleActions({ style, onAdded, onDeleted }: { style: StyleSummary; onAdded: (style: StyleDetail) => void; onDeleted: () => void }) {
+const linkButton =
+  "inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface-2 px-4 text-sm font-medium text-text transition hover:border-muted";
+
+export function StyleActions({
+  style,
+  library,
+  onAdded,
+  onDeleted,
+}: {
+  style: StyleSummary;
+  library: string;
+  onAdded: (style: StyleDetail) => void;
+  onDeleted: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -24,13 +38,18 @@ export function StyleActions({ style, onAdded, onDeleted }: { style: StyleSummar
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {!style.shipped && !style.error && (
+        <Link to={`/overlays/editor/${encodeURIComponent(style.id)}?library=${encodeURIComponent(library)}`} className={linkButton}>
+          Edit
+        </Link>
+      )}
       <Button disabled={busy !== null} onClick={() => void run("duplicate", async () => onAdded(await overlayEngine.styles.duplicate(style.id)))}>
         {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
       </Button>
       <a
         href={overlayEngine.styles.exportUrl(style.id)}
         download
-        className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface-2 px-4 text-sm font-medium text-text transition hover:border-muted"
+        className={linkButton}
       >
         Export
       </a>

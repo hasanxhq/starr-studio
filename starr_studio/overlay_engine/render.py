@@ -160,11 +160,12 @@ def check_svg_fragment(fragment: str) -> str:
 
 
 class _Scene:
-    def __init__(self, backdrop: Backdrop | None):
+    def __init__(self, backdrop: Backdrop | None, boxes: dict[str, list[float]] | None = None):
         self.parts: list[str] = []
         self.defs: list[str] = []
         self.backdrop = backdrop
         self.count = 0
+        self.boxes = boxes  # the editor's: each element wrapped in <g data-path>, its x, y, width, height noted here
 
     def new_id(self, kind: str) -> str:
         self.count += 1
@@ -207,6 +208,15 @@ class _Scene:
         self.rect(x, y, w, h, radius, f'fill="{blur.tint}" fill-opacity="{_n(float(blur.tint_opacity))}"')
 
     def element(self, el, x: float, y: float, w: float, h: float) -> None:
+        tagged = self.boxes is not None and el._path is not None
+        if tagged:
+            self.boxes[el._path] = [round(x, 2), round(y, 2), round(w, 2), round(h, 2)]
+            self.parts.append(f'<g data-path="{el._path}">')
+        self._element(el, x, y, w, h)
+        if tagged:
+            self.parts.append("</g>")
+
+    def _element(self, el, x: float, y: float, w: float, h: float) -> None:
         if el.blur_behind:
             self.frost(el, x, y, w, h)
         attrs = []
@@ -263,8 +273,8 @@ class _Scene:
         )
 
 
-def _draw(elements: list, backdrop: Backdrop | None, background: str = "") -> str:
-    scene = _Scene(backdrop)
+def _draw(elements: list, backdrop: Backdrop | None, background: str = "", boxes: dict | None = None) -> str:
+    scene = _Scene(backdrop, boxes)
     scene.parts.append(background)
     poster = (0.0, 0.0, float(POSTER_WIDTH), float(POSTER_HEIGHT))
     for el in elements:
@@ -272,11 +282,12 @@ def _draw(elements: list, backdrop: Backdrop | None, background: str = "") -> st
     return scene.svg()
 
 
-def scene_svg(elements: list, poster_href: str | None = None) -> str:
-    """The whole scene for a browser: the poster (if given) under the overlay. Frosted glass needs the poster."""
+def scene_svg(elements: list, poster_href: str | None = None, boxes: dict[str, list[float]] | None = None) -> str:
+    """The whole scene for a browser: the poster (if given) under the overlay. Frosted glass needs the poster.
+    With boxes (a dict to fill), each element is tagged for the editor: see _Scene.boxes."""
     full = None if poster_href is None else (lambda *_: (poster_href, 0, 0, POSTER_WIDTH, POSTER_HEIGHT))
     background = "" if poster_href is None else f'<image href="{poster_href}" x="0" y="0" width="{POSTER_WIDTH}" height="{POSTER_HEIGHT}" preserveAspectRatio="none"/>'
-    return _draw(elements, full, background)
+    return _draw(elements, full, background, boxes)
 
 
 def render_poster(elements: list, poster: bytes, quality: int = 90) -> bytes:

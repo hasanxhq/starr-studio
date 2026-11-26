@@ -748,6 +748,21 @@
           "default": null,
           "title": "Choices"
         },
+        "choice_labels": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Choice Labels"
+        },
         "multiple": {
           "default": false,
           "title": "Multiple",

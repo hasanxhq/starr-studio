@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { overlayEngine, type StyleDetail, type StyleSummary } from "../../../overlayEngineApi";
@@ -48,7 +49,9 @@ function renderSettings() {
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
   render(
     <QueryClientProvider client={queryClient}>
-      <StyleSettings library="Movies" />
+      <MemoryRouter>
+        <StyleSettings library="Movies" />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
   return invalidate;
@@ -210,5 +213,22 @@ describe("StyleSettings", () => {
     expect(calls.filter((c) => c.route === "PUT /overlay-engine/styles/mine").at(-1)?.body).toEqual({ yaml: "name: Mine 2\n" });
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Save file" })).toBeDisabled();
+  });
+});
+
+describe("StyleSettings choice labels and Edit", () => {
+  it("shows a choice's label and links a user style to the editor", async () => {
+    mockApi(
+      routes({
+        "GET /overlay-engine/styles": () => [{ ...modern, options: { ratings: { ...modern.options.ratings, choice_labels: { imdb: "IMDb" } } } }, mine],
+        "GET /overlay-engine/libraries/Movies/style": () => ({ style: "mine", values: {}, saved: true }),
+      }),
+    );
+    renderSettings();
+    const edit = await screen.findByRole("link", { name: "Edit" });
+    expect(edit.getAttribute("href")).toBe("/overlays/editor/mine?library=Movies");
+    fireEvent.click(await radio(/Modern Streaming/));
+    expect(await screen.findByRole("checkbox", { name: "IMDb" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull(); // shipped: duplicate first
   });
 });

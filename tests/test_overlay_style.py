@@ -95,3 +95,14 @@ def test_not_yaml_or_wrong_version():
         load_style(MINIMAL.replace("studio_style: 1", "studio_style: 2"))
     with pytest.raises(StyleError, match="mapping"):
         load_style("- just a list")
+
+
+def test_choice_labels_must_name_choices():
+    import pytest
+
+    from starr_studio.overlay_engine.style import StyleError, load_style
+
+    head = "studio_style: 1\nname: x\nelements:\n  - { type: rect, box: { left: 0, top: 0, width: 1, height: 1 } }\noptions:\n  r: { type: choice, label: R, default: a, choices: [a, b], choice_labels: "
+    assert load_style(head + "{ a: A } }\n").options["r"].choice_labels == {"a": "A"}
+    with pytest.raises(StyleError, match="aren't among the choices"):
+        load_style(head + "{ c: C } }\n")

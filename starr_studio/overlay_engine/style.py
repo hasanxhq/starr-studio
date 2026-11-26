@@ -17,7 +17,7 @@ their capitals or image in that box.
 import re
 from typing import Annotated, Any, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator, model_validator
 from ruamel.yaml import YAML
 
 from .facts import FACT_NAMES, PLACEHOLDERS
@@ -177,6 +177,7 @@ class BlurBehind(Strict):
 
 
 class ElementBase(Strict):
+    _path: str | None = PrivateAttr(None)  # where rules.resolve found it in the file, e.g. "elements.1.children.0"
     id: str | None = None
     box: Box | None = None  # required at the top level and in a group; a row or column places its children itself
     show_when: dict[str, Any] | None = None  # see check_show_when
@@ -294,6 +295,7 @@ class Option(Strict):
     min: float | None = None
     max: float | None = None
     choices: list[str] | None = None
+    choice_labels: dict[str, str] | None = None  # what the UI shows for a choice; the choice itself where missing
     multiple: bool = False
 
     @model_validator(mode="after")
@@ -301,6 +303,8 @@ class Option(Strict):
         self.check(self.default)
         if self.type == "choice" and not self.choices:
             raise ValueError("a choice option needs choices")
+        if self.choice_labels and set(self.choice_labels) - set(self.choices or []):
+            raise ValueError(f"choice_labels names {sorted(set(self.choice_labels) - set(self.choices or []))}, which aren't among the choices")
         return self
 
     def check(self, value: Any) -> Any:

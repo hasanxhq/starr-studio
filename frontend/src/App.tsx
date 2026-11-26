@@ -18,6 +18,7 @@ import { CollectionBuilder } from "./pages/CollectionBuilder";
 import { Collections } from "./pages/Collections";
 import { Libraries } from "./pages/Libraries";
 import { OverlayDesigner } from "./pages/OverlayDesigner";
+import { StyleEditor } from "./pages/overlays/editor/StyleEditor";
 import { Overlays } from "./pages/Overlays";
 import { Overview } from "./pages/Overview";
 import { LibraryDetail } from "./pages/LibraryDetail";
@@ -105,6 +106,7 @@ export function App({ queryClient = new QueryClient() }: { queryClient?: QueryCl
                 <Route path="/collections/new" element={<CollectionBuilder />} />
                 <Route path="/collections/:id" element={<CollectionBuilder />} />
                 <Route path="/overlays/designer" element={<OverlayDesigner />} />
+                <Route path="/overlays/editor/:styleId" element={<StyleEditor />} />
                 <Route path="/files" element={<FileEditor />} />
                 <Route
                   path="/items"
