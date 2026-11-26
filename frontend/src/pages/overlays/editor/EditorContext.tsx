@@ -23,6 +23,8 @@ export type Editor = {
   selection: string[]; // element paths, first = the one the inspector shows
   select: (paths: string[]) => void;
   samples: Sample[]; // varied titles from the library (empty while loading)
+  samplesState: "loading" | "ready" | "empty" | "error"; // empty: the library has no titles
+  samplesError: string | null;
   sample: string | null; // the canvas's title (rating key)
   setSample: (ratingKey: string) => void;
   values: Record<string, unknown> | undefined; // option values: the library's when it uses this style
@@ -105,6 +107,8 @@ export function EditorProvider({
     selection,
     select,
     samples,
+    samplesState: samplesQuery.isPending ? "loading" : samplesQuery.isError ? "error" : samples.length ? "ready" : "empty",
+    samplesError: samplesQuery.error ? samplesQuery.error.message : null,
     sample,
     setSample,
     values,
