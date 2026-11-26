@@ -109,6 +109,7 @@ describe("Inspector", () => {
     fireEvent.change(left, { target: { value: "" } });
     fireEvent.blur(left);
     expect(file().value).toContain("left: 10");
+    expect(left).toHaveAttribute("aria-invalid", "true");
 
     const shadow = screen.getByLabelText("Shadow");
     fireEvent.click(shadow);
@@ -161,5 +162,25 @@ describe("Inspector", () => {
     fireEvent.click(await screen.findByRole("button", { name: /title text/ }));
     expect(screen.getByLabelText("Size")).toBeDisabled();
     expect(screen.getByLabelText("Text")).toBeDisabled();
+  });
+
+  it("links every field to its option, keeps padding lists, and writes a fill in one step", async () => {
+    const yaml = FIXED.replace(
+      "    colour: $accent\n    box: { left: 20, top: 20 }",
+      "    colour: $accent\n    background: { fill: { colour: $accent, opacity: 0.5 }, radius: 4, padding: [16, 40] }\n    box: { left: 20, top: 20 }",
+    ).replace('fill: { colour: "#000", opacity: $band }', "fill: { gradient: { direction: down, stops: [{ at: 0, colour: \"#000000\" }, { at: 1, colour: \"#000000\" }] } }");
+    renderEditor(yaml);
+    const file = () => screen.getByLabelText("Style file mine") as HTMLTextAreaElement;
+    fireEvent.click(await screen.findByRole("button", { name: /accent text/ }));
+    expect(screen.getAllByText(/From option accent/)).toHaveLength(2); // the text colour and the background colour
+    expect(screen.getByLabelText("Background padding")).toHaveValue("16, 40");
+
+    fireEvent.click(screen.getByRole("button", { name: /banded rect/ }));
+    expect(screen.getByText(/Gradient: edit in the YAML view/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Fill opacity"), { target: { value: "0.3" } });
+    await waitFor(() => expect(file().value).toContain("opacity: 0.3"));
+    expect(file().value).not.toMatch(/fill:[^\n]*colour: ['"]?#000000['"]?, opacity/); // a gradient fill gets no colour
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(file().value).not.toContain("opacity: 0.3");
   });
 });

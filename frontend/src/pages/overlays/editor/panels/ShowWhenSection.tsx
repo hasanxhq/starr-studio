@@ -5,7 +5,7 @@ import { Field, inputClass } from "../../../../components/ui";
 import type { StyleOption } from "../../../../overlayEngineApi";
 import { setProp } from "../model/styleDoc";
 import { HasMultiSelect, NumberInput } from "./fields";
-import { isSimpleShowWhen, optionDefaultForWrite, optionsFromText } from "./styleHelpers";
+import { isSimpleShowWhen, optionsFromText } from "./styleHelpers";
 
 function AdvancedShowWhen({
   rule,
@@ -111,8 +111,6 @@ export function ShowWhenSection({
         disabled={readOnly}
         min={0}
         optional
-        text={text}
-        onUnlink={() => patchRule({ added_within_days: optionDefaultForWrite(text, days as string) })}
         onChange={(v) => patchRule({ added_within_days: v })}
       />
       {Object.keys(options).length > 0 && (

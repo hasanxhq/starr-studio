@@ -4,9 +4,9 @@ import { Checkbox, Field, inputClass } from "../../../../components/ui";
 import { useEditor } from "../EditorContext";
 import { elementAt, isMovable } from "../model/styleDoc";
 import { ALIGNMENTS, BOX_KEYS, FONTS, LOGOS, PLACEHOLDER_KEYS } from "./constants";
-import { ColourInput, ColourOrOption, LengthInput, NumberInput, OptionLinkedField, Section, propEdit } from "./fields";
+import { ColourInput, ColourOrOption, LengthInput, NumberInput, OptionLinkedField, PaddingInput, Section, propEdit } from "./fields";
 import { ShowWhenSection } from "./ShowWhenSection";
-import { isOptionRef, optionDefaultForWrite } from "./styleHelpers";
+import { optionDefaultForWrite } from "./styleHelpers";
 
 export function Inspector() {
   const { text, selection, edit, readOnly } = useEditor();
@@ -29,7 +29,7 @@ export function Inspector() {
     );
   }
 
-  return <InspectorOne text={text} path={selection[0]} edit={edit} readOnly={readOnly} />;
+  return <InspectorOne key={selection[0]} text={text} path={selection[0]} edit={edit} readOnly={readOnly} />;
 }
 
 function InspectorOne({ text, path, edit, readOnly }: { text: string; path: string; edit: (fn: (t: string) => string, merge?: string) => void; readOnly: boolean }) {
@@ -57,7 +57,7 @@ function InspectorOne({ text, path, edit, readOnly }: { text: string; path: stri
         <input type="text" aria-label="Name" disabled={readOnly} className={`${inputClass} text-xs`} value={typeof el.id === "string" ? el.id : ""} onChange={(e) => set("id", e.target.value || undefined)} />
       </Field>
 
-      {isMovable(text, path) && <PositionSection el={el} text={text} set={set} readOnly={readOnly} />}
+      {isMovable(text, path) && <PositionSection el={el} set={set} readOnly={readOnly} />}
       {el.type === "text" && <TextSection el={el} path={path} text={text} set={set} edit={edit} readOnly={readOnly} />}
       {el.type === "logo" && <LogoSection el={el} text={text} set={set} readOnly={readOnly} />}
       {(el.type === "row" || el.type === "column") && <FlowSection el={el} set={set} readOnly={readOnly} />}
@@ -69,7 +69,7 @@ function InspectorOne({ text, path, edit, readOnly }: { text: string; path: stri
   );
 }
 
-function PositionSection({ el, text, set, readOnly }: { el: Record<string, unknown>; text: string; set: (key: string, value: unknown) => void; readOnly: boolean }) {
+function PositionSection({ el, set, readOnly }: { el: Record<string, unknown>; set: (key: string, value: unknown) => void; readOnly: boolean }) {
   const box = (el.box ?? {}) as Record<string, unknown>;
   const keys = BOX_KEYS.filter((k) => k in box);
   if (keys.length === 0) return null;
@@ -81,8 +81,6 @@ function PositionSection({ el, text, set, readOnly }: { el: Record<string, unkno
           label={k}
           value={box[k]}
           disabled={readOnly}
-          text={text}
-          onUnlink={() => set(`box.${k}`, optionDefaultForWrite(text, box[k] as string))}
           onChange={(v) => set(`box.${k}`, v)}
         />
       ))}
@@ -188,21 +186,10 @@ function TextSection({
             min={0}
             max={1}
             step={0.05}
-            text={text}
-            onUnlink={() => {
-              const def = optionDefaultForWrite(text, bgFill?.opacity as string);
-              if (def !== undefined) {
-                set("background.fill.opacity", def);
-                if (!bgFill?.colour) set("background.fill.colour", "#000000");
-              }
-            }}
-            onChange={(v) => {
-              set("background.fill.opacity", v);
-              if (!bgFill?.colour && !isOptionRef(bgFill?.colour)) set("background.fill.colour", "#000000");
-            }}
+            onChange={(v) => set("background.fill", { colour: "#000000", ...bgFill, opacity: v })} // one edit: never a fill without a colour
           />
           <NumberInput label="Background radius" value={bg.radius ?? 0} disabled={readOnly} onChange={(v) => set("background.radius", v)} />
-          <NumberInput label="Background padding" value={bg.padding ?? 0} disabled={readOnly} onChange={(v) => set("background.padding", v)} />
+          <PaddingInput label="Background padding" value={bg.padding ?? 0} disabled={readOnly} onChange={(v) => set("background.padding", v)} />
         </>
       )}
     </Section>
@@ -227,8 +214,6 @@ function LogoSection({ el, text, set, readOnly }: { el: Record<string, unknown>;
         label="Height"
         value={el.height}
         disabled={readOnly}
-        text={text}
-        onUnlink={() => set("height", optionDefaultForWrite(text, el.height as string))}
         onChange={(v) => set("height", v)}
       />
     </Section>
@@ -282,8 +267,6 @@ function StyleSection({
         min={0}
         max={1}
         step={0.05}
-        text={text}
-        onUnlink={() => set("opacity", optionDefaultForWrite(text, el.opacity as string))}
         onChange={(v) => set("opacity", v)}
       />
       {el.type === "rect" && (
@@ -302,18 +285,7 @@ function StyleSection({
                 min={0}
                 max={1}
                 step={0.05}
-                text={text}
-                onUnlink={() => {
-                  const def = optionDefaultForWrite(text, fill.opacity as string);
-                  if (def !== undefined) {
-                    set("fill.opacity", def);
-                    if (!hasGradient && !fill.colour) set("fill.colour", "#000000");
-                  }
-                }}
-                onChange={(v) => {
-                  set("fill.opacity", v);
-                  if (!hasGradient && !fill.colour && !isOptionRef(fill.colour)) set("fill.colour", "#000000");
-                }}
+                onChange={(v) => set("fill", { ...(hasGradient || fill.colour ? {} : { colour: "#000000" }), ...fill, opacity: v })} // one edit
               />
             </>
           ) : (

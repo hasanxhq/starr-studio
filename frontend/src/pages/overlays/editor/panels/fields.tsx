@@ -1,11 +1,30 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { Button, Checkbox, Field, inputClass } from "../../../../components/ui";
+import { useEditor } from "../EditorContext";
 import { setProp } from "../model/styleDoc";
 import { FACT_NAMES } from "./constants";
 import { isOptionRef, optionDefaultForWrite, optionName } from "./styleHelpers";
 
+/** A value that's "$name" shows as "From option name" with Unlink, which writes the option's default (see
+ *  optionDefaultForWrite). Every field that can hold a value goes through this, so none forgets it. */
+function OptionRef({ label, value, disabled, onChange }: { label: string; value: string; disabled?: boolean; onChange: (value: never) => void }) {
+  const { text } = useEditor();
+  return (
+    <OptionRefField
+      label={label}
+      value={value}
+      disabled={disabled}
+      onUnlink={() => {
+        const def = optionDefaultForWrite(text, value);
+        if (def !== undefined) onChange(def as never); // an unknown option: leave it for the YAML view
+      }}
+    />
+  );
+}
+
 export function ColourInput({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+  if (isOptionRef(value)) return <OptionRef label={label} value={value} disabled={disabled} onChange={onChange} />;
   const hex = String(value ?? "");
   const picker = /^#[0-9a-f]{6}/i.test(hex) ? hex.slice(0, 7) : "#000000";
   return (
@@ -44,8 +63,8 @@ function lengthValid(raw: string): number | string | null {
   return null;
 }
 
-export function LengthInput({ label, value, onChange, disabled, text, onUnlink }: { label: string; value: unknown; onChange: (value: number | string) => void; disabled?: boolean; text?: string; onUnlink?: () => void }) {
-  const ref = typeof value === "string" && isOptionRef(value);
+export function LengthInput({ label, value, onChange, disabled }: { label: string; value: unknown; onChange: (value: number | string) => void; disabled?: boolean }) {
+  const ref = isOptionRef(value);
   const display = ref ? "" : value === undefined || value === null ? "" : String(value);
   const [draft, setDraft] = useState(display);
   const [invalid, setInvalid] = useState(false);
@@ -54,9 +73,7 @@ export function LengthInput({ label, value, onChange, disabled, text, onUnlink }
     setInvalid(false);
   }, [display]);
 
-  if (ref && text && onUnlink) {
-    return <OptionRefField label={label} value={value as string} disabled={disabled} onUnlink={onUnlink} />;
-  }
+  if (ref) return <OptionRef label={label} value={value} disabled={disabled} onChange={onChange} />;
 
   return (
     <Field label={label}>
@@ -82,7 +99,7 @@ export function LengthInput({ label, value, onChange, disabled, text, onUnlink }
           if (parsed !== null) {
             onChange(parsed);
             setInvalid(false);
-          } else setInvalid(draft.trim() !== "");
+          } else setInvalid(true); // empty or not a length: the file keeps its last good value
         }}
       />
     </Field>
@@ -97,8 +114,6 @@ export function NumberInput({
   min,
   max,
   step,
-  text,
-  onUnlink,
   optional,
 }: {
   label: string;
@@ -108,14 +123,9 @@ export function NumberInput({
   min?: number;
   max?: number;
   step?: number;
-  text?: string;
-  onUnlink?: () => void;
   optional?: boolean;
 }) {
-  const ref = typeof value === "string" && isOptionRef(value);
-  if (ref && text && onUnlink) {
-    return <OptionRefField label={label} value={value as string} disabled={disabled} onUnlink={onUnlink} />;
-  }
+  if (isOptionRef(value)) return <OptionRef label={label} value={value} disabled={disabled} onChange={onChange} />;
   return (
     <Field label={label}>
       <input
@@ -129,6 +139,29 @@ export function NumberInput({
         value={value === undefined || value === null ? "" : String(value)}
         onChange={(e) => onChange(e.target.value === "" ? (optional ? undefined : Number(min ?? 0)) : Number(e.target.value))}
       />
+    </Field>
+  );
+}
+
+/** Padding: one number, or "vertical, horizontal" / "top, right, bottom, left" as the format allows. */
+export function PaddingInput({ label, value, onChange, disabled }: { label: string; value: unknown; onChange: (value: number | number[]) => void; disabled?: boolean }) {
+  const display = Array.isArray(value) ? value.join(", ") : value === undefined || value === null ? "" : String(value);
+  const [draft, setDraft] = useState(display);
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => {
+    setDraft(display);
+    setInvalid(false);
+  }, [display]);
+  if (isOptionRef(value)) return <OptionRef label={label} value={value} disabled={disabled} onChange={onChange} />;
+  const commit = () => {
+    const parts = draft.split(",").map((p) => p.trim());
+    const ok = [1, 2, 4].includes(parts.length) && parts.every((p) => NUMBER_RE.test(p));
+    setInvalid(!ok);
+    if (ok) onChange(parts.length === 1 ? Number(parts[0]) : parts.map(Number));
+  };
+  return (
+    <Field label={label}>
+      <input type="text" aria-label={label} aria-invalid={invalid || undefined} disabled={disabled} className={`${inputClass} max-w-[8rem] font-mono text-xs`} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit} />
     </Field>
   );
 }
