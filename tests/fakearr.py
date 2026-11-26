@@ -46,11 +46,14 @@ class FakeArr:
             return httpx.Response(200, json=[{"id": 1, "path": "/movies" if kind == "radarr" else "/tv", "accessible": True}])
         if request.url.path == "/api/v3/qualityprofile":
             return httpx.Response(200, json=[{"id": 4, "name": "HD-1080p"}, {"id": 5, "name": "Ultra-HD"}])
-        if request.url.path == "/api/v3/history/since":
-            since = request.url.params["date"]
+        if request.url.path == "/api/v3/history":
+            # Paged, newest first, as Radarr, Sonarr and HolyArrs' imitation of them answer it.
             assert request.url.params["eventType"] == "3"
-            keep = [r for r in self.history[kind] if r["date"][:19] >= since[:19]]
+            assert (request.url.params["sortKey"], request.url.params["sortDirection"]) == ("date", "descending")
+            page, size = int(request.url.params["page"]), int(request.url.params["pageSize"])
+            rows = sorted(self.history[kind], key=lambda r: r["date"], reverse=True)
             # Like the real thing: the item only when asked for.
             include = request.url.params.get("includeMovie" if kind == "radarr" else "includeSeries") == "true"
-            return httpx.Response(200, json=[r if include else {k: v for k, v in r.items() if k not in ("movie", "series")} for r in keep])
+            rows = [r if include else {k: v for k, v in r.items() if k not in ("movie", "series")} for r in rows]
+            return httpx.Response(200, json={"page": page, "pageSize": size, "totalRecords": len(rows), "records": rows[(page - 1) * size : page * size]})
         return httpx.Response(404)

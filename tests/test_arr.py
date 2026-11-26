@@ -94,6 +94,24 @@ def test_imports_made_while_studio_was_off_are_found(setup):
     assert run(scenario, fake) == ["Flow (2024)"]
 
 
+def test_history_is_paged_back_to_since_and_no_further(setup, monkeypatch):
+    db, fake, config, tmp_path = setup
+    monkeypatch.setattr(arr, "HISTORY_PAGE", 2)
+    for minutes in range(5):
+        fake.imported("radarr", f"New {minutes}", 2024, T0 + timedelta(minutes=minutes))
+    for days in (2, 3, 4):
+        fake.imported("radarr", "Old", 2020, T0 - timedelta(days=days))
+
+    async def scenario(http):
+        conn = arr.Connection(RADARR_URL, RADARR_KEY)
+        return await arr.imports_since(http, conn, "radarr", T0)
+
+    records = run(scenario, fake)
+    assert [r["movie"]["title"] for r in records] == [f"New {m}" for m in range(5)]  # oldest first
+    pages = [r.url.params["page"] for r in fake.requests if r.url.path == "/api/v3/history"]
+    assert pages == ["1", "2", "3"]  # page 3 holds the first record older than since; page 4 isn't asked for
+
+
 def test_the_connection_is_kometas_with_studios_proxy_login(setup):
     db, fake, config, tmp_path = setup
     fake.proxy_login = ("hasan", "seedbox-pass")
