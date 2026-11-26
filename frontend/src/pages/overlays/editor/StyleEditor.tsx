@@ -3,7 +3,7 @@
 // and the file itself behind a disclosure. Saving writes only the style file: Plex changes when you apply overlays.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 
 import { LeaveGuard } from "../../../components/LeaveGuard";
@@ -72,10 +72,13 @@ export function StyleEditor() {
   const [saved, setSaved] = useState<string | null>(null);
   useUndoKeys(history);
 
-  // Start from the file once it's loaded (and again if another style is opened here).
+  // Start from the file once it's loaded, and again only if another style is opened here: a save refreshes the
+  // cached file too, and that mustn't wipe the undo history or edits made while saving.
   const loaded = detail.data?.yaml;
+  const startedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (loaded === undefined) return;
+    if (loaded === undefined || startedFor.current === styleId) return;
+    startedFor.current = styleId;
     history.reset(loaded);
     setSaved(loaded);
   }, [loaded, styleId, history.reset]);

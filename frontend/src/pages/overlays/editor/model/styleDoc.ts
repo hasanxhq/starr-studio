@@ -53,9 +53,11 @@ export function elementAt(text: string, path: string): ElementData | undefined {
 }
 
 export function outline(text: string): OutlineNode[] {
-  const data = load(text).toJSON() as { elements?: ElementData[] } | null;
-  const walk = (elements: ElementData[] | undefined, at: string, inFlow: boolean): OutlineNode[] =>
-    (elements ?? []).map((el, i) => {
+  const data = load(text).toJSON() as { elements?: unknown } | null;
+  // mid-typing the file can hold anything: list only what looks like elements
+  const walk = (elements: unknown, at: string, inFlow: boolean): OutlineNode[] =>
+    (Array.isArray(elements) ? elements : []).flatMap((el: ElementData, i) => {
+      if (!el || typeof el !== "object" || Array.isArray(el)) return [];
       const path = `${at}.${i}`;
       const id = typeof el.id === "string" ? el.id : null;
       return {
@@ -108,12 +110,12 @@ export function addElement(text: string, parent: string | null, element: Element
   return { text: dump(doc), path: `${base}.${at}` };
 }
 
-/** Remove an element. Removing a row's, column's or group's last child removes nothing: the file needs one. */
+/** Remove an element. Removing the last element of the file, a row, a column or a group removes nothing: each needs one. */
 export function removeElement(text: string, path: string): string {
   const doc = load(text);
   const index = Number(path.split(".").at(-1));
   const { seq } = seqAt(doc, parentPath(path));
-  if (parentPath(path) !== null && seq.items.length <= 1) return text;
+  if (seq.items.length <= 1) return text;
   seq.items.splice(index, 1);
   return dump(doc);
 }
@@ -171,11 +173,11 @@ export function placeBox(text: string, path: string, target: SceneBox, current: 
   for (const [k, v] of Object.entries(next)) if (v !== box[k]) doc.setIn([...keys(path), "box", k], v);
   let out = dump(doc);
   const sizedByBox = (box.width ?? null) !== null || (box.height ?? null) !== null || (box.left != null && box.right != null) || (box.top != null && box.bottom != null);
-  const scale = ch > 0 ? th / ch : 1;
-  if (!sizedByBox && Math.abs(scale - 1) > 0.001) {
-    if (el.type === "text" && typeof el.size === "number") out = setProp(out, path, "size", round(el.size * scale));
-    if ((el.type === "logo" || el.type === "svg") && typeof el.height === "number") out = setProp(out, path, "height", round(el.height * scale));
-    if (el.type === "svg" && typeof el.width === "number" && cw > 0) out = setProp(out, path, "width", round(el.width * (tw / cw)));
+  const changed = (a: number, b: number) => b > 0 && Math.abs(a / b - 1) > 0.001;
+  if (!sizedByBox) {
+    if (changed(th, ch) && el.type === "text" && typeof el.size === "number") out = setProp(out, path, "size", round((el.size * th) / ch));
+    if (changed(th, ch) && (el.type === "logo" || el.type === "svg") && typeof el.height === "number") out = setProp(out, path, "height", round((el.height * th) / ch));
+    if (changed(tw, cw) && el.type === "svg" && typeof el.width === "number") out = setProp(out, path, "width", round((el.width * tw) / cw));
   }
   return out;
 }

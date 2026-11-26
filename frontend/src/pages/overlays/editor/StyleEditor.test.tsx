@@ -57,6 +57,8 @@ describe("StyleEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.some((c) => c.route === "PUT /overlay-engine/styles/mine")).toBe(true));
     await screen.findByRole("button", { name: "Saved" });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(); // saving keeps the history
+    expect((screen.getByLabelText("Style file mine") as HTMLTextAreaElement).value).toContain("name: Mine 2");
   });
 
   it("is read-only for a shipped style", async () => {

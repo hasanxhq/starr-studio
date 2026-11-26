@@ -97,6 +97,13 @@ describe("styleDoc", () => {
     expect(outline(reordered.text)[0].label).toBe("new");
   });
 
+  it("keeps the file's last element and outlines a half-typed file", () => {
+    const one = "studio_style: 1\nname: x\nelements:\n  - { type: rect, box: { left: 0, top: 0, width: 1, height: 1 } }\n";
+    expect(removeElement(one, "elements.0")).toBe(one);
+    expect(outline("name: x\nelements: 3\n")).toEqual([]);
+    expect(outline("name: x\nelements:\n  - \n  - { type: rect }\n").map((n) => n.path)).toEqual(["elements.1"]);
+  });
+
   it("throws on text that isn't YAML", () => {
     expect(() => setProp("a: [", "elements.0", "x", 1)).toThrow();
   });

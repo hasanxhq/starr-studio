@@ -2,7 +2,7 @@
 // The canvas, panels and sample grid read and change it through useEditor().
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { overlayEngine, type Sample, type SceneItem } from "../../../overlayEngineApi";
 import { useDebounced } from "../../../useDebounced";
@@ -74,6 +74,9 @@ export function EditorProvider({
     [history, readOnly],
   );
 
+  // the file changed some other way (undo, the YAML view): an old edit's error no longer applies
+  useEffect(() => setEditError(null), [history.text]);
+
   const samplesQuery = useQuery({ queryKey: ["overlay-engine", "samples", library], queryFn: () => overlayEngine.samples(library), staleTime: 5 * 60_000 });
   const samples = useMemo(() => samplesQuery.data?.items ?? [], [samplesQuery.data]);
   const sample = picked ?? samples[0]?.rating_key ?? null;
@@ -85,7 +88,7 @@ export function EditorProvider({
   const sceneQuery = useQuery({
     queryKey: ["overlay-engine", "scene", library, sample, settledText, values],
     queryFn: () => overlayEngine.scene({ library, rating_keys: [sample as string], yaml: settledText, values }),
-    enabled: sample !== null,
+    enabled: sample !== null && !libraryStyle.isPending, // wait for the library's values, or the first scene is wasted
     placeholderData: keepPreviousData,
     retry: false,
   });
